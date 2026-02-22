@@ -95,7 +95,7 @@ function TGrid({ sel, set, label }: TGridProps) {
         <div />{ds.map(d=><div key={d} className="text-center text-xs font-semibold text-gray-500 p-1.5">{d}</div>)}
         {ts.map((t,ti)=><Fragment key={ti}>
           <div className="text-[11px] text-gray-500 flex items-center">{t}</div>
-          {ds.map(d=>{ const k=`${d}-${ti}`; return <button key={k} type="button" role="checkbox" aria-checked={sel.has(k)} aria-label={`${d} ${t}`} onClick={()=>tog(k)} className={cn("py-2.5 px-1 text-center rounded-md cursor-pointer text-xs font-medium", sel.has(k) ? "bg-primary text-primary-foreground" : "bg-gray-50 text-gray-400")} />; })}
+          {ds.map(d=>{ const k=`${d}-${ti}`; return <button key={k} type="button" role="checkbox" aria-checked={sel.has(k)} aria-label={`${d} ${t}`} onClick={()=>tog(k)} className={cn("py-2.5 px-1 text-center rounded-md cursor-pointer text-xs font-medium transition-colors", sel.has(k) ? "bg-primary text-primary-foreground" : "bg-gray-50 text-gray-400 hover:bg-gray-100")} />; })}
         </Fragment>)}
       </div>
     </div>
@@ -195,7 +195,7 @@ function SignupRole({ go }: GoProps) {
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Join unitor</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed">How will you use unitor?</p>
       {[{i:<Icon.graduation size={24} />,t:"Student",d:"Find and join project groups",to:"signup-s"},{i:<Icon.clipboard size={24} />,t:"TA / Instructor",d:"Create courses and manage groups",to:"signup-t"}].map(r=>(
-        <Card key={r.t} className="p-5 mb-3.5 shadow-none cursor-pointer flex-row items-center gap-4" onClick={()=>go(r.to)}>
+        <Card key={r.t} className="p-5 mb-3.5 shadow-none cursor-pointer flex-row items-center gap-4 hover:border-gray-300 hover:shadow-sm transition-colors" onClick={()=>go(r.to)}>
           <div className="w-[50px] h-[50px] rounded-xl bg-gray-50 flex items-center justify-center">{r.i}</div>
           <div className="flex-1"><div className="text-base font-semibold">{r.t}</div><div className="text-sm text-gray-500">{r.d}</div></div>
           <span className="text-gray-300 text-lg">→</span>
@@ -254,7 +254,7 @@ function Verify({ role, go }: RoleGoProps) {
     <div className="max-w-[500px] mx-auto pt-20 px-6 text-center">
       <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 2 of 2: Account</div>
       <Progress value={(2/2)*100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
-      <div className="mb-5"><Icon.email size={48} /></div>
+      <div className="mb-5 flex justify-center"><Icon.email size={48} /></div>
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px] text-center">Check your inbox</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed text-center">We sent a link to <strong>j.doe@mail.utoronto.ca</strong></p>
       <Button className="w-full px-7 py-3 h-auto" onClick={()=>go(role==="t"?"ta-dash":"dash")}>I've Verified My Email</Button>
@@ -273,12 +273,12 @@ function Dash({ go }: GoProps) {
         <Button size="sm" className="px-4" onClick={()=>go("join")}>+ Join a Course</Button>
       </div>
       <Card className="py-[52px] px-6 mb-3.5 gap-0 shadow-none text-center border-dashed border-gray-300">
-        <div className="mb-3"><Icon.books size={36} /></div>
+        <div className="mb-3 flex justify-center"><Icon.books size={36} /></div>
         <p className="text-[15px] text-gray-500 mb-4">No courses yet.</p>
         <Button variant="outline" size="sm" className="px-4 mx-auto" onClick={()=>go("join")}>Join your first course</Button>
       </Card>
       <div className="mt-2.5" />
-      <Card className="p-5 mb-3.5 gap-0 shadow-none cursor-pointer" onClick={()=>go("board")}>
+      <Card className="p-5 mb-3.5 gap-0 shadow-none cursor-pointer hover:border-gray-300 hover:shadow-sm transition-colors" onClick={()=>go("board")}>
         <div className="flex justify-between items-start">
           <div><div className="text-lg font-semibold">CSC318</div><div className="text-sm text-gray-500">The Design of Interactive Computational Media</div><div className="text-[13px] text-gray-400 mt-1">Winter 2026 · Section 201</div></div>
           <Badge variant="success">Active</Badge>
@@ -363,13 +363,13 @@ function Prof1({ go }: GoProps) {
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Your Skills</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed">Select relevant skills. Add custom ones if needed.</p>
       <div className="mb-5">
-        {pre.map(sk=><button key={sk} type="button" aria-pressed={sel.includes(sk)} className={cn("inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium cursor-pointer mr-1.5 mb-2 border-[1.5px]", sel.includes(sk) ? "bg-primary text-primary-foreground border-primary" : "bg-gray-100 text-gray-600 border-gray-200")} onClick={()=>tog(sk)}>{sk}</button>)}
+        {pre.map(sk=><button key={sk} type="button" aria-pressed={sel.includes(sk)} className={cn("inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium cursor-pointer mr-1.5 mb-2 border-[1.5px] transition-colors", sel.includes(sk) ? "bg-primary text-primary-foreground border-primary" : "bg-gray-100 text-gray-600 border-gray-200 hover:border-gray-300")} onClick={()=>tog(sk)}>{sk}</button>)}
         <button type="button" className="inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium cursor-pointer mr-1.5 mb-2 border-[1.5px] bg-gray-100 text-gray-600 border-gray-200 border-dashed">+ Custom</button>
       </div>
       {sel.length>0&&<Card className="p-0 mb-6 gap-0 shadow-none overflow-hidden">
         {sel.map((sk,i)=><div key={sk} className={cn("flex justify-between items-center px-5 py-3", i<sel.length-1 && "border-b border-gray-100")}>
           <span className="text-sm font-medium">{sk}</span>
-          <div className="flex gap-1">{lvl.map(l=><button key={l} type="button" aria-pressed={rat[sk]===l} className={cn("py-1 px-2.5 rounded-md text-xs font-medium cursor-pointer", rat[sk]===l ? "bg-primary text-primary-foreground" : "bg-gray-100 text-gray-500")} onClick={()=>setRat({...rat,[sk]:l})}>{l}</button>)}</div>
+          <div className="flex gap-1">{lvl.map(l=><button key={l} type="button" aria-pressed={rat[sk]===l} className={cn("py-1 px-2.5 rounded-md text-xs font-medium cursor-pointer transition-colors", rat[sk]===l ? "bg-primary text-primary-foreground" : "bg-gray-100 text-gray-500 hover:bg-gray-200")} onClick={()=>setRat({...rat,[sk]:l})}>{l}</button>)}</div>
         </div>)}
       </Card>}
       <Button className="w-full px-7 py-3 h-auto" onClick={()=>go("prof-2")}>Next</Button>
@@ -421,7 +421,7 @@ function Prof3({ go }: GoProps) {
       <p className="text-base text-gray-600 mb-9 leading-relaxed">Let potential teammates know how to reach you.</p>
       <div className="mb-5">
         <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Preferred Platforms</Label>
-        <div className="flex flex-wrap gap-1.5">{plats.map(p=><button key={p} type="button" aria-pressed={sp.includes(p)} className={cn("inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium cursor-pointer border-[1.5px]", sp.includes(p) ? "bg-primary text-primary-foreground border-primary" : "bg-gray-100 text-gray-600 border-gray-200")} onClick={()=>tp(p)}>{p}</button>)}</div>
+        <div className="flex flex-wrap gap-1.5">{plats.map(p=><button key={p} type="button" aria-pressed={sp.includes(p)} className={cn("inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium cursor-pointer border-[1.5px] transition-colors", sp.includes(p) ? "bg-primary text-primary-foreground border-primary" : "bg-gray-100 text-gray-600 border-gray-200 hover:border-gray-300")} onClick={()=>tp(p)}>{p}</button>)}</div>
       </div>
       {sp.length>0&&<div className={cn("grid gap-3 mb-5", sp.length>1?"grid-cols-2":"grid-cols-1")}>
         {sp.map(p=><F key={p} l={`${p} handle`}><Input placeholder={`Your ${p} username`} /></F>)}
@@ -444,7 +444,7 @@ function ProfDone({ go }: GoProps) {
   return <div className="bg-background min-h-screen pb-16">
     <Nav go={go} />
     <div className="max-w-[500px] mx-auto pt-[100px] px-6 text-center">
-      <div className="text-5xl mb-5">✓</div>
+      <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-success-bg flex items-center justify-center"><span className="text-3xl text-success">✓</span></div>
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Profile Complete!</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed">You're all set. Head to the board to start finding teammates.</p>
       <Button className="px-9 py-3.5 text-base h-auto" onClick={()=>go("board")}>Go to Matching Board</Button>
@@ -619,9 +619,9 @@ function Board({ go }: GoProps) {
             <span className="text-[13px] text-gray-500">14 students looking</span>
           </div>
           {/* Urgent banner */}
-          <div onClick={()=>go("urgent")} className="flex justify-between items-center px-[18px] py-3 bg-danger-bg rounded-[10px] border border-danger-border mb-[18px] cursor-pointer">
+          <div onClick={()=>go("urgent")} className="flex justify-between items-center px-[18px] py-3 bg-danger-bg rounded-[10px] border border-danger-border mb-[18px] cursor-pointer hover:shadow-sm transition-shadow">
             <div className="flex items-center gap-3">
-              <span className="text-sm font-bold text-danger inline-flex items-center gap-1"><Icon.clockAlert size={16} color="#c1292e" /> D-3</span>
+              <span className="text-sm font-bold text-danger inline-flex items-center gap-1"><Icon.clockAlert size={16} color="#c1292e" /> 3 days left</span>
               <span className="text-[13px] text-danger-dark">4 students still ungrouped</span>
             </div>
             <span className="text-[13px] font-semibold text-danger">View suggestions →</span>
@@ -674,7 +674,7 @@ function ProfileView({ go }: GoProps) {
       </div>
 
       {/* Compatibility Summary */}
-      <Card className="p-5 gap-0 shadow-none bg-gray-50 border-[1.5px] border-gray-200">
+      <Card className="p-5 mb-3.5 gap-0 shadow-none bg-gray-50 border-[1.5px] border-gray-200">
         <div className="flex justify-between items-center mb-3.5">
           <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px]">Compatibility with You</Label>
           <Button variant="link" className="text-foreground text-xs p-0 h-auto" onClick={()=>go("snap-good")}>See full comparison →</Button>
@@ -865,7 +865,7 @@ function Sent({ go, targetName }: SentProps) {
   return <div className="bg-background min-h-screen pb-16">
     <Nav go={go} />
     <div className="max-w-[500px] mx-auto pt-[100px] px-6 text-center">
-      <div className="text-5xl mb-5">✓</div>
+      <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-success-bg flex items-center justify-center"><span className="text-3xl text-success">✓</span></div>
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px] text-center">Request Sent!</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed text-center">{targetName} will be notified by email. You'll hear back soon.</p>
       <div className="flex gap-3 justify-center">
@@ -934,7 +934,7 @@ function Inbox({ go }: GoProps) {
       </div>
 
       {convos.map((cv,i)=>(
-        <Card key={i} className="p-5 mb-3.5 shadow-none cursor-pointer flex-row items-center gap-3.5" onClick={()=>go("chat")}>
+        <Card key={i} className="p-5 mb-3.5 shadow-none cursor-pointer flex-row items-center gap-3.5 hover:border-gray-300 hover:shadow-sm transition-colors" onClick={()=>go("chat")}>
           <Avatar className="size-11"><AvatarFallback className="bg-gray-200 text-gray-500 text-sm font-bold">{cv.init}</AvatarFallback></Avatar>
           <div className="flex-1 min-w-0">
             <div className="flex justify-between mb-0.5">
@@ -1126,6 +1126,7 @@ export default function Unitor() {
     else if(p==="sent-priya"){setSentTarget("Priya");setPg("sent")}
     else if(p==="sent"){setPg("sent")}
     else setPg(p);
+    window.scrollTo(0, 0);
   };
 
   const P: Record<string, ReactNode> = {
