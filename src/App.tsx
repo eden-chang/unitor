@@ -1012,10 +1012,10 @@ function Board({ go }: GoProps) {
               {filteredStudents.map((st,i)=>{const ss=SS[st.status]; const dest = st.status==="confirmed"?null:st.compatScore>=80?"profile-view-good":st.compatScore>=50?"profile-view-normal":"profile-view-bad"; return (
                 <Card key={i} className={cn("p-0 gap-0 shadow-none overflow-hidden transition-colors", st.status==="confirmed"?"bg-gray-50 pointer-events-none":"cursor-pointer hover:border-gray-300 hover:shadow-sm")} onClick={()=>dest&&go(dest)}>
                   <div className="flex">
-                    <div className={cn("w-16 flex flex-col items-center justify-center shrink-0 py-3 border-r", st.status==="confirmed" ? "bg-gray-100 border-gray-200" : st.overlap==="0h/wk" ? "bg-danger-bg border-danger-border" : "bg-success-bg border-success-border")}>
-                      <div className={cn("text-lg font-extrabold", st.status==="confirmed" ? "text-gray-400" : st.overlap==="0h/wk" ? "text-danger" : "text-success")}>{st.overlap === "—" ? "—" : st.overlap.replace("/wk","")}</div>
-                      {st.overlap !== "—" && <div className={cn("text-[10px] mt-0.5", st.overlap==="0h/wk" ? "text-danger" : "text-success")}>/wk</div>}
-                      {st.status !== "confirmed" && st.compatScore > 0 && <div className={cn("text-[10px] mt-1 font-semibold", st.compatScore >= 70 ? "text-success" : st.compatScore >= 50 ? "text-warning" : "text-danger")}>{st.compatScore}%</div>}
+                    <div className={cn("w-16 flex flex-col items-center justify-center shrink-0 py-3 border-r", st.status==="confirmed" ? "bg-gray-100 border-gray-200" : st.compatScore>=80 ? "bg-success-bg border-success-border" : st.compatScore>=50 ? "bg-warning-bg border-warning-border" : "bg-danger-bg border-danger-border")}>
+                      <div className={cn("text-lg font-extrabold", st.status==="confirmed" ? "text-gray-400" : st.compatScore>=80 ? "text-success" : st.compatScore>=50 ? "text-warning" : "text-danger")}>{st.overlap === "—" ? "—" : st.overlap.replace("/wk","")}</div>
+                      {st.overlap !== "—" && <div className={cn("text-[10px] mt-0.5", st.compatScore>=80 ? "text-success" : st.compatScore>=50 ? "text-warning" : "text-danger")}>/wk</div>}
+                      {st.status !== "confirmed" && st.compatScore > 0 && <div className={cn("text-[10px] mt-1 font-semibold", st.compatScore>=80 ? "text-success" : st.compatScore>=50 ? "text-warning" : "text-danger")}>{st.compatScore}%</div>}
                     </div>
                     <div className="flex-1 px-4 py-3.5">
                       <div className="flex justify-between mb-1">
