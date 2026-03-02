@@ -32,6 +32,10 @@ interface FProps {
   children: ReactNode;
 }
 
+interface ProfilePageProps extends GoProps {
+  studentName: string;
+}
+
 interface SentProps extends GoProps {
   targetName: string;
 }
@@ -812,6 +816,24 @@ const COMPAT: Record<string, CompatibilityBreakdown> = {
   },
 };
 
+const PROFILE_TIERS = {
+  good: { bg: "bg-success-bg", border: "border-success-border", text: "text-success", darkText: "text-success", trackBg: "bg-success-border", label: "Excellent Match", subtitle: "" },
+  normal: { bg: "bg-warning-bg", border: "border-warning-border", text: "text-warning", darkText: "text-warning", trackBg: "bg-warning-border", label: "Moderate Match", subtitle: "Some differences to discuss." },
+  bad: { bg: "bg-danger-bg", border: "border-danger-border", text: "text-danger", darkText: "text-danger-dark", trackBg: "bg-danger-border", label: "Low Compatibility", subtitle: "Schedule and work style conflicts." },
+} as const;
+
+const SCHEDULE_DATA: Record<string, { my: Set<string>; theirs: Set<string>; overlapHrs: number }> = {
+  "Jesse Nguyen": { my: new Set(["Mon-1","Wed-1","Fri-1"]), theirs: new Set(["Mon-1","Wed-1","Tue-2"]), overlapHrs: 8 },
+  "David Park": { my: new Set(["Mon-1","Wed-1","Fri-1"]), theirs: new Set(["Mon-1","Tue-1","Wed-1","Thu-2"]), overlapHrs: 6 },
+  "Priya Sharma": { my: new Set(["Mon-1","Wed-1","Fri-1"]), theirs: new Set(["Tue-0","Thu-0"]), overlapHrs: 0 },
+};
+
+const WORK_STYLE_DATA: Record<string, [string, string, string, boolean][]> = {
+  "Jesse Nguyen": [["Meeting frequency","2x/wk","2x/wk",true],["Meeting style","In-person","In-person",true],["Communication","Discord","Discord",true]],
+  "David Park": [["Meeting frequency","2x/wk","2x/wk",true],["Meeting style","In-person","Hybrid",false],["Communication","Discord","Discord",true]],
+  "Priya Sharma": [["Meeting frequency","2x/wk","1x/wk",false],["Meeting style","In-person","Online",false],["Communication","Discord","Discord",true]],
+};
+
 const DEADLINE_CONFIG = {
   totalDays: 21,
   tiers: [
@@ -987,7 +1009,7 @@ function Board({ go }: GoProps) {
             </Card>
           ) : (
             <div className="grid grid-cols-2 gap-3.5">
-              {filteredStudents.map((st,i)=>{const ss=SS[st.status]; const dest = st.status==="confirmed"?null:st.overlap==="0h/wk"?"snap-warn":"profile-view"; return (
+              {filteredStudents.map((st,i)=>{const ss=SS[st.status]; const dest = st.status==="confirmed"?null:st.compatScore>=80?"profile-view-good":st.compatScore>=50?"profile-view-normal":"profile-view-bad"; return (
                 <Card key={i} className={cn("p-0 gap-0 shadow-none overflow-hidden transition-colors", st.status==="confirmed"?"bg-gray-50 pointer-events-none":"cursor-pointer hover:border-gray-300 hover:shadow-sm")} onClick={()=>dest&&go(dest)}>
                   <div className="flex">
                     <div className={cn("w-16 flex flex-col items-center justify-center shrink-0 py-3 border-r", st.status==="confirmed" ? "bg-gray-100 border-gray-200" : st.overlap==="0h/wk" ? "bg-danger-bg border-danger-border" : "bg-success-bg border-success-border")}>
@@ -1019,55 +1041,80 @@ function Board({ go }: GoProps) {
   </div>;
 }
 
-// Student Profile Detail
-function ProfileView({ go }: GoProps) {
-  const st = STU[0];
-  const c = COMPAT[st.name];
-  const ds=["Mon","Tue","Wed","Thu","Fri"],ts=["9am–12pm","1–5pm","6–9pm"],my=new Set(["Mon-1","Wed-1","Fri-1"]),th=new Set(["Mon-1","Wed-1","Tue-2"]);
+// Unified Profile Page
+function ProfilePage({ go, studentName }: ProfilePageProps) {
+  const [ack, setAck] = useState(false);
+  const st = STU.find(s => s.name === studentName)!;
+  const c = COMPAT[studentName];
+  const sched = SCHEDULE_DATA[studentName];
+  const workRows = WORK_STYLE_DATA[studentName];
+  const ds = ["Mon","Tue","Wed","Thu","Fri"], ts = ["9am–12pm","1–5pm","6–9pm"];
+  const firstName = studentName.split(" ")[0];
+  const tier: "good" | "normal" | "bad" = c.overall >= 70 ? "good" : c.overall >= 50 ? "normal" : "bad";
+  const t = PROFILE_TIERS[tier];
+  const hasWarnings = c.warnings.length > 0;
+  const needsAck = tier === "bad" || tier === "normal";
+  const sentKey = `sent-${firstName.toLowerCase()}`;
+
   return <div className="bg-background min-h-screen pb-16">
     <Nav go={go} />
     <div className="max-w-[680px] mx-auto py-14 px-6">
       <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={()=>go("board")}>← Back to Board</Button>
 
       {/* Header */}
-      <div className="flex gap-5 items-center mb-6">
-        <Avatar className="size-[72px]"><AvatarFallback className="bg-gray-200 text-gray-500 text-2xl font-bold">{st.init}</AvatarFallback></Avatar>
+      <div className="flex gap-4 items-center mb-4">
+        <Avatar className="size-14"><AvatarFallback className="bg-gray-200 text-gray-500 text-lg font-bold">{st.init}</AvatarFallback></Avatar>
         <div className="flex-1">
-          <h1 className="text-[28px] font-bold text-foreground -tracking-[0.5px] mb-1">{st.name}</h1>
-          <div className="text-sm text-gray-500">Section {st.sec} · <span className="text-success font-semibold">Looking for group</span></div>
+          <div className="text-[22px] font-bold">{st.name}</div>
+          <div className="text-sm text-gray-500">Section {st.sec} · Looking for group</div>
         </div>
-        <Button variant="outline" size="sm" className="px-4" onClick={()=>go("sent-jesse")}>Send Group Request</Button>
       </div>
 
-      {/* Compatibility Score Breakdown */}
-      {c && <Card className="p-5 mb-5 gap-0 shadow-none bg-success-bg border-success-border">
+      {/* Compatibility Score Card */}
+      <Card className={cn("p-5 mb-5 gap-0 shadow-none", t.bg, t.border)}>
         <div className="flex items-center gap-5 mb-3">
-          <div className="text-[42px] font-extrabold text-success">{c.overall}%</div>
-          <div><div className="text-[15px] font-bold text-success">Excellent Match</div></div>
+          <div className={cn("text-[42px] font-extrabold", t.text)}>{c.overall}%</div>
+          <div>
+            <div className={cn("text-[15px] font-bold", t.text)}>{t.label}</div>
+            {t.subtitle && <div className={cn("text-[13px]", t.darkText)}>{t.subtitle}</div>}
+          </div>
         </div>
         {([["Schedule", c.scheduleScore],["Skills", c.skillScore],["Work Style", c.workStyleScore]] as const).map(([label, score]) => (
           <div key={label} className="flex items-center gap-2 mb-1">
-            <span className="text-[11px] text-success w-16">{label}</span>
-            <div className="flex-1 h-2 bg-success-border rounded-full overflow-hidden">
-              <div className="h-full rounded-full bg-success" style={{ width: `${score}%` }} />
+            <span className={cn("text-[11px] w-16", t.darkText)}>{label}</span>
+            <div className={cn("flex-1 h-2 rounded-full overflow-hidden", t.trackBg)}>
+              <div className={cn("h-full rounded-full", score >= 70 ? "bg-success" : score >= 50 ? "bg-warning" : "bg-danger")} style={{ width: `${Math.max(score, 3)}%` }} />
             </div>
-            <span className="text-[11px] font-semibold text-success w-8 text-right">{score}%</span>
+            <span className={cn("text-[11px] font-semibold w-8 text-right", t.darkText)}>{score}%</span>
           </div>
         ))}
-      </Card>}
+      </Card>
 
-      {/* Schedule Overlap */}
+      {/* Banner */}
+      {!hasWarnings ? (
+        <div className="py-3.5 px-[18px] bg-success-bg rounded-[10px] border border-success-border mb-7">
+          <div className="text-[15px] font-bold text-success mb-1">Strong compatibility</div>
+          <div className="text-[13px] text-success leading-relaxed">No warnings — schedules, skills, and work styles align well.</div>
+        </div>
+      ) : (
+        <div className={cn("py-3.5 px-[18px] rounded-[10px] border mb-7", tier === "bad" ? "bg-caution-bg border-caution-border" : "bg-caution-bg border-caution-border")}>
+          <div className="text-[15px] font-bold text-caution mb-1">⚠ Compatibility warnings found</div>
+          <div className="text-[13px] text-caution-dark leading-relaxed">{c.warnings.join(". ")}.</div>
+        </div>
+      )}
+
+      {/* Schedule Overlap Grid */}
       <div className="mb-7">
         <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Schedule Overlap</Label>
         <div className="grid grid-cols-[64px_repeat(5,1fr)] gap-1">
           <div />{ds.map(d=><div key={d} className="text-center text-xs font-semibold text-gray-500 p-2">{d}</div>)}
-          {ts.map((t,ti)=><Fragment key={ti}><div className="text-[11px] text-gray-500 flex items-center">{t}</div>
-            {ds.map(d=>{const k=`${d}-${ti}`,m=my.has(k),h=th.has(k),b=m&&h;return (<div key={k} className={cn("py-3 px-1 text-center rounded-md text-[11px] font-medium", b?"bg-primary text-primary-foreground":m?"bg-schedule-self text-gray-500":h?"bg-schedule-other text-gray-400":"bg-gray-50 text-gray-300")}>{b?"✓":m?"You":h?"JN":""}</div>);})}</Fragment>)}
+          {ts.map((t2,ti)=><Fragment key={ti}><div className="text-[11px] text-gray-500 flex items-center">{t2}</div>
+            {ds.map(d=>{const k=`${d}-${ti}`,m=sched.my.has(k),h=sched.theirs.has(k),b=m&&h;return (<div key={k} className={cn("py-3 px-1 text-center rounded-md text-[11px] font-medium", b?"bg-primary text-primary-foreground":m?"bg-schedule-self text-gray-500":h?"bg-schedule-other text-gray-400":"bg-gray-50 text-gray-300")}>{b?"✓":m?"You":h?st.init:""}</div>);})}</Fragment>)}
         </div>
         <div className="flex justify-between items-center mt-2.5">
-          <div className="text-xs text-gray-500">◼ Both · <span className="text-gray-400">◼ You</span> · <span className="text-gray-300">◼ Jesse</span></div>
-          <div className="py-1 px-3 bg-success-bg rounded-md border border-success-border">
-            <span className="text-[13px] font-bold text-success">8h/wk overlap</span>
+          <div className="text-xs text-gray-500">{sched.overlapHrs > 0 && "◼ Both · "}<span className="text-gray-400">◼ You</span> · <span className="text-gray-300">◼ {firstName}</span></div>
+          <div className={cn("py-1 px-3 rounded-md border", sched.overlapHrs > 0 ? "bg-success-bg border-success-border" : "bg-danger-bg border-danger-border")}>
+            <span className={cn("text-[13px] font-bold", sched.overlapHrs > 0 ? "text-success" : "text-danger")}>{sched.overlapHrs}h/wk overlap</span>
           </div>
         </div>
       </div>
@@ -1077,146 +1124,12 @@ function ProfileView({ go }: GoProps) {
         <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skills Comparison</Label>
         <div className="grid grid-cols-2 gap-3">
           <div className="p-4 bg-gray-50 rounded-[10px]"><div className="text-xs font-semibold mb-2">You</div><div className="text-sm mb-1">UI Design</div><div className="text-sm">User Research</div></div>
-          <div className="p-4 bg-gray-50 rounded-[10px]"><div className="text-xs font-semibold mb-2">Jesse</div><div className="text-sm mb-1">Frontend Dev</div><div className="text-sm">Prototyping</div></div>
+          <div className="p-4 bg-gray-50 rounded-[10px]"><div className="text-xs font-semibold mb-2">{firstName}</div>{st.skills.map(sk=><div key={sk} className="text-sm mb-1">{sk}</div>)}</div>
         </div>
         <div className="py-2 px-3 bg-success-bg rounded-lg text-[13px] text-success mt-2.5">✓ Complementary skills</div>
       </div>
 
       {/* Skill Coverage Map */}
-      {c && <div className="mb-7">
-        <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skill Coverage Map</Label>
-        <div className="grid grid-cols-4 gap-2">
-          {c.skillComplementarity.map(({ skill, coveredBy }) => (
-            <div key={skill} className={cn("p-2.5 rounded-lg text-center text-[12px] font-medium border",
-              coveredBy === "you" ? "bg-secondary border-border text-foreground" :
-              coveredBy === "them" ? "bg-success-bg border-success-border text-success" :
-              coveredBy === "both" ? "bg-primary text-primary-foreground border-primary" :
-              "bg-gray-50 border-dashed border-gray-300 text-gray-400"
-            )}>
-              <div className="text-[11px] mb-0.5">{skill}</div>
-              <div className="text-[10px] opacity-75">({coveredBy})</div>
-            </div>
-          ))}
-        </div>
-        <div className="flex gap-4 mt-2 text-[10px] text-gray-500">
-          <span>◼ You</span><span className="text-success">◼ Jesse</span><span>◼ Both</span><span className="text-gray-400">◻ Gap</span>
-        </div>
-      </div>}
-
-      {/* Work Style */}
-      <div className="mb-7">
-        <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Work Style</Label>
-        <Card className="p-0 gap-0 shadow-none overflow-hidden">
-          {([["Meeting frequency","2x/wk","2x/wk",true],["Meeting style","In-person","In-person",true],["Communication","Discord","Discord",true]] as const).map(([l,y,t,ok],i)=>(
-            <div key={l} className={cn("flex justify-between items-center px-4 py-3", i<2 && "border-b border-gray-100")}>
-              <span className="text-[13px] text-gray-500">{l}</span>
-              <div className="flex gap-3 items-center text-[13px]">
-                <span>{y}</span>
-                <span className="text-gray-400 text-[11px]">vs</span>
-                <span>{t}</span>
-                <span className={cn("text-base", ok ? "text-success" : "text-danger")}>{ok?"✓":"✗"}</span>
-              </div>
-            </div>
-          ))}
-        </Card>
-      </div>
-
-      <Separator className="mb-7" />
-
-      {/* Profile Details */}
-      <Card className="p-5 mb-3.5 gap-0 shadow-none">
-        <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px]">Skills</Label>
-        <div className="mt-2">{st.skills.map(sk=><div key={sk} className="flex justify-between py-2 border-b border-gray-100"><span className="text-sm">{sk}</span><span className={cn("text-[11px] font-semibold py-0.5 px-2.5 rounded-full border", st.rat[sk]==="Expert"?"bg-success-bg text-success border-success-border":st.rat[sk]==="Proficient"?"bg-secondary text-foreground border-border":st.rat[sk]==="Intermediate"?"bg-warning-bg text-warning border-warning-border":"bg-gray-100 text-gray-500 border-gray-200")}>{st.rat[sk]}</span></div>)}</div>
-      </Card>
-
-      <Card className="p-5 mb-3.5 gap-0 shadow-none">
-        <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px]">Communication</Label>
-        <div className="mt-2 text-sm">Discord: <strong>jesse.dev</strong></div>
-      </Card>
-
-      <Card className="p-5 mb-3.5 gap-0 shadow-none">
-        <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px]">About</Label>
-        <p className="text-sm text-gray-600 leading-relaxed mt-2">{st.bio}</p>
-      </Card>
-
-      {/* Actions */}
-      <div className="flex gap-3 mt-6 pt-4 border-t border-gray-200">
-        <Button className="flex-[2] px-7 py-3 h-auto" onClick={()=>go("sent-jesse")}>Send Group Request</Button>
-        <Button variant="outline" className="flex-1 px-7 py-3 h-auto inline-flex items-center justify-center gap-1.5" onClick={()=>go("chat")}><Icon.chat size={16} /> Message {st.name.split(" ")[0]}</Button>
-      </div>
-    </div>
-  </div>;
-}
-
-
-// Snapshot Warning (Priya)
-function SnapWarn({ go }: GoProps) {
-  const [ack, setAck] = useState(false);
-  const c = COMPAT["Priya Sharma"];
-  const ds=["Mon","Tue","Wed","Thu","Fri"],ts=["9am–12pm","1–5pm","6–9pm"];
-  const my=new Set(["Mon-1","Wed-1","Fri-1"]),th=new Set(["Tue-0","Thu-0"]);
-  return <div className="bg-background min-h-screen pb-16">
-    <Nav go={go} />
-    <div className="max-w-[680px] mx-auto py-14 px-6">
-      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={()=>go("board")}>← Back to Board</Button>
-      <div className="flex gap-4 items-center mb-4">
-        <Avatar className="size-14"><AvatarFallback className="bg-gray-200 text-gray-500 text-lg font-bold">PS</AvatarFallback></Avatar>
-        <div className="flex-1">
-          <div className="text-[22px] font-bold">Priya Sharma</div>
-          <div className="text-sm text-gray-500">Section 201 · Looking for group</div>
-        </div>
-      </div>
-
-      {/* Score Breakdown Header */}
-      <Card className="p-5 mb-5 gap-0 shadow-none bg-danger-bg border-danger-border">
-        <div className="flex items-center gap-5 mb-3">
-          <div className="text-[42px] font-extrabold text-danger">{c.overall}%</div>
-          <div><div className="text-[15px] font-bold text-danger">Low Compatibility</div><div className="text-[13px] text-danger-dark">Schedule and work style conflicts.</div></div>
-        </div>
-        {([["Schedule", c.scheduleScore],["Skills", c.skillScore],["Work Style", c.workStyleScore]] as const).map(([label, score]) => (
-          <div key={label} className="flex items-center gap-2 mb-1">
-            <span className="text-[11px] text-danger-dark w-16">{label}</span>
-            <div className="flex-1 h-2 bg-danger-border rounded-full overflow-hidden">
-              <div className={cn("h-full rounded-full", score >= 70 ? "bg-success" : score >= 50 ? "bg-warning" : "bg-danger")} style={{ width: `${Math.max(score, 3)}%` }} />
-            </div>
-            <span className="text-[11px] font-semibold text-danger-dark w-8 text-right">{score}%</span>
-          </div>
-        ))}
-      </Card>
-
-      {/* Warning banner */}
-      <div className="py-3.5 px-[18px] bg-caution-bg rounded-[10px] border border-caution-border mb-7">
-        <div className="text-[15px] font-bold text-caution mb-1">⚠ Compatibility warnings found</div>
-        <div className="text-[13px] text-caution-dark leading-relaxed">No schedule overlap. Meeting preferences differ.</div>
-      </div>
-
-      {/* Schedule */}
-      <div className="mb-7">
-        <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Schedule Overlap</Label>
-        <div className="grid grid-cols-[64px_repeat(5,1fr)] gap-1">
-          <div />{ds.map(d=><div key={d} className="text-center text-xs font-semibold text-gray-500 p-2">{d}</div>)}
-          {ts.map((t,ti)=><Fragment key={ti}><div className="text-[11px] text-gray-500 flex items-center">{t}</div>
-            {ds.map(d=>{const k=`${d}-${ti}`,m=my.has(k),h=th.has(k);return (<div key={k} className={cn("py-3 px-1 text-center rounded-md text-[11px] font-medium", m?"bg-schedule-self text-gray-500":h?"bg-schedule-other text-gray-400":"bg-gray-50 text-gray-300")}>{m?"You":h?"PS":""}</div>);})}</Fragment>)}
-        </div>
-        <div className="flex justify-between items-center mt-2.5">
-          <div className="text-xs text-gray-500"><span className="text-gray-400">◼ You</span> · <span className="text-gray-300">◼ Priya</span></div>
-          <div className="py-1 px-3 bg-danger-bg rounded-md border border-danger-border">
-            <span className="text-[13px] font-bold text-danger">0h/wk overlap</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Skills */}
-      <div className="mb-7">
-        <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skills Comparison</Label>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="p-4 bg-gray-50 rounded-[10px]"><div className="text-xs font-semibold mb-2">You</div><div className="text-sm mb-1">UI Design</div><div className="text-sm">User Research</div></div>
-          <div className="p-4 bg-gray-50 rounded-[10px]"><div className="text-xs font-semibold mb-2">Priya</div><div className="text-sm mb-1">Backend</div><div className="text-sm">Data Analysis</div></div>
-        </div>
-        <div className="py-2 px-3 bg-success-bg rounded-lg text-[13px] text-success mt-2.5">✓ Complementary skills</div>
-      </div>
-
-      {/* Skill Complementarity Grid */}
       <div className="mb-7">
         <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skill Coverage Map</Label>
         <div className="grid grid-cols-4 gap-2">
@@ -1233,21 +1146,21 @@ function SnapWarn({ go }: GoProps) {
           ))}
         </div>
         <div className="flex gap-4 mt-2 text-[10px] text-gray-500">
-          <span>◼ You</span><span className="text-success">◼ Priya</span><span>◼ Both</span><span className="text-gray-400">◻ Gap</span>
+          <span>◼ You</span><span className="text-success">◼ {firstName}</span><span>◼ Both</span><span className="text-gray-400">◻ Gap</span>
         </div>
       </div>
 
-      {/* Work style */}
+      {/* Work Style Table */}
       <div className="mb-7">
         <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Work Style</Label>
         <Card className="p-0 gap-0 shadow-none overflow-hidden">
-          {([["Meeting frequency","2x/wk","1x/wk",false],["Meeting style","In-person","Online",false],["Communication","Discord","Discord",true]] as const).map(([l,y,t,ok],i)=>(
-            <div key={l} className={cn("flex justify-between items-center px-4 py-3", i<2 && "border-b border-gray-100", !ok && "bg-danger-bg")}>
+          {workRows.map(([l,y,t2,ok],i)=>(
+            <div key={l} className={cn("flex justify-between items-center px-4 py-3", i<workRows.length-1 && "border-b border-gray-100", !ok && "bg-danger-bg")}>
               <span className={cn("text-[13px]", ok ? "text-gray-500" : "text-danger font-semibold")}>{l}</span>
               <div className="flex gap-3 items-center text-[13px]">
                 <span>{y}</span>
                 <span className="text-gray-400 text-[11px]">vs</span>
-                <span>{t}</span>
+                <span>{t2}</span>
                 <span className={cn("text-base", ok ? "text-success" : "text-danger")}>{ok?"✓":"✗"}</span>
               </div>
             </div>
@@ -1255,15 +1168,22 @@ function SnapWarn({ go }: GoProps) {
         </Card>
       </div>
 
-      {/* Acknowledgment */}
-      <label className="flex items-start gap-2.5 py-3.5 px-[18px] bg-gray-50 rounded-[10px] border border-gray-200 mb-5 cursor-pointer">
-        <Checkbox checked={ack} onCheckedChange={(v) => setAck(v === true)} className="mt-[3px]" id="ack-checkbox" />
-        <span className="text-[13px] text-gray-600 leading-relaxed">I understand there is no schedule overlap and we'll need to coordinate asynchronously.</span>
-      </label>
+      {/* Acknowledgment checkbox (bad/normal only) */}
+      {needsAck && (
+        <label className="flex items-start gap-2.5 py-3.5 px-[18px] bg-gray-50 rounded-[10px] border border-gray-200 mb-5 cursor-pointer">
+          <Checkbox checked={ack} onCheckedChange={(v) => setAck(v === true)} className="mt-[3px]" id="ack-checkbox" />
+          <span className="text-[13px] text-gray-600 leading-relaxed">
+            {tier === "bad"
+              ? "I understand there are compatibility concerns and we'll need to coordinate carefully."
+              : "I understand there are some differences and we'll need to discuss them."}
+          </span>
+        </label>
+      )}
 
+      {/* Action buttons */}
       <div className="flex gap-3">
         <Button variant="outline" className="flex-1 px-7 py-3 h-auto" onClick={()=>go("board")}>Back to Board</Button>
-        <Button disabled={!ack} className="flex-1 px-7 py-3 h-auto" onClick={()=>go("sent-priya")}>Send Group Request</Button>
+        <Button disabled={needsAck && !ack} className="flex-1 px-7 py-3 h-auto" onClick={()=>go(sentKey)}>Send Group Request</Button>
       </div>
     </div>
   </div>;
@@ -1306,7 +1226,7 @@ function Chat({ go }: GoProps) {
       </div>
       {/* Quick action bar */}
       <div className="flex gap-2 py-2.5 border-b border-gray-100">
-        <Button variant="outline" size="sm" className="text-xs px-4" onClick={()=>go("profile-view")}>Compatibility</Button>
+        <Button variant="outline" size="sm" className="text-xs px-4" onClick={()=>go("profile-view-good")}>Compatibility</Button>
         <Button variant="outline" size="sm" className="text-xs px-4" onClick={()=>go("mygroup")}>Group</Button>
         <Button variant="outline" size="sm" className="text-xs px-4">Share Contact</Button>
       </div>
@@ -1508,9 +1428,9 @@ function Urgent({ go }: GoProps) {
   const elapsed = DEADLINE_CONFIG.totalDays - daysLeft;
   const pct = Math.round((elapsed / DEADLINE_CONFIG.totalDays) * 100);
   const recs = [
-    { name: "David Park", init: "DP", skills: ["Backend","Data Analysis"], compat: "76%", overlap: "6h/wk" },
-    { name: "Lisa Wang", init: "LW", skills: ["Frontend Dev","UX Writing"], compat: "68%", overlap: "4h/wk" },
-    { name: "Omar Ali", init: "OA", skills: ["Project Mgmt"], compat: "52%", overlap: "2h/wk" },
+    { name: "David Park", init: "DP", skills: ["Backend","Data Analysis"], compat: "76%", overlap: "6h/wk", route: "profile-view-normal" },
+    { name: "Lisa Wang", init: "LW", skills: ["Frontend Dev","UX Writing"], compat: "68%", overlap: "4h/wk", route: "profile-view-normal" },
+    { name: "Omar Ali", init: "OA", skills: ["Project Mgmt"], compat: "52%", overlap: "2h/wk", route: "profile-view-bad" },
   ];
   const provisionalMembers = [
     { name: "You (John D.)", init: "JD", skills: ["UI Design","User Research"] },
@@ -1555,7 +1475,7 @@ function Urgent({ go }: GoProps) {
 
       <h1 className="text-[28px] font-bold text-foreground mb-5 -tracking-[0.5px]">Suggested Matches</h1>
       {recs.map((r,i)=>(
-        <Card key={i} className="p-5 mb-3.5 shadow-none cursor-pointer flex-row items-center gap-3.5 hover:border-gray-300 hover:shadow-sm transition-colors" onClick={()=>go("profile-view")}>
+        <Card key={i} className="p-5 mb-3.5 shadow-none cursor-pointer flex-row items-center gap-3.5 hover:border-gray-300 hover:shadow-sm transition-colors" onClick={()=>go(r.route)}>
           <Avatar className="size-[46px]"><AvatarFallback className="bg-gray-200 text-gray-500 text-[15px] font-bold">{r.init}</AvatarFallback></Avatar>
           <div className="flex-1">
             <div className="text-[15px] font-semibold">{r.name}</div>
@@ -1656,6 +1576,7 @@ export default function Unitor() {
     if(p==="signup-s"){setRole("s");setPg("signup")}
     else if(p==="signup-t"){setRole("t");setPg("signup")}
     else if(p==="sent-jesse"){setSentTarget("Jesse");setPg("sent")}
+    else if(p==="sent-david"){setSentTarget("David");setPg("sent")}
     else if(p==="sent-priya"){setSentTarget("Priya");setPg("sent")}
     else if(p==="sent"){setPg("sent")}
     else setPg(p);
@@ -1668,8 +1589,11 @@ export default function Unitor() {
     dash:<Dash go={go}/>, join:<Join go={go}/>,
     "prof-0":<Prof0 go={go}/>, "prof-1":<Prof1 go={go}/>, "prof-2":<Prof2 go={go}/>, "prof-3":<Prof3 go={go}/>, "prof-done":<ProfDone go={go}/>,
     "ta-dash":<TADash go={go}/>, "ta-create":<TACreate go={go}/>,
-    board:<Board go={go}/>, "profile-view":<ProfileView go={go}/>,
-    "snap-warn":<SnapWarn go={go}/>, sent:<Sent go={go} targetName={sentTarget}/>,
+    board:<Board go={go}/>,
+    "profile-view-good":<ProfilePage go={go} studentName="Jesse Nguyen" />,
+    "profile-view-normal":<ProfilePage go={go} studentName="David Park" />,
+    "profile-view-bad":<ProfilePage go={go} studentName="Priya Sharma" />,
+    sent:<Sent go={go} targetName={sentTarget}/>,
     chat:<Chat go={go}/>, inbox:<Inbox go={go}/>, mygroup:<MyGroup go={go}/>,
     urgent:<Urgent go={go}/>, email:<EmailMock go={go}/>,
   };
@@ -1677,7 +1601,7 @@ export default function Unitor() {
   const nav = [
     { g: "Onboard", p: ["landing","login","signup-role","signup","verify"] },
     { g: "Student", p: ["dash","join","prof-0","prof-1","prof-2","prof-3","prof-done"] },
-    { g: "Board", p: ["board","profile-view","snap-warn","sent"] },
+    { g: "Board", p: ["board","profile-view-good","profile-view-normal","profile-view-bad","sent"] },
     { g: "Social", p: ["chat","inbox","mygroup","urgent","email"] },
     { g: "TA", p: ["ta-dash","ta-create"] },
   ];
