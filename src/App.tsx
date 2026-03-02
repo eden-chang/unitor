@@ -56,6 +56,9 @@ interface Student {
   init: string;
   bio: string;
   rat: Record<string, string>;
+  lastActive: string;
+  compatScore: number;
+  scheduleOverlapHrs: number;
 }
 
 interface StatusInfo {
@@ -64,7 +67,28 @@ interface StatusInfo {
   cls?: string;
 }
 
+interface CompatibilityBreakdown {
+  overall: number;
+  scheduleScore: number;
+  skillScore: number;
+  workStyleScore: number;
+  matchReasons: string[];
+  warnings: string[];
+  skillComplementarity: { skill: string; coveredBy: "you" | "them" | "both" | "gap" }[];
+}
+
 // ==================== HELPERS ====================
+function parseActivityMinutes(lastActive: string): number {
+  const n = parseInt(lastActive);
+  if (lastActive.includes("min")) return n;
+  if (lastActive.includes("hour")) return n * 60;
+  if (lastActive.includes("day")) return n * 1440;
+  return 99999;
+}
+
+function isRecentlyActive(lastActive: string): boolean {
+  return parseActivityMinutes(lastActive) < 30;
+}
 function Nav({ go, right }: NavProps) {
   return (
     <div className="flex justify-between items-center h-14 px-12 bg-card border-b border-border sticky top-0 z-[100]">
@@ -452,39 +476,217 @@ function ProfDone({ go }: GoProps) {
   </div>;
 }
 
+// TA Admin Data
+const ADMIN_DATA = {
+  atRisk: [
+    { name: "Priya Sharma", sec: "201", init: "PS", daysSinceActivity: 8, skills: ["Backend","Data Analysis"] },
+    { name: "Omar Ali", sec: "203", init: "OA", daysSinceActivity: 5, skills: ["Project Mgmt"] },
+    { name: "Wei Zhang", sec: "202", init: "WZ", daysSinceActivity: 12, skills: ["Frontend Dev"] },
+  ],
+  formationTimeline: [
+    { date: "Feb 10", grouped: 8, ungrouped: 34 },
+    { date: "Feb 17", grouped: 16, ungrouped: 26 },
+    { date: "Feb 24", grouped: 24, ungrouped: 18 },
+    { date: "Mar 1", grouped: 28, ungrouped: 14 },
+    { date: "Mar 8", grouped: 28, ungrouped: 14 },
+  ],
+  sectionBreakdown: [
+    { section: "201", total: 18, grouped: 12, ungrouped: 6 },
+    { section: "202", total: 14, grouped: 10, ungrouped: 4 },
+    { section: "203", total: 10, grouped: 6, ungrouped: 4 },
+  ],
+  skillDemand: [
+    { skill: "Frontend Dev", seekers: 12, available: 5 },
+    { skill: "Backend", seekers: 14, available: 3 },
+    { skill: "UI Design", seekers: 8, available: 7 },
+    { skill: "User Research", seekers: 6, available: 9 },
+  ],
+};
+
 // TA Dashboard
 function TADash({ go }: GoProps) {
   const [copied, setCopied] = useState(false);
+  const [tab, setTab] = useState<"overview" | "students" | "alerts">("overview");
+  const [studentFilter, setStudentFilter] = useState("all");
   const handleCopy = () => {
     navigator.clipboard.writeText("W543M7").then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
   };
+  const filteredAdminStudents = STU.filter(s => {
+    if (studentFilter === "ungrouped") return s.status !== "confirmed";
+    if (studentFilter === "atrisk") return ADMIN_DATA.atRisk.some(r => r.name === s.name);
+    return true;
+  });
   return <div className="bg-background min-h-screen pb-16">
     <Nav go={go} right={<div className="flex items-center gap-2.5"><span className="text-sm text-gray-600">Prof. Truong</span><Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-xs font-bold">KT</AvatarFallback></Avatar></div>} />
-    <div className="max-w-[680px] mx-auto py-14 px-6">
+    <div className="max-w-[780px] mx-auto py-14 px-6">
       <div className="flex justify-between items-center mb-7">
-        <div><div className="text-sm text-gray-500 mb-0.5">TA Dashboard</div><h1 className="text-[28px] font-bold text-foreground -tracking-[0.5px]">My Courses</h1></div>
+        <div><div className="text-sm text-gray-500 mb-0.5">TA Dashboard</div><h1 className="text-[28px] font-bold text-foreground -tracking-[0.5px]">CSC318</h1></div>
         <Button size="sm" className="px-4" onClick={()=>go("ta-create")}>+ Create Course</Button>
       </div>
-      <Card className="p-5 gap-0 shadow-none">
-        <div className="flex justify-between mb-4">
-          <div><div className="text-lg font-semibold">CSC318</div><div className="text-sm text-gray-500">Design of Interactive Media · Winter 2026</div></div>
-          <Badge variant="success">Active</Badge>
+
+      {/* Tab bar */}
+      <div className="flex gap-1 mb-6" role="tablist">
+        {(["overview","students","alerts"] as const).map(t => (
+          <button key={t} type="button" role="tab" aria-selected={tab === t} className={cn("py-[7px] px-4 rounded-lg text-[13px] font-semibold cursor-pointer capitalize relative", tab === t ? "bg-primary text-primary-foreground" : "bg-gray-100 text-gray-500")} onClick={() => setTab(t)}>
+            {t}
+            {t === "alerts" && <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-danger text-white text-[9px] font-bold flex items-center justify-center">{ADMIN_DATA.atRisk.length}</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* Overview tab */}
+      {tab === "overview" && <>
+        <Card className="p-5 gap-0 shadow-none mb-4">
+          <div className="flex justify-between mb-4">
+            <div><div className="text-lg font-semibold">CSC318</div><div className="text-sm text-gray-500">Design of Interactive Media · Winter 2026</div></div>
+            <Badge variant="success">Active</Badge>
+          </div>
+          <div className="grid grid-cols-4 gap-4 text-center mb-4">
+            {([["42","Students"],["6","Groups"],["14","Ungrouped"],["12 days left","Deadline"]] as const).map(([v,l])=><div key={l}><div className={cn("font-bold", v === "12 days left" ? "text-base" : "text-2xl")}>{v}</div><div className="text-xs text-gray-500">{l}</div></div>)}
+          </div>
+          <div className="h-[3px] bg-gray-100 rounded-sm mb-1"><div className="h-full w-[67%] bg-success rounded-sm" /></div>
+          <div className="text-xs text-gray-500 mb-4">67% of students grouped</div>
+          <Separator className="my-3.5 bg-gray-100" />
+          <div className="flex justify-between items-center">
+            <div><div className="text-[13px] font-semibold mb-1">Invite Code</div><code className="py-2 px-4 bg-gray-50 rounded-md text-lg font-bold tracking-[3px] border border-gray-200">W543M7</code></div>
+            <Button variant="outline" size="sm" className="px-4" onClick={handleCopy}>{copied ? "Copied!" : "Copy"}</Button>
+          </div>
+          <p className="text-[13px] text-gray-500 leading-relaxed mt-2">Share this code with students via Quercus or announcements.</p>
+        </Card>
+
+        {/* Formation Timeline */}
+        <Card className="p-5 gap-0 shadow-none mb-4">
+          <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-3 block">Formation Timeline</Label>
+          <div className="flex items-end gap-2 h-[120px]">
+            {ADMIN_DATA.formationTimeline.map((d) => {
+              const total = d.grouped + d.ungrouped;
+              const gPct = (d.grouped / total) * 100;
+              const uPct = (d.ungrouped / total) * 100;
+              return <div key={d.date} className="flex-1 flex flex-col items-center gap-1">
+                <div className="w-full flex flex-col gap-[2px]" style={{ height: "100px" }}>
+                  <div className="bg-gray-200 rounded-t-sm" style={{ height: `${uPct}%` }} />
+                  <div className="bg-success rounded-b-sm" style={{ height: `${gPct}%` }} />
+                </div>
+                <span className="text-[10px] text-gray-500">{d.date}</span>
+              </div>;
+            })}
+          </div>
+          <div className="flex gap-4 mt-2 text-[10px] text-gray-500"><span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-success" /> Grouped</span><span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-gray-200" /> Ungrouped</span></div>
+        </Card>
+
+        {/* Section Breakdown */}
+        <Card className="p-5 gap-0 shadow-none mb-4">
+          <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-3 block">Section Breakdown</Label>
+          <div className="overflow-hidden rounded-lg border border-gray-200">
+            <table className="w-full text-sm">
+              <thead><tr className="bg-gray-50"><th className="text-left py-2 px-3 text-[11px] font-semibold text-gray-500">Section</th><th className="text-center py-2 px-3 text-[11px] font-semibold text-gray-500">Total</th><th className="text-center py-2 px-3 text-[11px] font-semibold text-gray-500">Grouped</th><th className="text-center py-2 px-3 text-[11px] font-semibold text-gray-500">Ungrouped</th></tr></thead>
+              <tbody>
+                {ADMIN_DATA.sectionBreakdown.map((s, i) => (
+                  <tr key={s.section} className={i < ADMIN_DATA.sectionBreakdown.length - 1 ? "border-b border-gray-100" : ""}>
+                    <td className="py-2 px-3 font-medium">{s.section}</td>
+                    <td className="py-2 px-3 text-center">{s.total}</td>
+                    <td className="py-2 px-3 text-center text-success font-semibold">{s.grouped}</td>
+                    <td className="py-2 px-3 text-center text-danger font-semibold">{s.ungrouped}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+
+        {/* Skill Supply/Demand */}
+        <Card className="p-5 gap-0 shadow-none">
+          <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-3 block">Skill Supply / Demand</Label>
+          <div className="overflow-hidden rounded-lg border border-gray-200">
+            <table className="w-full text-sm">
+              <thead><tr className="bg-gray-50"><th className="text-left py-2 px-3 text-[11px] font-semibold text-gray-500">Skill</th><th className="text-center py-2 px-3 text-[11px] font-semibold text-gray-500">Seekers</th><th className="text-center py-2 px-3 text-[11px] font-semibold text-gray-500">Available</th><th className="text-center py-2 px-3 text-[11px] font-semibold text-gray-500">Gap</th></tr></thead>
+              <tbody>
+                {ADMIN_DATA.skillDemand.map((s, i) => {
+                  const gap = s.seekers - s.available;
+                  return <tr key={s.skill} className={i < ADMIN_DATA.skillDemand.length - 1 ? "border-b border-gray-100" : ""}>
+                    <td className="py-2 px-3 font-medium">{s.skill}</td>
+                    <td className="py-2 px-3 text-center">{s.seekers}</td>
+                    <td className="py-2 px-3 text-center">{s.available}</td>
+                    <td className={cn("py-2 px-3 text-center font-semibold", gap > 0 ? "text-danger" : "text-success")}>{gap > 0 ? `−${gap}` : `+${Math.abs(gap)}`}</td>
+                  </tr>;
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </>}
+
+      {/* Students tab */}
+      {tab === "students" && <>
+        <div className="flex justify-between items-center mb-4">
+          <span className="text-[13px] text-gray-500">{filteredAdminStudents.length} students</span>
+          <Select value={studentFilter} onValueChange={setStudentFilter}>
+            <SelectTrigger className="w-[180px]"><SelectValue placeholder="Filter..." /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All students</SelectItem>
+              <SelectItem value="ungrouped">Ungrouped only</SelectItem>
+              <SelectItem value="atrisk">At risk</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <div className="grid grid-cols-4 gap-4 text-center mb-4">
-          {([["42","Students"],["6","Groups"],["14","Ungrouped"],["12 days left","Deadline"]] as const).map(([v,l])=><div key={l}><div className={cn("font-bold", v === "12 days left" ? "text-base" : "text-2xl")}>{v}</div><div className="text-xs text-gray-500">{l}</div></div>)}
+        {filteredAdminStudents.map((st, i) => {
+          const ss = SS[st.status];
+          return <Card key={i} className="p-4 mb-2.5 gap-0 shadow-none flex-row items-center gap-3">
+            <Avatar className="size-9"><AvatarFallback className="bg-gray-200 text-gray-500 text-xs font-bold">{st.init}</AvatarFallback></Avatar>
+            <div className="flex-1">
+              <div className="flex justify-between">
+                <span className="text-sm font-semibold">{st.name}</span>
+                <Badge variant={ss.variant} className={ss.cls}>{ss.l}</Badge>
+              </div>
+              <div className="text-xs text-gray-500">Section {st.sec} · {st.skills.join(", ")}</div>
+            </div>
+          </Card>;
+        })}
+      </>}
+
+      {/* Alerts tab */}
+      {tab === "alerts" && <>
+        {/* Deadline alert */}
+        <Card className="p-5 gap-0 shadow-none mb-4 bg-caution-bg border-caution-border">
+          <div className="text-[15px] font-bold text-caution mb-1">Deadline Approaching</div>
+          <div className="text-[13px] text-caution-dark leading-relaxed mb-3">14 students ungrouped — provisional groups form in 3 days.</div>
+          <div className="flex gap-2">
+            <Button size="sm" className="text-xs px-4">Review provisional groups</Button>
+            <Button variant="outline" size="sm" className="text-xs px-4">Extend deadline</Button>
+            <Button variant="outline" size="sm" className="text-xs px-4">Email all ungrouped</Button>
+          </div>
+        </Card>
+
+        {/* At-risk banner */}
+        <div className="py-3.5 px-[18px] bg-danger-bg rounded-[10px] border border-danger-border mb-4">
+          <div className="text-[15px] font-bold text-danger mb-1">{ADMIN_DATA.atRisk.length} students at risk</div>
+          <div className="text-[13px] text-danger-dark leading-relaxed">These students have been inactive and may miss the deadline.</div>
         </div>
-        <div className="h-[3px] bg-gray-100 rounded-sm mb-1"><div className="h-full w-[67%] bg-success rounded-sm" /></div>
-        <div className="text-xs text-gray-500 mb-4">67% of students grouped</div>
-        <Separator className="my-3.5 bg-gray-100" />
-        <div className="flex justify-between items-center">
-          <div><div className="text-[13px] font-semibold mb-1">Invite Code</div><code className="py-2 px-4 bg-gray-50 rounded-md text-lg font-bold tracking-[3px] border border-gray-200">W543M7</code></div>
-          <Button variant="outline" size="sm" className="px-4" onClick={handleCopy}>{copied ? "Copied!" : "Copy"}</Button>
-        </div>
-        <p className="text-[13px] text-gray-500 leading-relaxed mt-2">Share this code with students via Quercus or announcements.</p>
-      </Card>
+
+        {ADMIN_DATA.atRisk.map((st, i) => (
+          <Card key={i} className="p-5 mb-3 gap-0 shadow-none">
+            <div className="flex items-center gap-3 mb-3">
+              <Avatar className="size-10"><AvatarFallback className="bg-gray-200 text-gray-500 text-sm font-bold">{st.init}</AvatarFallback></Avatar>
+              <div className="flex-1">
+                <div className="text-sm font-semibold">{st.name}</div>
+                <div className="text-xs text-gray-500">Section {st.sec} · Last active {st.daysSinceActivity} days ago</div>
+              </div>
+              <Badge variant="danger">Inactive {st.daysSinceActivity}d</Badge>
+            </div>
+            <div className="flex gap-1 mb-3">{st.skills.map(sk => <span key={sk} className="py-0.5 px-2.5 bg-gray-100 rounded-[10px] text-[11px] text-gray-600">{sk}</span>)}</div>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" className="text-xs px-4">Send reminder email</Button>
+              <Button size="sm" variant="outline" className="text-xs px-4">Suggest match</Button>
+            </div>
+          </Card>
+        ))}
+
+        <Separator className="my-5 bg-gray-100" />
+        <Button className="w-full px-7 py-3 h-auto">Send bulk reminder to all ungrouped</Button>
+      </>}
     </div>
   </div>;
 }
@@ -545,11 +747,18 @@ function TACreate({ go }: GoProps) {
 
 // Student data
 const STU: Student[] = [
-  { name: "Jesse Nguyen", sec: "202", skills: ["Frontend Dev","Prototyping"], status: "searching", overlap: "8h/wk", init: "JN", bio: "Love building things. Looking for a design-focused team.", rat: {"Frontend Dev":"Proficient","Prototyping":"Expert"} },
-  { name: "Priya Sharma", sec: "201", skills: ["Backend","Data Analysis"], status: "searching", overlap: "0h/wk", init: "PS", bio: "Data nerd. Prefer async work.", rat: {"Backend":"Proficient","Data Analysis":"Expert"} },
-  { name: "Marcus Lee", sec: "201", skills: ["UI Design","Frontend Dev"], status: "talking", overlap: "5h/wk", init: "ML", bio: "Design + code. In talks with a group.", rat: {"UI Design":"Proficient","Frontend Dev":"Intermediate"} },
-  { name: "Aisha Khan", sec: "203", skills: ["Project Mgmt","UX Writing"], status: "searching", overlap: "3h/wk", init: "AK", bio: "Organized and reliable.", rat: {"Project Mgmt":"Expert","UX Writing":"Proficient"} },
-  { name: "Tom Chen", sec: "201", skills: ["Backend","Prototyping"], status: "confirmed", overlap: "—", init: "TC", bio: "", rat: {} },
+  { name: "Jesse Nguyen", sec: "202", skills: ["Frontend Dev","Prototyping"], status: "searching", overlap: "8h/wk", init: "JN", bio: "Love building things. Looking for a design-focused team.", rat: {"Frontend Dev":"Proficient","Prototyping":"Expert"}, lastActive: "5 min ago", compatScore: 87, scheduleOverlapHrs: 8 },
+  { name: "Priya Sharma", sec: "201", skills: ["Backend","Data Analysis"], status: "searching", overlap: "0h/wk", init: "PS", bio: "Data nerd. Prefer async work.", rat: {"Backend":"Proficient","Data Analysis":"Expert"}, lastActive: "8 days ago", compatScore: 41, scheduleOverlapHrs: 0 },
+  { name: "Marcus Lee", sec: "201", skills: ["UI Design","Frontend Dev"], status: "talking", overlap: "5h/wk", init: "ML", bio: "Design + code. In talks with a group.", rat: {"UI Design":"Proficient","Frontend Dev":"Intermediate"}, lastActive: "20 min ago", compatScore: 72, scheduleOverlapHrs: 5 },
+  { name: "Aisha Khan", sec: "203", skills: ["Project Mgmt","UX Writing"], status: "searching", overlap: "3h/wk", init: "AK", bio: "Organized and reliable.", rat: {"Project Mgmt":"Expert","UX Writing":"Proficient"}, lastActive: "1 hour ago", compatScore: 65, scheduleOverlapHrs: 3 },
+  { name: "Tom Chen", sec: "201", skills: ["Backend","Prototyping"], status: "confirmed", overlap: "—", init: "TC", bio: "", rat: {}, lastActive: "2 days ago", compatScore: 0, scheduleOverlapHrs: 0 },
+  { name: "David Park", sec: "202", skills: ["Backend","Data Analysis"], status: "searching", overlap: "6h/wk", init: "DP", bio: "Full-stack developer interested in data-driven projects.", rat: {"Backend":"Expert","Data Analysis":"Proficient"}, lastActive: "15 min ago", compatScore: 76, scheduleOverlapHrs: 6 },
+  { name: "Lisa Wang", sec: "201", skills: ["Frontend Dev","UX Writing"], status: "searching", overlap: "4h/wk", init: "LW", bio: "I bridge the gap between design and development.", rat: {"Frontend Dev":"Proficient","UX Writing":"Intermediate"}, lastActive: "2 hours ago", compatScore: 68, scheduleOverlapHrs: 4 },
+  { name: "Omar Ali", sec: "203", skills: ["Project Mgmt"], status: "searching", overlap: "2h/wk", init: "OA", bio: "Experienced PM looking for a motivated team.", rat: {"Project Mgmt":"Expert"}, lastActive: "5 days ago", compatScore: 52, scheduleOverlapHrs: 2 },
+  { name: "Sofia Rodriguez", sec: "202", skills: ["UI Design","User Research"], status: "talking", overlap: "7h/wk", init: "SR", bio: "UX researcher passionate about accessible design.", rat: {"UI Design":"Intermediate","User Research":"Expert"}, lastActive: "10 min ago", compatScore: 81, scheduleOverlapHrs: 7 },
+  { name: "Wei Zhang", sec: "202", skills: ["Frontend Dev","Backend"], status: "searching", overlap: "9h/wk", init: "WZ", bio: "Full-stack dev. Strong in React and Node.", rat: {"Frontend Dev":"Expert","Backend":"Proficient"}, lastActive: "12 days ago", compatScore: 79, scheduleOverlapHrs: 9 },
+  { name: "Elena Popov", sec: "203", skills: ["Data Analysis","UX Writing"], status: "searching", overlap: "5h/wk", init: "EP", bio: "Research-oriented. Love working with data.", rat: {"Data Analysis":"Expert","UX Writing":"Intermediate"}, lastActive: "30 min ago", compatScore: 63, scheduleOverlapHrs: 5 },
+  { name: "Kai Tanaka", sec: "201", skills: ["Prototyping","UI Design"], status: "confirmed", overlap: "—", init: "KT", bio: "Figma wizard.", rat: {"Prototyping":"Expert","UI Design":"Proficient"}, lastActive: "3 days ago", compatScore: 0, scheduleOverlapHrs: 0 },
 ];
 const SS: Record<string, StatusInfo> = {
   searching: { l: "Looking", variant: "success" },
@@ -557,8 +766,108 @@ const SS: Record<string, StatusInfo> = {
   confirmed: { l: "Grouped", cls: "bg-gray-100 text-gray-500 border-transparent" },
 };
 
+const COMPAT: Record<string, CompatibilityBreakdown> = {
+  "Jesse Nguyen": {
+    overall: 87, scheduleScore: 90, skillScore: 95, workStyleScore: 100,
+    matchReasons: ["Strong schedule overlap (8h/wk)","Complementary skills — no redundancy","Same meeting preference (in-person, 2x/wk)"],
+    warnings: [],
+    skillComplementarity: [
+      { skill: "UI Design", coveredBy: "you" },{ skill: "User Research", coveredBy: "you" },
+      { skill: "Frontend Dev", coveredBy: "them" },{ skill: "Prototyping", coveredBy: "them" },
+      { skill: "Backend", coveredBy: "gap" },{ skill: "Data Analysis", coveredBy: "gap" },
+      { skill: "UX Writing", coveredBy: "gap" },{ skill: "Project Mgmt", coveredBy: "gap" },
+    ],
+  },
+  "Priya Sharma": {
+    overall: 41, scheduleScore: 0, skillScore: 90, workStyleScore: 33,
+    matchReasons: ["Complementary skills — good coverage"],
+    warnings: ["No schedule overlap detected","Different meeting frequency (2x/wk vs 1x/wk)","Different meeting style (in-person vs online)"],
+    skillComplementarity: [
+      { skill: "UI Design", coveredBy: "you" },{ skill: "User Research", coveredBy: "you" },
+      { skill: "Backend", coveredBy: "them" },{ skill: "Data Analysis", coveredBy: "them" },
+      { skill: "Frontend Dev", coveredBy: "gap" },{ skill: "Prototyping", coveredBy: "gap" },
+      { skill: "UX Writing", coveredBy: "gap" },{ skill: "Project Mgmt", coveredBy: "gap" },
+    ],
+  },
+  "David Park": {
+    overall: 76, scheduleScore: 75, skillScore: 85, workStyleScore: 67,
+    matchReasons: ["Good schedule overlap (6h/wk)","Complementary skills"],
+    warnings: ["Different meeting style (in-person vs hybrid)"],
+    skillComplementarity: [
+      { skill: "UI Design", coveredBy: "you" },{ skill: "User Research", coveredBy: "you" },
+      { skill: "Backend", coveredBy: "them" },{ skill: "Data Analysis", coveredBy: "them" },
+      { skill: "Frontend Dev", coveredBy: "gap" },{ skill: "Prototyping", coveredBy: "gap" },
+      { skill: "UX Writing", coveredBy: "gap" },{ skill: "Project Mgmt", coveredBy: "gap" },
+    ],
+  },
+  "Sofia Rodriguez": {
+    overall: 81, scheduleScore: 85, skillScore: 70, workStyleScore: 100,
+    matchReasons: ["Strong schedule overlap (7h/wk)","Same work style preferences"],
+    warnings: ["Overlapping skill sets — both do UI Design"],
+    skillComplementarity: [
+      { skill: "UI Design", coveredBy: "both" },{ skill: "User Research", coveredBy: "both" },
+      { skill: "Frontend Dev", coveredBy: "gap" },{ skill: "Prototyping", coveredBy: "gap" },
+      { skill: "Backend", coveredBy: "gap" },{ skill: "Data Analysis", coveredBy: "gap" },
+      { skill: "UX Writing", coveredBy: "gap" },{ skill: "Project Mgmt", coveredBy: "gap" },
+    ],
+  },
+};
+
+const DEADLINE_CONFIG = {
+  totalDays: 21,
+  tiers: [
+    { min: 7, label: "On Track", color: "success" as const, desc: "Plenty of time to find your group." },
+    { min: 4, label: "Reminder", color: "warning" as const, desc: "The deadline is approaching. Start reaching out!" },
+    { min: 2, label: "Urgent", color: "caution" as const, desc: "Time is running out. Review system-suggested matches." },
+    { min: 0, label: "Critical", color: "danger" as const, desc: "Provisional groups will auto-form if you don't act." },
+  ],
+};
+
+function getDeadlineTier(daysLeft: number) {
+  for (const tier of DEADLINE_CONFIG.tiers) {
+    if (daysLeft >= tier.min) return tier;
+  }
+  return DEADLINE_CONFIG.tiers[DEADLINE_CONFIG.tiers.length - 1];
+}
+
 // Matching Board
 function Board({ go }: GoProps) {
+  const [secFilter, setSecFilter] = useState("all");
+  const [skillFilter, setSkillFilter] = useState("any");
+  const [overlapFilter, setOverlapFilter] = useState("any");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("best");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [demoTier, setDemoTier] = useState(2);
+  const tierDays = [10, 5, 3, 1];
+  const currentTier = getDeadlineTier(tierDays[demoTier]);
+
+  const filteredStudents = STU.filter(st => {
+    if (secFilter !== "all" && st.sec !== secFilter) return false;
+    if (skillFilter !== "any") {
+      const target = skillFilter === "frontend" ? "Frontend Dev" : skillFilter === "backend" ? "Backend" : skillFilter === "ui" ? "UI Design" : skillFilter === "research" ? "User Research" : skillFilter === "proto" ? "Prototyping" : skillFilter === "data" ? "Data Analysis" : skillFilter === "ux" ? "UX Writing" : "Project Mgmt";
+      if (!st.skills.includes(target)) return false;
+    }
+    if (overlapFilter !== "any" && st.scheduleOverlapHrs < parseInt(overlapFilter)) return false;
+    if (statusFilter === "looking" && st.status !== "searching") return false;
+    if (statusFilter === "talking" && st.status !== "talking") return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      if (!st.name.toLowerCase().includes(q) && !st.skills.some(sk => sk.toLowerCase().includes(q)) && !st.bio.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  }).sort((a, b) => {
+    switch (sortBy) {
+      case "best": return b.compatScore - a.compatScore;
+      case "overlap": return b.scheduleOverlapHrs - a.scheduleOverlapHrs;
+      case "active": return parseActivityMinutes(a.lastActive) - parseActivityMinutes(b.lastActive);
+      case "name": return a.name.localeCompare(b.name);
+      default: return 0;
+    }
+  });
+
+  const clearFilters = () => { setSecFilter("all"); setSkillFilter("any"); setOverlapFilter("any"); setStatusFilter("all"); setSearchQuery(""); setSortBy("best"); };
+
   return <div className="bg-background min-h-screen pb-16">
     <Nav go={go} right={<div className="flex items-center gap-3"><Button variant="outline" size="sm" className="inline-flex items-center gap-1.5 px-4" onClick={()=>go("inbox")}><Icon.chat size={16} /> Messages</Button><Button variant="outline" size="sm" className="px-4" onClick={()=>go("mygroup")}>My Group</Button><Button variant="outline" size="sm" className="px-4" onClick={()=>go("dash")}>Dashboard</Button><Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-xs font-bold">JD</AvatarFallback></Avatar></div>} />
     <div className="max-w-[1120px] mx-auto py-10 px-12">
@@ -568,7 +877,7 @@ function Board({ go }: GoProps) {
           <Card className="py-5 px-[18px] gap-0 shadow-none">
             <div className="text-sm font-bold mb-4">Filters</div>
             <F l="Section">
-              <Select defaultValue="all">
+              <Select value={secFilter} onValueChange={setSecFilter}>
                 <SelectTrigger className="w-full"><SelectValue placeholder="All Sections" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Sections</SelectItem>
@@ -579,28 +888,34 @@ function Board({ go }: GoProps) {
               </Select>
             </F>
             <F l="Skills">
-              <Select defaultValue="any">
+              <Select value={skillFilter} onValueChange={setSkillFilter}>
                 <SelectTrigger className="w-full"><SelectValue placeholder="Any skill" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="any">Any skill</SelectItem>
                   <SelectItem value="frontend">Frontend Dev</SelectItem>
                   <SelectItem value="backend">Backend</SelectItem>
                   <SelectItem value="ui">UI Design</SelectItem>
+                  <SelectItem value="research">User Research</SelectItem>
+                  <SelectItem value="proto">Prototyping</SelectItem>
+                  <SelectItem value="data">Data Analysis</SelectItem>
+                  <SelectItem value="ux">UX Writing</SelectItem>
+                  <SelectItem value="pm">Project Mgmt</SelectItem>
                 </SelectContent>
               </Select>
             </F>
             <F l="Min Overlap">
-              <Select defaultValue="any">
+              <Select value={overlapFilter} onValueChange={setOverlapFilter}>
                 <SelectTrigger className="w-full"><SelectValue placeholder="Any" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="any">Any</SelectItem>
+                  <SelectItem value="2">2+ hours</SelectItem>
                   <SelectItem value="4">4+ hours</SelectItem>
                   <SelectItem value="8">8+ hours</SelectItem>
                 </SelectContent>
               </Select>
             </F>
             <F l="Status">
-              <Select defaultValue="all">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-full"><SelectValue placeholder="All" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All</SelectItem>
@@ -616,41 +931,89 @@ function Board({ go }: GoProps) {
         <div className="flex-1">
           <div className="flex justify-between items-end mb-4">
             <div><div className="text-[13px] text-gray-500">CSC318 · Section 201</div><h1 className="text-[28px] font-bold text-foreground -tracking-[0.5px]">Find Teammates</h1></div>
-            <span className="text-[13px] text-gray-500">14 students looking</span>
+            <span className="text-[13px] text-gray-500">{filteredStudents.length} student{filteredStudents.length !== 1 ? "s" : ""} found</span>
           </div>
-          {/* Urgent banner */}
-          <div onClick={()=>go("urgent")} className="flex justify-between items-center px-[18px] py-3 bg-danger-bg rounded-[10px] border border-danger-border mb-[18px] cursor-pointer hover:shadow-sm transition-shadow">
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-bold text-danger inline-flex items-center gap-1"><Icon.clockAlert size={16} color="#c1292e" /> 3 days left</span>
-              <span className="text-[13px] text-danger-dark">4 students still ungrouped</span>
+
+          {/* Search + Sort row */}
+          <div className="flex gap-3 mb-4">
+            <div className="flex-1 relative">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2"><Icon.search size={16} color="#a8a6a2" /></div>
+              <Input className="pl-9" placeholder="Search by name, skill, or keyword..." value={searchQuery} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)} />
             </div>
-            <span className="text-[13px] font-semibold text-danger">View suggestions →</span>
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Sort by..." /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="best">Best match</SelectItem>
+                <SelectItem value="overlap">Most overlap</SelectItem>
+                <SelectItem value="active">Recently active</SelectItem>
+                <SelectItem value="name">Name A–Z</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <div className="grid grid-cols-2 gap-3.5">
-            {STU.map((st,i)=>{const ss=SS[st.status]; const dest = st.status==="confirmed"?null:st.overlap==="0h/wk"?"snap-warn":"profile-view"; return (
-              <Card key={i} className={cn("p-0 gap-0 shadow-none overflow-hidden transition-colors", st.status==="confirmed"?"bg-gray-50 pointer-events-none":"cursor-pointer hover:border-gray-300 hover:shadow-sm")} onClick={()=>dest&&go(dest)}>
-                <div className="flex">
-                  {/* Overlap highlight strip */}
-                  <div className={cn("w-16 flex flex-col items-center justify-center shrink-0 py-3 border-r", st.status==="confirmed" ? "bg-gray-100 border-gray-200" : st.overlap==="0h/wk" ? "bg-danger-bg border-danger-border" : "bg-success-bg border-success-border")}>
-                    <div className={cn("text-lg font-extrabold", st.status==="confirmed" ? "text-gray-400" : st.overlap==="0h/wk" ? "text-danger" : "text-success")}>{st.overlap === "—" ? "—" : st.overlap.replace("/wk","")}</div>
-                    {st.overlap !== "—" && <div className={cn("text-[10px] mt-0.5", st.overlap==="0h/wk" ? "text-danger" : "text-success")}>/wk</div>}
-                    {st.overlap !== "—" && st.overlap !== "0h/wk" && <div className="text-[10px] mt-0.5 text-success">✓</div>}
-                    {st.overlap === "0h/wk" && <div className="text-[10px] mt-0.5 text-danger">⚠</div>}
-                  </div>
-                  <div className="flex-1 px-4 py-3.5">
-                    <div className="flex justify-between mb-1">
-                      <span className="text-[15px] font-semibold">{st.name}</span>
-                      <Badge variant={ss.variant} className={ss.cls}>{ss.l}</Badge>
-                    </div>
-                    <div className="text-xs text-gray-500 mb-1.5">Section {st.sec}</div>
-                    <div className="flex gap-1 flex-wrap">
-                      {st.skills.map(sk=><span key={sk} className="py-0.5 px-2.5 bg-gray-100 rounded-[10px] text-[11px] text-gray-600">{sk}</span>)}
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            );})}
+
+          {/* Tier-aware urgent banner */}
+          <div className="mb-2">
+            <div className="text-[9px] font-bold text-blue-500 uppercase tracking-[1px] mb-1.5">Demo: Deadline Tier</div>
+            <div className="flex gap-2 p-2 border-2 border-dashed border-blue-300 rounded-lg bg-blue-50 mb-3">
+              {(["Green","Yellow","Orange","Red"] as const).map((label, i) => (
+                <Button key={label} size="sm" variant={demoTier === i ? "default" : "outline"} className="text-xs px-3" onClick={() => setDemoTier(i)}>{label}</Button>
+              ))}
+            </div>
           </div>
+          {currentTier.color !== "success" && (
+            <div onClick={() => go("urgent")} className={cn("flex justify-between items-center px-[18px] py-3 rounded-[10px] border mb-[18px] cursor-pointer hover:shadow-sm transition-shadow",
+              currentTier.color === "warning" ? "bg-warning-bg border-warning-border" :
+              currentTier.color === "caution" ? "bg-caution-bg border-caution-border" :
+              "bg-danger-bg border-danger-border"
+            )}>
+              <div className="flex items-center gap-3">
+                <span className={cn("text-sm font-bold inline-flex items-center gap-1",
+                  currentTier.color === "warning" ? "text-warning" : currentTier.color === "caution" ? "text-caution" : "text-danger"
+                )}><Icon.clockAlert size={16} color={currentTier.color === "warning" ? "#b5860a" : currentTier.color === "caution" ? "#c2530a" : "#c1292e"} /> {tierDays[demoTier]} days left</span>
+                <span className={cn("text-[13px]",
+                  currentTier.color === "warning" ? "text-warning" : currentTier.color === "caution" ? "text-caution-dark" : "text-danger-dark"
+                )}>{currentTier.color === "danger" ? "Provisional groups form soon!" : currentTier.desc}</span>
+              </div>
+              <span className={cn("text-[13px] font-semibold",
+                currentTier.color === "warning" ? "text-warning" : currentTier.color === "caution" ? "text-caution" : "text-danger"
+              )}>View suggestions →</span>
+            </div>
+          )}
+
+          {/* Student cards or empty state */}
+          {filteredStudents.length === 0 ? (
+            <Card className="py-[52px] px-6 gap-0 shadow-none text-center border-dashed border-gray-300">
+              <p className="text-[15px] text-gray-500 mb-4">No students match your filters.</p>
+              <Button variant="outline" size="sm" className="px-4 mx-auto" onClick={clearFilters}>Clear all filters</Button>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-2 gap-3.5">
+              {filteredStudents.map((st,i)=>{const ss=SS[st.status]; const dest = st.status==="confirmed"?null:st.overlap==="0h/wk"?"snap-warn":"profile-view"; return (
+                <Card key={i} className={cn("p-0 gap-0 shadow-none overflow-hidden transition-colors", st.status==="confirmed"?"bg-gray-50 pointer-events-none":"cursor-pointer hover:border-gray-300 hover:shadow-sm")} onClick={()=>dest&&go(dest)}>
+                  <div className="flex">
+                    <div className={cn("w-16 flex flex-col items-center justify-center shrink-0 py-3 border-r", st.status==="confirmed" ? "bg-gray-100 border-gray-200" : st.overlap==="0h/wk" ? "bg-danger-bg border-danger-border" : "bg-success-bg border-success-border")}>
+                      <div className={cn("text-lg font-extrabold", st.status==="confirmed" ? "text-gray-400" : st.overlap==="0h/wk" ? "text-danger" : "text-success")}>{st.overlap === "—" ? "—" : st.overlap.replace("/wk","")}</div>
+                      {st.overlap !== "—" && <div className={cn("text-[10px] mt-0.5", st.overlap==="0h/wk" ? "text-danger" : "text-success")}>/wk</div>}
+                      {st.status !== "confirmed" && st.compatScore > 0 && <div className={cn("text-[10px] mt-1 font-semibold", st.compatScore >= 70 ? "text-success" : st.compatScore >= 50 ? "text-warning" : "text-danger")}>{st.compatScore}%</div>}
+                    </div>
+                    <div className="flex-1 px-4 py-3.5">
+                      <div className="flex justify-between mb-1">
+                        <span className="text-[15px] font-semibold inline-flex items-center gap-1.5">
+                          <span className={cn("w-2 h-2 rounded-full shrink-0", isRecentlyActive(st.lastActive) ? "bg-success" : "bg-gray-300")} />
+                          {st.name}
+                        </span>
+                        <Badge variant={ss.variant} className={ss.cls}>{ss.l}</Badge>
+                      </div>
+                      <div className="text-xs text-gray-500 mb-1.5">Section {st.sec} · <span className="text-gray-400">{st.lastActive}</span></div>
+                      <div className="flex gap-1 flex-wrap">
+                        {st.skills.map(sk=><span key={sk} className="py-0.5 px-2.5 bg-gray-100 rounded-[10px] text-[11px] text-gray-600">{sk}</span>)}
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              );})}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -674,26 +1037,36 @@ function ProfileView({ go }: GoProps) {
       </div>
 
       {/* Compatibility Summary */}
+      {(() => { const c = COMPAT[st.name]; if (!c) return null; return (
       <Card className="p-5 mb-3.5 gap-0 shadow-none bg-gray-50 border-[1.5px] border-gray-200">
         <div className="flex justify-between items-center mb-3.5">
           <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px]">Compatibility with You</Label>
           <Button variant="link" className="text-foreground text-xs p-0 h-auto" onClick={()=>go("snap-good")}>See full comparison →</Button>
         </div>
-        <div className="grid grid-cols-3 gap-3">
-          <div className="p-3.5 bg-card rounded-[10px] text-center border border-gray-200">
-            <div className="text-[22px] font-extrabold text-success">8h</div>
-            <div className="text-[11px] text-gray-500 mt-0.5">Schedule overlap /wk</div>
-          </div>
-          <div className="p-3.5 bg-card rounded-[10px] text-center border border-gray-200">
-            <div className="text-[22px] font-extrabold text-success">4/4</div>
-            <div className="text-[11px] text-gray-500 mt-0.5">Skill coverage</div>
-          </div>
-          <div className="p-3.5 bg-card rounded-[10px] text-center border border-gray-200">
-            <div className="text-[22px] font-extrabold text-success">3/3</div>
-            <div className="text-[11px] text-gray-500 mt-0.5">Work style match</div>
+        <div className="flex items-center gap-5 mb-4">
+          <div className={cn("text-[42px] font-extrabold", c.overall >= 70 ? "text-success" : c.overall >= 50 ? "text-warning" : "text-danger")}>{c.overall}%</div>
+          <div className="flex-1">
+            <div className="text-sm font-semibold mb-2">Overall Match</div>
+            {([["Schedule", c.scheduleScore],["Skills", c.skillScore],["Work Style", c.workStyleScore]] as const).map(([label, score]) => (
+              <div key={label} className="flex items-center gap-2 mb-1">
+                <span className="text-[11px] text-gray-500 w-16">{label}</span>
+                <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div className={cn("h-full rounded-full", score >= 70 ? "bg-success" : score >= 50 ? "bg-warning" : "bg-danger")} style={{ width: `${score}%` }} />
+                </div>
+                <span className="text-[11px] font-semibold w-8 text-right">{score}%</span>
+              </div>
+            ))}
           </div>
         </div>
+        {/* Why this match */}
+        {c.matchReasons.length > 0 && <div className="mb-2">
+          {c.matchReasons.map((r, i) => <div key={i} className="text-[13px] text-success mb-0.5">+ {r}</div>)}
+        </div>}
+        {c.warnings.length > 0 && <div>
+          {c.warnings.map((w, i) => <div key={i} className="text-[13px] text-danger mb-0.5">– {w}</div>)}
+        </div>}
       </Card>
+      ); })()}
 
       {/* Skills */}
       <Card className="p-5 mb-3.5 gap-0 shadow-none">
@@ -733,6 +1106,7 @@ function ProfileView({ go }: GoProps) {
 
 // Snapshot Good
 function SnapGood({ go }: GoProps) {
+  const c = COMPAT["Jesse Nguyen"];
   const ds=["Mon","Tue","Wed","Thu","Fri"],ts=["9am–12pm","1–5pm","6–9pm"],my=new Set(["Mon-1","Wed-1","Fri-1"]),th=new Set(["Mon-1","Wed-1","Tue-2"]);
   return <div className="bg-background min-h-screen pb-16">
     <Nav go={go} />
@@ -742,6 +1116,24 @@ function SnapGood({ go }: GoProps) {
         <Avatar className="size-14"><AvatarFallback className="bg-gray-200 text-gray-500 text-lg font-bold">JN</AvatarFallback></Avatar>
         <div><div className="text-[22px] font-bold">Jesse Nguyen</div><div className="text-sm text-gray-500">Section 202 · Looking for group</div></div>
       </div>
+
+      {/* Score Breakdown Header */}
+      <Card className="p-5 mb-5 gap-0 shadow-none bg-success-bg border-success-border">
+        <div className="flex items-center gap-5 mb-3">
+          <div className="text-[42px] font-extrabold text-success">{c.overall}%</div>
+          <div><div className="text-[15px] font-bold text-success">Excellent Match</div><div className="text-[13px] text-success">High compatibility across schedule, skills, and work style.</div></div>
+        </div>
+        {([["Schedule", c.scheduleScore],["Skills", c.skillScore],["Work Style", c.workStyleScore]] as const).map(([label, score]) => (
+          <div key={label} className="flex items-center gap-2 mb-1">
+            <span className="text-[11px] text-success w-16">{label}</span>
+            <div className="flex-1 h-2 bg-success-border rounded-full overflow-hidden">
+              <div className="h-full rounded-full bg-success" style={{ width: `${score}%` }} />
+            </div>
+            <span className="text-[11px] font-semibold text-success w-8 text-right">{score}%</span>
+          </div>
+        ))}
+      </Card>
+
       <div className="grid grid-cols-2 gap-7">
         <div>
           <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Schedule Overlap</Label>
@@ -771,6 +1163,28 @@ function SnapGood({ go }: GoProps) {
           ))}
         </div>
       </div>
+
+      {/* Skill Complementarity Grid */}
+      <div className="mt-7">
+        <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skill Coverage Map</Label>
+        <div className="grid grid-cols-4 gap-2">
+          {c.skillComplementarity.map(({ skill, coveredBy }) => (
+            <div key={skill} className={cn("p-2.5 rounded-lg text-center text-[12px] font-medium border",
+              coveredBy === "you" ? "bg-blue-50 border-blue-200 text-blue-700" :
+              coveredBy === "them" ? "bg-success-bg border-success-border text-success" :
+              coveredBy === "both" ? "bg-primary text-primary-foreground border-primary" :
+              "bg-gray-50 border-dashed border-gray-300 text-gray-400"
+            )}>
+              <div className="text-[11px] mb-0.5">{skill}</div>
+              <div className="text-[10px] opacity-75">({coveredBy})</div>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-4 mt-2 text-[10px] text-gray-500">
+          <span>◼ You</span><span className="text-success">◼ Jesse</span><span>◼ Both</span><span className="text-gray-400">◻ Gap</span>
+        </div>
+      </div>
+
       <div className="flex gap-3 mt-8">
         <Button variant="outline" className="flex-1 px-7 py-3 h-auto" onClick={()=>go("board")}>Back to Board</Button>
         <Button className="flex-1 px-7 py-3 h-auto" onClick={()=>go("sent-jesse")}>Send Group Request</Button>
@@ -782,6 +1196,7 @@ function SnapGood({ go }: GoProps) {
 // Snapshot Warning (Priya)
 function SnapWarn({ go }: GoProps) {
   const [ack, setAck] = useState(false);
+  const c = COMPAT["Priya Sharma"];
   const ds=["Mon","Tue","Wed","Thu","Fri"],ts=["9am–12pm","1–5pm","6–9pm"];
   const my=new Set(["Mon-1","Wed-1","Fri-1"]),th=new Set(["Tue-0","Thu-0"]);
   return <div className="bg-background min-h-screen pb-16">
@@ -795,6 +1210,23 @@ function SnapWarn({ go }: GoProps) {
           <div className="text-sm text-gray-500">Section 201 · Looking for group</div>
         </div>
       </div>
+
+      {/* Score Breakdown Header */}
+      <Card className="p-5 mb-5 gap-0 shadow-none bg-danger-bg border-danger-border">
+        <div className="flex items-center gap-5 mb-3">
+          <div className="text-[42px] font-extrabold text-danger">{c.overall}%</div>
+          <div><div className="text-[15px] font-bold text-danger">Low Compatibility</div><div className="text-[13px] text-danger-dark">Schedule and work style conflicts detected. Review carefully.</div></div>
+        </div>
+        {([["Schedule", c.scheduleScore],["Skills", c.skillScore],["Work Style", c.workStyleScore]] as const).map(([label, score]) => (
+          <div key={label} className="flex items-center gap-2 mb-1">
+            <span className="text-[11px] text-danger-dark w-16">{label}</span>
+            <div className="flex-1 h-2 bg-danger-border rounded-full overflow-hidden">
+              <div className={cn("h-full rounded-full", score >= 70 ? "bg-success" : score >= 50 ? "bg-warning" : "bg-danger")} style={{ width: `${Math.max(score, 3)}%` }} />
+            </div>
+            <span className="text-[11px] font-semibold text-danger-dark w-8 text-right">{score}%</span>
+          </div>
+        ))}
+      </Card>
 
       {/* Warning banner */}
       <div className="py-3.5 px-[18px] bg-caution-bg rounded-[10px] border border-caution-border mb-7">
@@ -826,6 +1258,27 @@ function SnapWarn({ go }: GoProps) {
           <div className="p-4 bg-gray-50 rounded-[10px]"><div className="text-xs font-semibold mb-2">Priya</div><div className="text-sm mb-1">Backend</div><div className="text-sm">Data Analysis</div></div>
         </div>
         <div className="py-2 px-3 bg-success-bg rounded-lg text-[13px] text-success mt-2.5">✓ Complementary skills. No overlap, good coverage.</div>
+      </div>
+
+      {/* Skill Complementarity Grid */}
+      <div className="mb-7">
+        <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skill Coverage Map</Label>
+        <div className="grid grid-cols-4 gap-2">
+          {c.skillComplementarity.map(({ skill, coveredBy }) => (
+            <div key={skill} className={cn("p-2.5 rounded-lg text-center text-[12px] font-medium border",
+              coveredBy === "you" ? "bg-blue-50 border-blue-200 text-blue-700" :
+              coveredBy === "them" ? "bg-success-bg border-success-border text-success" :
+              coveredBy === "both" ? "bg-primary text-primary-foreground border-primary" :
+              "bg-gray-50 border-dashed border-gray-300 text-gray-400"
+            )}>
+              <div className="text-[11px] mb-0.5">{skill}</div>
+              <div className="text-[10px] opacity-75">({coveredBy})</div>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-4 mt-2 text-[10px] text-gray-500">
+          <span>◼ You</span><span className="text-success">◼ Priya</span><span>◼ Both</span><span className="text-gray-400">◻ Gap</span>
+        </div>
       </div>
 
       {/* Work style */}
@@ -896,6 +1349,12 @@ function Chat({ go }: GoProps) {
         </div>
         <Button variant="outline" size="sm" className="px-4" onClick={()=>go("snap-good")}>View Compatibility</Button>
       </div>
+      {/* Quick action bar */}
+      <div className="flex gap-2 py-2.5 border-b border-gray-100">
+        <Button variant="outline" size="sm" className="text-xs px-3 h-7" onClick={()=>go("snap-good")}>Compatibility</Button>
+        <Button variant="outline" size="sm" className="text-xs px-3 h-7" onClick={()=>go("mygroup")}>Group</Button>
+        <Button variant="outline" size="sm" className="text-xs px-3 h-7">Share Contact</Button>
+      </div>
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto py-5 flex flex-col gap-3">
         {msgs.map((m,i)=>(
@@ -919,8 +1378,9 @@ function Chat({ go }: GoProps) {
 // Inbox
 function Inbox({ go }: GoProps) {
   const convos = [
-    { name: "Jesse Nguyen", init: "JN", last: "Sounds good. Let's also check if anyone has backend experience.", time: "2:22 PM", unread: false },
-    { name: "Aisha Khan", init: "AK", last: "Hi! I'd love to join your group for CSC318.", time: "1:05 PM", unread: true },
+    { name: "CSC318 Group", init: "G", last: "Aisha: I set up the shared doc", time: "3:01 PM", unread: true, isGroup: true },
+    { name: "Jesse Nguyen", init: "JN", last: "Sounds good. Let's also check if anyone has backend experience.", time: "2:22 PM", unread: false, isGroup: false },
+    { name: "Aisha Khan", init: "AK", last: "Hi! I'd love to join your group for CSC318.", time: "1:05 PM", unread: true, isGroup: false },
   ];
   return <div className="bg-background min-h-screen pb-16">
     <Nav go={go} right={<div className="flex items-center gap-3"><Button variant="outline" size="sm" className="px-4" onClick={()=>go("dash")}>Dashboard</Button><Button variant="outline" size="sm" className="px-4" onClick={()=>go("board")}>Board</Button><Button variant="outline" size="sm" className="px-4" onClick={()=>go("mygroup")}>My Group</Button><Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-xs font-bold">JD</AvatarFallback></Avatar></div>} />
@@ -935,7 +1395,7 @@ function Inbox({ go }: GoProps) {
 
       {convos.map((cv,i)=>(
         <Card key={i} className="p-5 mb-3.5 shadow-none cursor-pointer flex-row items-center gap-3.5 hover:border-gray-300 hover:shadow-sm transition-colors" onClick={()=>go("chat")}>
-          <Avatar className="size-11"><AvatarFallback className="bg-gray-200 text-gray-500 text-sm font-bold">{cv.init}</AvatarFallback></Avatar>
+          <Avatar className="size-11"><AvatarFallback className={cn("text-sm font-bold", cv.isGroup ? "bg-success-bg text-success" : "bg-gray-200 text-gray-500")}>{cv.init}</AvatarFallback></Avatar>
           <div className="flex-1 min-w-0">
             <div className="flex justify-between mb-0.5">
               <span className={cn("text-sm", cv.unread?"font-bold":"font-medium")}>{cv.name}</span>
@@ -954,13 +1414,13 @@ function Inbox({ go }: GoProps) {
 function MyGroup({ go }: GoProps) {
   const [confirmed, setConfirmed] = useState(false);
   const membersPartial = [
-    { name: "John D.", init: "JD", skills: ["UI Design","User Research"], role: "You" },
-    { name: "Jesse Nguyen", init: "JN", skills: ["Frontend Dev","Prototyping"], role: "Member" },
-    { name: "Aisha Khan", init: "AK", skills: ["Project Mgmt","UX Writing"], role: "Member" },
+    { name: "John D.", init: "JD", skills: ["UI Design","User Research"], role: "You", platform: "Discord", handle: "john.d" },
+    { name: "Jesse Nguyen", init: "JN", skills: ["Frontend Dev","Prototyping"], role: "Member", platform: "Discord", handle: "jesse.dev" },
+    { name: "Aisha Khan", init: "AK", skills: ["Project Mgmt","UX Writing"], role: "Member", platform: "WhatsApp", handle: "+1 (647) 555-0123" },
   ];
   const membersFull = [
     ...membersPartial,
-    { name: "David Park", init: "DP", skills: ["Backend","Data Analysis"], role: "Member" },
+    { name: "David Park", init: "DP", skills: ["Backend","Data Analysis"], role: "Member", platform: "Discord", handle: "dpark.dev" },
   ];
   const members = confirmed ? membersFull : membersPartial;
   return <div className="bg-background min-h-screen pb-16">
@@ -1009,6 +1469,70 @@ function MyGroup({ go }: GoProps) {
         </Card>
       ))}
 
+      {/* Workspace cards (confirmed only) */}
+      {confirmed && <>
+        <Separator className="my-6 bg-gray-100" />
+
+        {/* Contact Exchange */}
+        <Card className="p-5 mb-3.5 gap-0 shadow-none">
+          <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-3 block">Contact Exchange</Label>
+          <div className="overflow-hidden rounded-lg border border-gray-200">
+            <table className="w-full text-sm">
+              <thead><tr className="bg-gray-50"><th className="text-left py-2 px-3 text-[11px] font-semibold text-gray-500">Name</th><th className="text-left py-2 px-3 text-[11px] font-semibold text-gray-500">Platform</th><th className="text-left py-2 px-3 text-[11px] font-semibold text-gray-500">Handle</th></tr></thead>
+              <tbody>
+                {membersFull.map((m, i) => (
+                  <tr key={i} className={i < membersFull.length - 1 ? "border-b border-gray-100" : ""}>
+                    <td className="py-2 px-3 font-medium">{m.name}</td>
+                    <td className="py-2 px-3 text-gray-500">{m.platform}</td>
+                    <td className="py-2 px-3 text-gray-600 font-mono text-[13px]">{m.handle}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+
+        {/* Project Board */}
+        <Card className="p-5 mb-3.5 gap-0 shadow-none">
+          <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-3 block">Project Board</Label>
+          {([
+            { task: "Set up shared Google Doc", assignee: "Aisha", done: true },
+            { task: "Draft project proposal outline", assignee: "John", done: false },
+            { task: "Research competitor apps", assignee: "Jesse", done: false },
+          ]).map((t, i) => (
+            <div key={i} className="flex items-center gap-3 py-2 border-b border-gray-100">
+              <Checkbox checked={t.done} disabled />
+              <span className={cn("text-sm flex-1", t.done && "line-through text-gray-400")}>{t.task}</span>
+              <span className="text-[11px] text-gray-500 bg-gray-100 py-0.5 px-2 rounded-full">{t.assignee}</span>
+            </div>
+          ))}
+          <Button variant="outline" size="sm" className="mt-3 text-xs px-4">+ Add task</Button>
+        </Card>
+
+        {/* Group Availability */}
+        <Card className="p-5 mb-3.5 gap-0 shadow-none">
+          <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-3 block">Group Availability</Label>
+          <div className="grid grid-cols-[64px_repeat(5,1fr)] gap-[3px]">
+            <div />{["Mon","Tue","Wed","Thu","Fri"].map(d=><div key={d} className="text-center text-xs font-semibold text-gray-500 p-1.5">{d}</div>)}
+            {["9am–12pm","1–5pm","6–9pm"].map((t,ti)=><Fragment key={ti}>
+              <div className="text-[11px] text-gray-500 flex items-center">{t}</div>
+              {["Mon","Tue","Wed","Thu","Fri"].map(d=>{
+                const counts: Record<string, number> = {"Mon-0":2,"Mon-1":4,"Tue-1":2,"Tue-2":1,"Wed-0":2,"Wed-1":3,"Thu-2":1,"Fri-1":3};
+                const c = counts[`${d}-${ti}`] || 0;
+                return <div key={d} className={cn("py-2.5 px-1 text-center rounded-md text-[10px] font-medium",
+                  c >= 4 ? "bg-primary text-primary-foreground" :
+                  c >= 3 ? "bg-success text-white" :
+                  c >= 2 ? "bg-success-bg text-success" :
+                  c >= 1 ? "bg-gray-100 text-gray-500" :
+                  "bg-gray-50 text-gray-300"
+                )}>{c > 0 ? `${c}/4` : ""}</div>;
+              })}
+            </Fragment>)}
+          </div>
+          <div className="text-[11px] text-gray-500 mt-2">Darker = more members available</div>
+        </Card>
+      </>}
+
       <div className="flex gap-3 mt-6">
         <Button className="flex-1 px-7 py-3 h-auto" onClick={()=>go("inbox")}>Messages</Button>
         {!confirmed ? (
@@ -1024,19 +1548,56 @@ function MyGroup({ go }: GoProps) {
 // Urgent Matching
 function Urgent({ go }: GoProps) {
   const [taSent, setTaSent] = useState(false);
+  const daysLeft = 3;
+  const tier = getDeadlineTier(daysLeft);
+  const elapsed = DEADLINE_CONFIG.totalDays - daysLeft;
+  const pct = Math.round((elapsed / DEADLINE_CONFIG.totalDays) * 100);
   const recs = [
     { name: "David Park", init: "DP", skills: ["Backend","Data Analysis"], compat: "76%", overlap: "6h/wk" },
     { name: "Lisa Wang", init: "LW", skills: ["Frontend Dev","UX Writing"], compat: "68%", overlap: "4h/wk" },
     { name: "Omar Ali", init: "OA", skills: ["Project Mgmt"], compat: "52%", overlap: "2h/wk" },
   ];
+  const provisionalMembers = [
+    { name: "You (John D.)", init: "JD", skills: ["UI Design","User Research"] },
+    { name: "Omar Ali", init: "OA", skills: ["Project Mgmt"] },
+    { name: "Wei Zhang", init: "WZ", skills: ["Frontend Dev","Backend"] },
+    { name: "Elena Popov", init: "EP", skills: ["Data Analysis","UX Writing"] },
+  ];
   return <div className="bg-background min-h-screen pb-16">
     <Nav go={go} />
     <div className="max-w-[680px] mx-auto py-14 px-6">
       <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={()=>go("board")}>← Back to Board</Button>
-      <div className="py-3.5 px-[18px] bg-danger-bg rounded-[10px] mb-6 border border-danger-border">
-        <div className="text-[15px] font-bold text-danger flex items-center gap-1"><Icon.clockAlert size={16} color="#c1292e" /> Deadline in 3 days</div>
-        <div className="text-[13px] text-danger-dark">4 students are still ungrouped. Here are your best matches.</div>
+
+      {/* Deadline progress bar */}
+      <Card className="p-5 mb-5 gap-0 shadow-none">
+        <div className="flex justify-between items-center mb-2">
+          <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px]">Group Formation Deadline</Label>
+          <span className="text-[13px] font-bold text-danger">{daysLeft} days remaining</span>
+        </div>
+        <div className="h-3 bg-gray-100 rounded-full overflow-hidden mb-2">
+          <div className="h-full rounded-full bg-danger transition-all" style={{ width: `${pct}%` }} />
+        </div>
+        <div className="flex justify-between text-[11px] text-gray-500">
+          <span>Started Feb 15</span>
+          <span>{pct}% elapsed</span>
+          <span>Due Mar 8</span>
+        </div>
+      </Card>
+
+      {/* Tier-aware banner */}
+      <div className={cn("py-3.5 px-[18px] rounded-[10px] mb-6 border",
+        tier.color === "danger" ? "bg-danger-bg border-danger-border" :
+        tier.color === "caution" ? "bg-caution-bg border-caution-border" :
+        "bg-warning-bg border-warning-border"
+      )}>
+        <div className={cn("text-[15px] font-bold flex items-center gap-1",
+          tier.color === "danger" ? "text-danger" : tier.color === "caution" ? "text-caution" : "text-warning"
+        )}><Icon.clockAlert size={16} color={tier.color === "danger" ? "#c1292e" : tier.color === "caution" ? "#c2530a" : "#b5860a"} /> {tier.label} — Deadline in {daysLeft} days</div>
+        <div className={cn("text-[13px] leading-relaxed",
+          tier.color === "danger" ? "text-danger-dark" : tier.color === "caution" ? "text-caution-dark" : "text-warning"
+        )}>{tier.desc}</div>
       </div>
+
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Suggested Matches</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed">Sorted by compatibility with your profile.</p>
       {recs.map((r,i)=>(
@@ -1052,7 +1613,25 @@ function Urgent({ go }: GoProps) {
           </div>
         </Card>
       ))}
+
+      {/* Provisional Group */}
       <Separator className="my-6 bg-gray-100" />
+      <Card className="p-5 gap-0 shadow-none border-dashed border-caution-border bg-caution-bg mb-5">
+        <div className="text-[15px] font-bold text-caution mb-1">Provisional Group</div>
+        <div className="text-[13px] text-caution-dark leading-relaxed mb-4">If no action is taken, the system will auto-form this group at the deadline.</div>
+        {provisionalMembers.map((m, i) => (
+          <div key={i} className="flex items-center gap-3 py-2 border-b border-caution-border last:border-0">
+            <Avatar className="size-8"><AvatarFallback className="bg-white text-caution text-xs font-bold">{m.init}</AvatarFallback></Avatar>
+            <span className="text-sm font-medium flex-1">{m.name}</span>
+            <div className="flex gap-1">{m.skills.map(sk => <span key={sk} className="py-0.5 px-2 bg-white rounded-lg text-[10px] text-caution-dark">{sk}</span>)}</div>
+          </div>
+        ))}
+        <div className="flex gap-3 mt-4">
+          <Button size="sm" className="flex-1 text-xs px-4">Accept this group</Button>
+          <Button size="sm" variant="outline" className="flex-1 text-xs px-4" onClick={() => go("board")}>I'll find my own</Button>
+        </div>
+      </Card>
+
       {taSent ? (
         <div className="py-3.5 px-[18px] bg-success-bg rounded-[10px] border border-success-border text-center">
           <span className="text-[13px] font-semibold text-success">✓ Your TA has been notified and will follow up by email.</span>
