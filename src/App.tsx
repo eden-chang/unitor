@@ -128,47 +128,47 @@ function TGrid({ sel, set, label }: TGridProps) {
 
 // ==================== ICONS ====================
 const Icon: Record<string, (props: IconProps) => ReactElement> = {
-  graduation: ({ size = 24, color = "#202023" }: IconProps) => (
+  graduation: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path fillRule="evenodd" clipRule="evenodd" d="M12 13c-2.755 0-5-2.245-5-5V3.5H4V2h14.75c.69 0 1.25.56 1.25 1.25V9h-1.5V3.5H17V8c0 2.755-2.245 5-5 5ZM8.5 8c0 1.93 1.57 3.5 3.5 3.5s3.5-1.57 3.5-3.5V7h-7v1Zm0-2.5h7v-2h-7v2Zm6.43 9a4.752 4.752 0 0 1 4.59 3.52l1.015 3.785-1.45.39-1.015-3.785A3.253 3.253 0 0 0 14.93 16H9.07c-1.47 0-2.76.99-3.14 2.41l-1.015 3.785-1.45-.39L4.48 18.02a4.762 4.762 0 0 1 4.59-3.52h5.86Z" fill={color}/>
     </svg>
   ),
-  clipboard: ({ size = 24, color = "#202023" }: IconProps) => (
+  clipboard: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path fillRule="evenodd" clipRule="evenodd" d="M7.105 5H5.5v15.5h5V22H4V3.5h3V2h10v1.5h3V11h-1.5V5h-1.605c-.33 1.15-1.39 2-2.645 2h-4.5c-1.26 0-2.315-.85-2.645-2ZM15.5 3.5h-7v.75c0 .69.56 1.25 1.25 1.25h4.5c.69 0 1.25-.56 1.25-1.25V3.5Zm2.22 9.72a2.164 2.164 0 1 1 3.06 3.06l-5.125 5.125-2.22.74a1.237 1.237 0 0 1-1.28-.3c-.335-.34-.45-.83-.3-1.28l.74-2.22 5.125-5.125Zm-2.875 6.875 4.875-4.875a.664.664 0 1 0-.94-.94l-4.875 4.875-.47 1.41 1.41-.47Z" fill={color}/>
     </svg>
   ),
-  email: ({ size = 24, color = "#202023" }: IconProps) => (
+  email: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path fillRule="evenodd" clipRule="evenodd" d="M19.25 20H6.5v-1.5h12.75c.69 0 1.25-.56 1.25-1.25V9.46L12 14.37 2 8.595V6.75A2.755 2.755 0 0 1 4.75 4h14.5A2.755 2.755 0 0 1 22 6.75v10.5A2.755 2.755 0 0 1 19.25 20ZM3.5 7.725 12 12.63l8.5-4.905V6.75c0-.69-.56-1.25-1.25-1.25H4.75c-.69 0-1.25.56-1.25 1.25v.975ZM9 15H3.5v1.5H9V15Zm-7-3h2.5v1.5H2V12Z" fill={color}/>
     </svg>
   ),
-  books: ({ size = 24, color = "#202023" }: IconProps) => (
+  books: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M15 4a3.745 3.745 0 0 0-3 1.51A3.745 3.745 0 0 0 9 4H2v16h7.5c.69 0 1.25.56 1.25 1.25h2.5c0-.69.56-1.25 1.25-1.25H22V4h-7Zm-3.75 15.13a2.726 2.726 0 0 0-1.75-.63h-6v-13H9c1.24 0 2.25 1.01 2.25 2.25v11.38Zm9.25-.63h-6c-.665 0-1.275.235-1.75.63V7.75c0-1.24 1.01-2.25 2.25-2.25h5.5v13Z" fill={color}/>
     </svg>
   ),
-  camera: ({ size = 24, color = "#202023" }: IconProps) => (
+  camera: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path fillRule="evenodd" clipRule="evenodd" d="M2 17.25A2.755 2.755 0 0 0 4.75 20h14.5A2.755 2.755 0 0 0 22 17.25v-9a2.755 2.755 0 0 0-2.75-2.75h-2.64l-2-2.5H9.39l-2 2.5H4.75A2.755 2.755 0 0 0 2 8.25v9ZM8.11 7l2-2.5h3.78l2 2.5h3.36c.69 0 1.25.56 1.25 1.25v9c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-9C3.5 7.56 4.06 7 4.75 7h3.36Zm-.61 5.5c0 2.48 2.02 4.5 4.5 4.5s4.5-2.02 4.5-4.5S14.48 8 12 8s-4.5 2.02-4.5 4.5Zm1.5 0c0-1.655 1.345-3 3-3s3 1.345 3 3-1.345 3-3 3-3-1.345-3-3Z" fill={color}/>
     </svg>
   ),
-  search: ({ size = 24, color = "#202023" }: IconProps) => (
+  search: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="m21.78 20.72-5.62-5.62A7.96 7.96 0 0 0 18 10c0-4.41-3.59-8-8-8s-8 3.59-8 8 3.59 8 8 8a7.96 7.96 0 0 0 5.1-1.84l5.62 5.62 1.06-1.06ZM10 16.5A6.506 6.506 0 0 1 3.5 10c0-3.585 2.915-6.5 6.5-6.5s6.5 2.915 6.5 6.5-2.915 6.5-6.5 6.5Z" fill={color}/>
     </svg>
   ),
-  balance: ({ size = 24, color = "#202023" }: IconProps) => (
+  balance: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path fillRule="evenodd" clipRule="evenodd" d="M12.75 12.5h9.265l-.02-.77a9.99 9.99 0 0 0-9.725-9.725l-.77-.02v9.265c0 .69.56 1.25 1.25 1.25Zm7.69-1.5H13V3.56A8.493 8.493 0 0 1 20.44 11ZM3.5 12c0 4.685 3.815 8.5 8.5 8.5 3.965 0 7.345-2.785 8.255-6.5h1.535c-.94 4.545-5 8-9.79 8-5.515 0-10-4.485-10-10 0-4.83 3.44-8.87 8-9.8v1.545C6.275 4.65 3.5 8.005 3.5 12Z" fill={color}/>
     </svg>
   ),
-  chat: ({ size = 24, color = "#202023" }: IconProps) => (
+  chat: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path fillRule="evenodd" clipRule="evenodd" d="M2.77 17.7c.155.065.32.095.48.095l.005-.005c.32 0 .64-.125.88-.365L6.56 15h8.19a2.755 2.755 0 0 0 2.75-2.75v-6.5A2.755 2.755 0 0 0 14.75 3h-10A2.755 2.755 0 0 0 2 5.75v10.795c0 .51.3.96.77 1.155ZM3.5 5.75c0-.69.56-1.25 1.25-1.25h10c.69 0 1.25.56 1.25 1.25v6.5c0 .69-.56 1.25-1.25 1.25H5.94L3.5 15.94V5.75Zm16.365 15.68c.24.24.56.365.885.365v.005A1.245 1.245 0 0 0 22 20.55V10.255a2.755 2.755 0 0 0-2.75-2.75H19v1.5h.25c.69 0 1.25.56 1.25 1.25v9.69l-1.94-1.94h-6.81c-.69 0-1.25-.56-1.25-1.25V16.5H9v.255a2.755 2.755 0 0 0 2.75 2.75h6.19l1.925 1.925Z" fill={color}/>
     </svg>
   ),
-  clockAlert: ({ size = 24, color = "#202023" }: IconProps) => (
+  clockAlert: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path fillRule="evenodd" clipRule="evenodd" d="M12 22C6.485 22 2 17.515 2 12S6.485 2 12 2s10 4.485 10 10-4.485 10-10 10Zm0-18.5c-4.685 0-8.5 3.815-8.5 8.5 0 4.685 3.815 8.5 8.5 8.5 4.685 0 8.5-3.815 8.5-8.5 0-4.685-3.815-8.5-8.5-8.5Zm.75 10V8h-1.5v5.5h1.5ZM13 16a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z" fill={color}/>
     </svg>
@@ -361,7 +361,7 @@ function Prof0({ go }: GoProps) {
       <p className="text-base text-gray-600 mb-9 leading-relaxed">This is how other students will see you in this course. You can use a different name and photo for each course.</p>
       <div className="text-center mb-7">
         <Avatar className="size-[88px] mx-auto mb-3 border-2 border-dashed border-gray-300 bg-gray-50">
-          <AvatarFallback className="bg-gray-50"><Icon.camera size={28} color="#c4c2bf" /></AvatarFallback>
+          <AvatarFallback className="bg-gray-50"><Icon.camera size={28} color="var(--gray-300)" /></AvatarFallback>
         </Avatar>
         <Button variant="outline" size="sm" className="px-4">Upload Photo</Button>
       </div>
@@ -937,7 +937,7 @@ function Board({ go }: GoProps) {
           {/* Search + Sort row */}
           <div className="flex gap-3 mb-4">
             <div className="flex-1 relative">
-              <div className="absolute left-3 top-1/2 -translate-y-1/2"><Icon.search size={16} color="#a8a6a2" /></div>
+              <div className="absolute left-3 top-1/2 -translate-y-1/2"><Icon.search size={16} color="var(--gray-400)" /></div>
               <Input className="pl-9" placeholder="Search by name, skill, or keyword..." value={searchQuery} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)} />
             </div>
             <Select value={sortBy} onValueChange={setSortBy}>
@@ -969,7 +969,7 @@ function Board({ go }: GoProps) {
               <div className="flex items-center gap-3">
                 <span className={cn("text-sm font-bold inline-flex items-center gap-1",
                   currentTier.color === "warning" ? "text-warning" : currentTier.color === "caution" ? "text-caution" : "text-danger"
-                )}><Icon.clockAlert size={16} color={currentTier.color === "warning" ? "#b5860a" : currentTier.color === "caution" ? "#c2530a" : "#c1292e"} /> {tierDays[demoTier]} days left</span>
+                )}><Icon.clockAlert size={16} color={currentTier.color === "warning" ? "var(--warning)" : currentTier.color === "caution" ? "var(--caution)" : "var(--danger)"} /> {tierDays[demoTier]} days left</span>
                 <span className={cn("text-[13px]",
                   currentTier.color === "warning" ? "text-warning" : currentTier.color === "caution" ? "text-caution-dark" : "text-danger-dark"
                 )}>{currentTier.color === "danger" ? "Provisional groups form soon!" : currentTier.desc}</span>
@@ -1023,10 +1023,14 @@ function Board({ go }: GoProps) {
 // Student Profile Detail
 function ProfileView({ go }: GoProps) {
   const st = STU[0];
+  const c = COMPAT[st.name];
+  const ds=["Mon","Tue","Wed","Thu","Fri"],ts=["9am–12pm","1–5pm","6–9pm"],my=new Set(["Mon-1","Wed-1","Fri-1"]),th=new Set(["Mon-1","Wed-1","Tue-2"]);
   return <div className="bg-background min-h-screen pb-16">
     <Nav go={go} />
     <div className="max-w-[680px] mx-auto py-14 px-6">
       <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={()=>go("board")}>← Back to Board</Button>
+
+      {/* Header */}
       <div className="flex gap-5 items-center mb-6">
         <Avatar className="size-[72px]"><AvatarFallback className="bg-gray-200 text-gray-500 text-2xl font-bold">{st.init}</AvatarFallback></Avatar>
         <div className="flex-1">
@@ -1036,45 +1040,89 @@ function ProfileView({ go }: GoProps) {
         <Button variant="outline" className="px-5 py-2.5 text-[13px] h-auto" onClick={()=>go("sent-jesse")}>Send Group Request</Button>
       </div>
 
-      {/* Compatibility Summary */}
-      {(() => { const c = COMPAT[st.name]; if (!c) return null; return (
-      <Card className="p-5 mb-3.5 gap-0 shadow-none bg-gray-50 border-[1.5px] border-gray-200">
-        <div className="flex justify-between items-center mb-3.5">
-          <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px]">Compatibility with You</Label>
-          <Button variant="link" className="text-foreground text-xs p-0 h-auto" onClick={()=>go("snap-good")}>See full comparison →</Button>
+      {/* Compatibility Score Breakdown */}
+      {c && <Card className="p-5 mb-5 gap-0 shadow-none bg-success-bg border-success-border">
+        <div className="flex items-center gap-5 mb-3">
+          <div className="text-[42px] font-extrabold text-success">{c.overall}%</div>
+          <div><div className="text-[15px] font-bold text-success">Excellent Match</div><div className="text-[13px] text-success">High compatibility across schedule, skills, and work style.</div></div>
         </div>
-        <div className="flex items-center gap-5 mb-4">
-          <div className={cn("text-[42px] font-extrabold", c.overall >= 70 ? "text-success" : c.overall >= 50 ? "text-warning" : "text-danger")}>{c.overall}%</div>
-          <div className="flex-1">
-            <div className="text-sm font-semibold mb-2">Overall Match</div>
-            {([["Schedule", c.scheduleScore],["Skills", c.skillScore],["Work Style", c.workStyleScore]] as const).map(([label, score]) => (
-              <div key={label} className="flex items-center gap-2 mb-1">
-                <span className="text-[11px] text-gray-500 w-16">{label}</span>
-                <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                  <div className={cn("h-full rounded-full", score >= 70 ? "bg-success" : score >= 50 ? "bg-warning" : "bg-danger")} style={{ width: `${score}%` }} />
-                </div>
-                <span className="text-[11px] font-semibold w-8 text-right">{score}%</span>
-              </div>
-            ))}
+        {([["Schedule", c.scheduleScore],["Skills", c.skillScore],["Work Style", c.workStyleScore]] as const).map(([label, score]) => (
+          <div key={label} className="flex items-center gap-2 mb-1">
+            <span className="text-[11px] text-success w-16">{label}</span>
+            <div className="flex-1 h-2 bg-success-border rounded-full overflow-hidden">
+              <div className="h-full rounded-full bg-success" style={{ width: `${score}%` }} />
+            </div>
+            <span className="text-[11px] font-semibold text-success w-8 text-right">{score}%</span>
           </div>
-        </div>
-        {/* Why this match */}
-        {c.matchReasons.length > 0 && <div className="mb-2">
+        ))}
+        {c.matchReasons.length > 0 && <div className="mt-3 pt-3 border-t border-success-border">
           {c.matchReasons.map((r, i) => <div key={i} className="text-[13px] text-success mb-0.5">+ {r}</div>)}
         </div>}
-        {c.warnings.length > 0 && <div>
+        {c.warnings.length > 0 && <div className={c.matchReasons.length > 0 ? "mt-1" : "mt-3 pt-3 border-t border-success-border"}>
           {c.warnings.map((w, i) => <div key={i} className="text-[13px] text-danger mb-0.5">– {w}</div>)}
         </div>}
-      </Card>
-      ); })()}
+      </Card>}
 
-      {/* Skills */}
+      {/* Detailed Comparison */}
+      <div className="grid grid-cols-2 gap-7 mb-7">
+        <div>
+          <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Schedule Overlap</Label>
+          <div className="grid grid-cols-[64px_repeat(5,1fr)] gap-[3px]">
+            <div />{ds.map(d=><div key={d} className="text-center text-xs font-semibold text-gray-500 p-1.5">{d}</div>)}
+            {ts.map((t,ti)=><Fragment key={ti}><div className="text-[11px] text-gray-500 flex items-center">{t}</div>
+              {ds.map(d=>{const k=`${d}-${ti}`,m=my.has(k),h=th.has(k),b=m&&h;return (<div key={k} className={cn("py-2.5 px-1 text-center rounded-md text-[10px] font-medium", b?"bg-primary text-primary-foreground":m?"bg-schedule-self text-gray-500":h?"bg-schedule-other text-gray-400":"bg-gray-50 text-gray-300")}>{b?"✓":m?"Me":h?"JN":""}</div>);})}</Fragment>)}
+          </div>
+          <div className="flex justify-between mt-2.5">
+            <div className="text-[11px] text-gray-500">◼ Both · <span className="text-gray-400">◼ You</span> · <span className="text-gray-300">◼ Jesse</span></div>
+            <span className="text-sm font-bold text-success">8h/wk</span>
+          </div>
+        </div>
+        <div>
+          <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skills</Label>
+          <div className="grid grid-cols-2 gap-2.5 mb-3.5">
+            <div className="p-3.5 bg-gray-50 rounded-[10px]"><div className="text-xs font-semibold mb-2">You</div><div className="text-[13px]">UI Design · Expert</div><div className="text-[13px]">User Research · Proficient</div></div>
+            <div className="p-3.5 bg-gray-50 rounded-[10px]"><div className="text-xs font-semibold mb-2">Jesse</div><div className="text-[13px]">Frontend Dev · Proficient</div><div className="text-[13px]">Prototyping · Expert</div></div>
+          </div>
+          <div className="py-2 px-3 bg-success-bg rounded-lg text-[13px] text-success mb-4">✓ Complementary — no overlap, strong coverage</div>
+          <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Work Style</Label>
+          {([["Meeting","2x/wk","2x/wk",true],["Style","In-person","In-person",true],["Platform","Discord","Discord",true]] as const).map(([l,y,t,ok])=>(
+            <div key={l} className="flex justify-between py-2 border-b border-gray-100 text-[13px]">
+              <span className="text-gray-500">{l}</span>
+              <div className="flex gap-2.5"><span>{y}</span><span className="text-gray-400">vs</span><span>{t}</span><span className={ok?"text-success":"text-danger"}>{ok?"✓":"⚠"}</span></div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Skill Coverage Map */}
+      {c && <div className="mb-7">
+        <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skill Coverage Map</Label>
+        <div className="grid grid-cols-4 gap-2">
+          {c.skillComplementarity.map(({ skill, coveredBy }) => (
+            <div key={skill} className={cn("p-2.5 rounded-lg text-center text-[12px] font-medium border",
+              coveredBy === "you" ? "bg-blue-50 border-blue-200 text-blue-700" :
+              coveredBy === "them" ? "bg-success-bg border-success-border text-success" :
+              coveredBy === "both" ? "bg-primary text-primary-foreground border-primary" :
+              "bg-gray-50 border-dashed border-gray-300 text-gray-400"
+            )}>
+              <div className="text-[11px] mb-0.5">{skill}</div>
+              <div className="text-[10px] opacity-75">({coveredBy})</div>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-4 mt-2 text-[10px] text-gray-500">
+          <span>◼ You</span><span className="text-success">◼ Jesse</span><span>◼ Both</span><span className="text-gray-400">◻ Gap</span>
+        </div>
+      </div>}
+
+      <Separator className="mb-7" />
+
+      {/* Profile Details */}
       <Card className="p-5 mb-3.5 gap-0 shadow-none">
         <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px]">Skills</Label>
         <div className="mt-2">{st.skills.map(sk=><div key={sk} className="flex justify-between py-2 border-b border-gray-100"><span className="text-sm">{sk}</span><span className="text-[13px] text-gray-500">{st.rat[sk]}</span></div>)}</div>
       </Card>
 
-      {/* Availability */}
       <Card className="p-5 mb-3.5 gap-0 shadow-none">
         <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px]">Availability</Label>
         <div className="mt-2 text-sm text-gray-600 leading-[1.7]">
@@ -1083,13 +1131,11 @@ function ProfileView({ go }: GoProps) {
         </div>
       </Card>
 
-      {/* Communication */}
       <Card className="p-5 mb-3.5 gap-0 shadow-none">
         <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px]">Communication</Label>
         <div className="mt-2 text-sm">Discord: <strong>jesse.dev</strong></div>
       </Card>
 
-      {/* About */}
       <Card className="p-5 mb-3.5 gap-0 shadow-none">
         <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px]">About</Label>
         <p className="text-sm text-gray-600 leading-relaxed mt-2">{st.bio}</p>
@@ -1140,7 +1186,7 @@ function SnapGood({ go }: GoProps) {
           <div className="grid grid-cols-[64px_repeat(5,1fr)] gap-[3px]">
             <div />{ds.map(d=><div key={d} className="text-center text-xs font-semibold text-gray-500 p-1.5">{d}</div>)}
             {ts.map((t,ti)=><Fragment key={ti}><div className="text-[11px] text-gray-500 flex items-center">{t}</div>
-              {ds.map(d=>{const k=`${d}-${ti}`,m=my.has(k),h=th.has(k),b=m&&h;return (<div key={k} className={cn("py-2.5 px-1 text-center rounded-md text-[10px] font-medium", b?"bg-primary text-primary-foreground":m?"bg-[#d0d0d0] text-gray-500":h?"bg-[#e0e0e0] text-gray-400":"bg-gray-50 text-gray-300")}>{b?"✓":m?"Me":h?"JN":""}</div>);})}</Fragment>)}
+              {ds.map(d=>{const k=`${d}-${ti}`,m=my.has(k),h=th.has(k),b=m&&h;return (<div key={k} className={cn("py-2.5 px-1 text-center rounded-md text-[10px] font-medium", b?"bg-primary text-primary-foreground":m?"bg-schedule-self text-gray-500":h?"bg-schedule-other text-gray-400":"bg-gray-50 text-gray-300")}>{b?"✓":m?"Me":h?"JN":""}</div>);})}</Fragment>)}
           </div>
           <div className="flex justify-between mt-2.5">
             <div className="text-[11px] text-gray-500">◼ Both · <span className="text-gray-400">◼ You</span> · <span className="text-gray-300">◼ Jesse</span></div>
@@ -1240,7 +1286,7 @@ function SnapWarn({ go }: GoProps) {
         <div className="grid grid-cols-[64px_repeat(5,1fr)] gap-1">
           <div />{ds.map(d=><div key={d} className="text-center text-xs font-semibold text-gray-500 p-2">{d}</div>)}
           {ts.map((t,ti)=><Fragment key={ti}><div className="text-[11px] text-gray-500 flex items-center">{t}</div>
-            {ds.map(d=>{const k=`${d}-${ti}`,m=my.has(k),h=th.has(k);return (<div key={k} className={cn("py-3 px-1 text-center rounded-md text-[11px] font-medium", m?"bg-[#d0d0d0] text-gray-500":h?"bg-[#e0e0e0] text-gray-400":"bg-gray-50 text-gray-300")}>{m?"You":h?"PS":""}</div>);})}</Fragment>)}
+            {ds.map(d=>{const k=`${d}-${ti}`,m=my.has(k),h=th.has(k);return (<div key={k} className={cn("py-3 px-1 text-center rounded-md text-[11px] font-medium", m?"bg-schedule-self text-gray-500":h?"bg-schedule-other text-gray-400":"bg-gray-50 text-gray-300")}>{m?"You":h?"PS":""}</div>);})}</Fragment>)}
         </div>
         <div className="flex justify-between items-center mt-2.5">
           <div className="text-xs text-gray-500"><span className="text-gray-400">◼ You</span> · <span className="text-gray-300">◼ Priya</span></div>
@@ -1592,7 +1638,7 @@ function Urgent({ go }: GoProps) {
       )}>
         <div className={cn("text-[15px] font-bold flex items-center gap-1",
           tier.color === "danger" ? "text-danger" : tier.color === "caution" ? "text-caution" : "text-warning"
-        )}><Icon.clockAlert size={16} color={tier.color === "danger" ? "#c1292e" : tier.color === "caution" ? "#c2530a" : "#b5860a"} /> {tier.label} — Deadline in {daysLeft} days</div>
+        )}><Icon.clockAlert size={16} color={tier.color === "danger" ? "var(--danger)" : tier.color === "caution" ? "var(--caution)" : "var(--warning)"} /> {tier.label} — Deadline in {daysLeft} days</div>
         <div className={cn("text-[13px] leading-relaxed",
           tier.color === "danger" ? "text-danger-dark" : tier.color === "caution" ? "text-caution-dark" : "text-warning"
         )}>{tier.desc}</div>
@@ -1723,7 +1769,7 @@ export default function Unitor() {
   const nav = [
     { g: "Onboard", p: ["landing","login","signup-role","signup","verify"] },
     { g: "Student", p: ["dash","join","prof-0","prof-1","prof-2","prof-3","prof-done"] },
-    { g: "Board", p: ["board","profile-view","snap-good","snap-warn","sent"] },
+    { g: "Board", p: ["board","profile-view","snap-warn","sent"] },
     { g: "Social", p: ["chat","inbox","mygroup","urgent","email"] },
     { g: "TA", p: ["ta-dash","ta-create"] },
   ];
