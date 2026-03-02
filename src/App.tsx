@@ -183,7 +183,7 @@ function Landing({ go }: GoProps) {
     <Nav go={go} right={<><Button variant="outline" size="sm" className="px-4" onClick={()=>go("login")}>Log In</Button><Button size="sm" className="px-4" onClick={()=>go("signup-role")}>Sign Up</Button></>} />
     <div className="text-center pt-[120px] px-6 pb-20">
       <h1 className="text-[52px] font-extrabold -tracking-[2px] text-foreground mb-4 leading-[1.05]">Find your people.<br/>Form your team.</h1>
-      <p className="text-lg text-gray-600 max-w-[520px] mx-auto mb-11 leading-[1.7]">unitor matches you with classmates based on skills, schedules, and work style. No more blind emails or last-minute scrambles.</p>
+      <p className="text-lg text-gray-600 max-w-[520px] mx-auto mb-11 leading-[1.7]">Match with classmates by skills, schedule, and work style.</p>
       <div className="flex gap-3.5 justify-center">
         <Button className="px-9 py-3.5 text-base h-auto" onClick={()=>go("signup-role")}>Get Started</Button>
         <Button variant="outline" className="px-9 py-3.5 text-base h-auto" onClick={()=>go("login")}>Log In</Button>
@@ -191,7 +191,7 @@ function Landing({ go }: GoProps) {
     </div>
     <div className="max-w-[880px] mx-auto px-6 pb-[100px] grid grid-cols-3 gap-5">
       {(["Discover","Compare","Connect"] as const).map((t,i)=>{
-        const descs = ["Browse who's available. See skills, schedules, and status at a glance.","Check compatibility before you commit. Schedule overlap, work style, skill balance.","Chat directly. Coordinate on your preferred platform. Form your group."];
+        const descs = ["Browse available teammates.","Compare schedules, skills, and work style.","Message and form your group."];
         const icons = [<Icon.search key="s" size={32} />,<Icon.balance key="b" size={32} />,<Icon.chat key="c" size={32} />];
         return (
           <Card key={i} className="px-7 py-8 gap-0 shadow-none rounded-[14px]">
@@ -245,10 +245,10 @@ function SignupForm({ role, go }: RoleGoProps) {
   return <div className="bg-background min-h-screen pb-16">
     <Nav go={go} right={<span className="text-[13px] text-gray-500">{role==="t"?"TA / Instructor":"Student"}</span>} />
     <div className="max-w-[500px] mx-auto py-14 px-6">
-      <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 1 of 2: Account</div>
+      <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 1 of 2</div>
       <Progress value={(1/2)*100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Create your account</h1>
-      <p className="text-base text-gray-600 mb-9 leading-relaxed">We'll send a verification link to your university email.</p>
+      <p className="text-base text-gray-600 mb-9 leading-relaxed">Verification link will be sent to your email.</p>
       <F l="Full Name" id="signup-name"><Input id="signup-name" placeholder="e.g. John Doe" /></F>
       <F l="University">
         <Select>
@@ -264,7 +264,7 @@ function SignupForm({ role, go }: RoleGoProps) {
         <F l="Password" id="signup-pw"><Input id="signup-pw" type="password" placeholder="Min 8 characters" value={pw} onChange={(e: React.ChangeEvent<HTMLInputElement>)=>{setPw(e.target.value);setShowError(false);}} /></F>
         <F l="Confirm Password" id="signup-pw2"><Input id="signup-pw2" type="password" placeholder="Re-enter" className={showError ? "border-danger" : ""} value={pw2} onChange={(e: React.ChangeEvent<HTMLInputElement>)=>{setPw2(e.target.value);setShowError(false);}} /></F>
       </div>
-      {showError && <div className="text-[13px] text-danger mb-4">Passwords do not match. Please try again.</div>}
+      {showError && <div className="text-[13px] text-danger mb-4">Passwords don't match.</div>}
       {!showError && <div className="mb-5" />}
       <Button className="w-full px-7 py-3 h-auto" onClick={handleSubmit}>Send Verification Email</Button>
     </div>
@@ -276,7 +276,7 @@ function Verify({ role, go }: RoleGoProps) {
   return <div className="bg-background min-h-screen pb-16">
     <Nav go={go} />
     <div className="max-w-[500px] mx-auto pt-20 px-6 text-center">
-      <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 2 of 2: Account</div>
+      <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 2 of 2</div>
       <Progress value={(2/2)*100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
       <div className="mb-5 flex justify-center"><Icon.email size={48} /></div>
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px] text-center">Check your inbox</h1>
@@ -323,7 +323,7 @@ function Join({ go }: GoProps) {
       <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={()=>go("dash")}>← Back to Dashboard</Button>
       {step===0?<>
         <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Join a Course</h1>
-        <p className="text-base text-gray-600 mb-9 leading-relaxed">Enter the 6-character code shared by your TA.</p>
+        <p className="text-base text-gray-600 mb-9 leading-relaxed">Enter course code from your TA.</p>
         <F l="Course Code"><Input className="text-[22px] font-bold tracking-[6px] text-center py-[18px] h-auto" placeholder="ABC123" /></F>
         <Button className="w-full px-7 py-3 h-auto" onClick={()=>setStep(1)}>Look Up</Button>
       </>:
@@ -355,10 +355,10 @@ function Prof0({ go }: GoProps) {
     <Nav go={go} right={<span className="text-[13px] text-gray-500 leading-relaxed">CSC318 · Profile</span>} />
     <div className="max-w-[500px] mx-auto py-14 px-6">
       <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={()=>go("join")}>← Back</Button>
-      <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 1 of 4: Profile</div>
+      <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 1 of 4</div>
       <Progress value={(1/4)*100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Your Profile</h1>
-      <p className="text-base text-gray-600 mb-9 leading-relaxed">This is how other students will see you in this course. You can use a different name and photo for each course.</p>
+      <p className="text-base text-gray-600 mb-9 leading-relaxed">How teammates will see you.</p>
       <div className="text-center mb-7">
         <Avatar className="size-[88px] mx-auto mb-3 border-2 border-dashed border-gray-300 bg-gray-50">
           <AvatarFallback className="bg-gray-50"><Icon.camera size={28} color="var(--gray-300)" /></AvatarFallback>
@@ -382,10 +382,10 @@ function Prof1({ go }: GoProps) {
     <Nav go={go} right={<span className="text-[13px] text-gray-500 leading-relaxed">CSC318 · Profile</span>} />
     <div className="max-w-[680px] mx-auto py-14 px-6">
       <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={()=>go("prof-0")}>← Back</Button>
-      <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 2 of 4: Profile</div>
+      <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 2 of 4</div>
       <Progress value={(2/4)*100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Your Skills</h1>
-      <p className="text-base text-gray-600 mb-9 leading-relaxed">Select relevant skills. Add custom ones if needed.</p>
+      <p className="text-base text-gray-600 mb-9 leading-relaxed">Select or add skills.</p>
       <div className="mb-5">
         {pre.map(sk=><button key={sk} type="button" aria-pressed={sel.includes(sk)} className={cn("inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium cursor-pointer mr-1.5 mb-2 border-[1.5px] transition-colors", sel.includes(sk) ? "bg-primary text-primary-foreground border-primary" : "bg-gray-100 text-gray-600 border-gray-200 hover:border-gray-300")} onClick={()=>tog(sk)}>{sk}</button>)}
         <button type="button" className="inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium cursor-pointer mr-1.5 mb-2 border-[1.5px] bg-gray-100 text-gray-600 border-gray-200 border-dashed">+ Custom</button>
@@ -409,10 +409,10 @@ function Prof2({ go }: GoProps) {
     <Nav go={go} right={<span className="text-[13px] text-gray-500 leading-relaxed">CSC318 · Profile</span>} />
     <div className="max-w-[680px] mx-auto py-14 px-6">
       <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={()=>go("prof-1")}>← Back</Button>
-      <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 3 of 4: Profile</div>
+      <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 3 of 4</div>
       <Progress value={(3/4)*100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Section & Schedule</h1>
-      <p className="text-base text-gray-600 mb-9 leading-relaxed">This helps us find teammates with compatible availability.</p>
+      <p className="text-base text-gray-600 mb-9 leading-relaxed">For matching compatible schedules.</p>
       <F l="Your Section">
         <Select defaultValue="201">
           <SelectTrigger className="w-full"><SelectValue placeholder="Select section..." /></SelectTrigger>
@@ -439,10 +439,9 @@ function Prof3({ go }: GoProps) {
     <Nav go={go} right={<span className="text-[13px] text-gray-500 leading-relaxed">CSC318 · Profile</span>} />
     <div className="max-w-[680px] mx-auto py-14 px-6">
       <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={()=>go("prof-2")}>← Back</Button>
-      <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 4 of 4: Profile</div>
+      <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 4 of 4</div>
       <Progress value={(4/4)*100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Communication & About You</h1>
-      <p className="text-base text-gray-600 mb-9 leading-relaxed">Let potential teammates know how to reach you.</p>
       <div className="mb-5">
         <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Preferred Platforms</Label>
         <div className="flex flex-wrap gap-1.5">{plats.map(p=><button key={p} type="button" aria-pressed={sp.includes(p)} className={cn("inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium cursor-pointer border-[1.5px] transition-colors", sp.includes(p) ? "bg-primary text-primary-foreground border-primary" : "bg-gray-100 text-gray-600 border-gray-200 hover:border-gray-300")} onClick={()=>tp(p)}>{p}</button>)}</div>
@@ -451,7 +450,7 @@ function Prof3({ go }: GoProps) {
         {sp.map(p=><F key={p} l={`${p} handle`}><Input placeholder={`Your ${p} username`} /></F>)}
       </div>}
       <Separator className="my-6 bg-gray-100" />
-      <F l="About You"><Textarea className="min-h-[100px] resize-y" placeholder="Tell potential teammates about yourself. What kind of group are you looking for?" /><div className="text-[13px] text-gray-500 leading-relaxed text-right mt-1">0/300</div></F>
+      <F l="About You"><Textarea className="min-h-[100px] resize-y" placeholder="About you and your ideal group" /><div className="text-[13px] text-gray-500 leading-relaxed text-right mt-1">0/300</div></F>
       <div className="mb-7">
         <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Links (optional)</Label>
         <div className="grid grid-cols-[1fr_2fr_auto] gap-2 items-end">
@@ -470,7 +469,7 @@ function ProfDone({ go }: GoProps) {
     <div className="max-w-[500px] mx-auto pt-[100px] px-6 text-center">
       <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-success-bg flex items-center justify-center"><span className="text-3xl text-success">✓</span></div>
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Profile Complete!</h1>
-      <p className="text-base text-gray-600 mb-9 leading-relaxed">You're all set. Head to the board to start finding teammates.</p>
+      <p className="text-base text-gray-600 mb-9 leading-relaxed">You're ready to find teammates.</p>
       <Button className="px-9 py-3.5 text-base h-auto" onClick={()=>go("board")}>Go to Matching Board</Button>
     </div>
   </div>;
@@ -554,7 +553,7 @@ function TADash({ go }: GoProps) {
             <div><div className="text-[13px] font-semibold mb-1">Invite Code</div><code className="py-2 px-4 bg-gray-50 rounded-md text-lg font-bold tracking-[3px] border border-gray-200">W543M7</code></div>
             <Button variant="outline" size="sm" className="px-4" onClick={handleCopy}>{copied ? "Copied!" : "Copy"}</Button>
           </div>
-          <p className="text-[13px] text-gray-500 leading-relaxed mt-2">Share this code with students via Quercus or announcements.</p>
+          <p className="text-[13px] text-gray-500 leading-relaxed mt-2">Share with students.</p>
         </Card>
 
         {/* Formation Timeline */}
@@ -701,7 +700,7 @@ function TACreate({ go }: GoProps) {
     <div className="max-w-[680px] mx-auto py-14 px-6">
       <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={()=>go("ta-dash")}>← Back</Button>
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Create a Course</h1>
-      <p className="text-base text-gray-600 mb-9 leading-relaxed">Students will use the generated code to join.</p>
+      <p className="text-base text-gray-600 mb-9 leading-relaxed">Students join with this code.</p>
       <div className="grid grid-cols-2 gap-3 mb-1">
         <F l="University"><Input value="University of Toronto" readOnly /></F>
         <F l="Department"><Input placeholder="e.g. Computer Science" /></F>
@@ -737,7 +736,7 @@ function TACreate({ go }: GoProps) {
 
       <div className="mb-7">
         <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skills for this Course</Label>
-        <p className="text-[13px] text-gray-500 leading-relaxed mb-2.5">Students will select from these when they join.</p>
+        <p className="text-[13px] text-gray-500 leading-relaxed mb-2.5">Students pick from these.</p>
         <div>{skills.map(sk=><span key={sk} className="inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium cursor-pointer mr-1.5 mb-2 border-[1.5px] bg-primary text-primary-foreground border-primary">{sk} <span className="ml-1.5 opacity-60 cursor-pointer" onClick={()=>setSkills(skills.filter(x=>x!==sk))}>×</span></span>)}<span className="inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium cursor-pointer mr-1.5 mb-2 border-[1.5px] bg-gray-100 text-gray-600 border-gray-200 border-dashed">+ Add Skill</span></div>
       </div>
       <Button className="w-full px-7 py-3 h-auto" onClick={()=>go("ta-dash")}>Create Course</Button>
@@ -1044,7 +1043,7 @@ function ProfileView({ go }: GoProps) {
       {c && <Card className="p-5 mb-5 gap-0 shadow-none bg-success-bg border-success-border">
         <div className="flex items-center gap-5 mb-3">
           <div className="text-[42px] font-extrabold text-success">{c.overall}%</div>
-          <div><div className="text-[15px] font-bold text-success">Excellent Match</div><div className="text-[13px] text-success">High compatibility across schedule, skills, and work style.</div></div>
+          <div><div className="text-[15px] font-bold text-success">Excellent Match</div></div>
         </div>
         {([["Schedule", c.scheduleScore],["Skills", c.skillScore],["Work Style", c.workStyleScore]] as const).map(([label, score]) => (
           <div key={label} className="flex items-center gap-2 mb-1">
@@ -1055,43 +1054,32 @@ function ProfileView({ go }: GoProps) {
             <span className="text-[11px] font-semibold text-success w-8 text-right">{score}%</span>
           </div>
         ))}
-        {c.matchReasons.length > 0 && <div className="mt-3 pt-3 border-t border-success-border">
-          {c.matchReasons.map((r, i) => <div key={i} className="text-[13px] text-success mb-0.5">+ {r}</div>)}
-        </div>}
-        {c.warnings.length > 0 && <div className={c.matchReasons.length > 0 ? "mt-1" : "mt-3 pt-3 border-t border-success-border"}>
-          {c.warnings.map((w, i) => <div key={i} className="text-[13px] text-danger mb-0.5">– {w}</div>)}
-        </div>}
       </Card>}
 
-      {/* Detailed Comparison */}
-      <div className="grid grid-cols-2 gap-7 mb-7">
-        <div>
-          <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Schedule Overlap</Label>
-          <div className="grid grid-cols-[64px_repeat(5,1fr)] gap-[3px]">
-            <div />{ds.map(d=><div key={d} className="text-center text-xs font-semibold text-gray-500 p-1.5">{d}</div>)}
-            {ts.map((t,ti)=><Fragment key={ti}><div className="text-[11px] text-gray-500 flex items-center">{t}</div>
-              {ds.map(d=>{const k=`${d}-${ti}`,m=my.has(k),h=th.has(k),b=m&&h;return (<div key={k} className={cn("py-2.5 px-1 text-center rounded-md text-[10px] font-medium", b?"bg-primary text-primary-foreground":m?"bg-schedule-self text-gray-500":h?"bg-schedule-other text-gray-400":"bg-gray-50 text-gray-300")}>{b?"✓":m?"Me":h?"JN":""}</div>);})}</Fragment>)}
-          </div>
-          <div className="flex justify-between mt-2.5">
-            <div className="text-[11px] text-gray-500">◼ Both · <span className="text-gray-400">◼ You</span> · <span className="text-gray-300">◼ Jesse</span></div>
-            <span className="text-sm font-bold text-success">8h/wk</span>
+      {/* Schedule Overlap */}
+      <div className="mb-7">
+        <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Schedule Overlap</Label>
+        <div className="grid grid-cols-[64px_repeat(5,1fr)] gap-1">
+          <div />{ds.map(d=><div key={d} className="text-center text-xs font-semibold text-gray-500 p-2">{d}</div>)}
+          {ts.map((t,ti)=><Fragment key={ti}><div className="text-[11px] text-gray-500 flex items-center">{t}</div>
+            {ds.map(d=>{const k=`${d}-${ti}`,m=my.has(k),h=th.has(k),b=m&&h;return (<div key={k} className={cn("py-3 px-1 text-center rounded-md text-[11px] font-medium", b?"bg-primary text-primary-foreground":m?"bg-[#d0d0d0] text-gray-500":h?"bg-[#e0e0e0] text-gray-400":"bg-gray-50 text-gray-300")}>{b?"✓":m?"You":h?"JN":""}</div>);})}</Fragment>)}
+        </div>
+        <div className="flex justify-between items-center mt-2.5">
+          <div className="text-xs text-gray-500">◼ Both · <span className="text-gray-400">◼ You</span> · <span className="text-gray-300">◼ Jesse</span></div>
+          <div className="py-1 px-3 bg-success-bg rounded-md border border-success-border">
+            <span className="text-[13px] font-bold text-success">8h/wk overlap</span>
           </div>
         </div>
-        <div>
-          <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skills</Label>
-          <div className="grid grid-cols-2 gap-2.5 mb-3.5">
-            <div className="p-3.5 bg-gray-50 rounded-[10px]"><div className="text-xs font-semibold mb-2">You</div><div className="text-[13px]">UI Design · Expert</div><div className="text-[13px]">User Research · Proficient</div></div>
-            <div className="p-3.5 bg-gray-50 rounded-[10px]"><div className="text-xs font-semibold mb-2">Jesse</div><div className="text-[13px]">Frontend Dev · Proficient</div><div className="text-[13px]">Prototyping · Expert</div></div>
-          </div>
-          <div className="py-2 px-3 bg-success-bg rounded-lg text-[13px] text-success mb-4">✓ Complementary — no overlap, strong coverage</div>
-          <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Work Style</Label>
-          {([["Meeting","2x/wk","2x/wk",true],["Style","In-person","In-person",true],["Platform","Discord","Discord",true]] as const).map(([l,y,t,ok])=>(
-            <div key={l} className="flex justify-between py-2 border-b border-gray-100 text-[13px]">
-              <span className="text-gray-500">{l}</span>
-              <div className="flex gap-2.5"><span>{y}</span><span className="text-gray-400">vs</span><span>{t}</span><span className={ok?"text-success":"text-danger"}>{ok?"✓":"⚠"}</span></div>
-            </div>
-          ))}
+      </div>
+
+      {/* Skills Comparison */}
+      <div className="mb-7">
+        <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skills Comparison</Label>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="p-4 bg-gray-50 rounded-[10px]"><div className="text-xs font-semibold mb-2">You</div><div className="text-sm mb-1">UI Design</div><div className="text-sm">User Research</div></div>
+          <div className="p-4 bg-gray-50 rounded-[10px]"><div className="text-xs font-semibold mb-2">Jesse</div><div className="text-sm mb-1">Frontend Dev</div><div className="text-sm">Prototyping</div></div>
         </div>
+        <div className="py-2 px-3 bg-success-bg rounded-lg text-[13px] text-success mt-2.5">✓ Complementary skills</div>
       </div>
 
       {/* Skill Coverage Map */}
@@ -1115,20 +1103,30 @@ function ProfileView({ go }: GoProps) {
         </div>
       </div>}
 
+      {/* Work Style */}
+      <div className="mb-7">
+        <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Work Style</Label>
+        <Card className="p-0 gap-0 shadow-none overflow-hidden">
+          {([["Meeting frequency","2x/wk","2x/wk",true],["Meeting style","In-person","In-person",true],["Communication","Discord","Discord",true]] as const).map(([l,y,t,ok],i)=>(
+            <div key={l} className={cn("flex justify-between items-center px-4 py-3", i<2 && "border-b border-gray-100")}>
+              <span className="text-[13px] text-gray-500">{l}</span>
+              <div className="flex gap-3 items-center text-[13px]">
+                <span>{y}</span>
+                <span className="text-gray-400 text-[11px]">vs</span>
+                <span>{t}</span>
+                <span className={cn("text-base", ok ? "text-success" : "text-danger")}>{ok?"✓":"✗"}</span>
+              </div>
+            </div>
+          ))}
+        </Card>
+      </div>
+
       <Separator className="mb-7" />
 
       {/* Profile Details */}
       <Card className="p-5 mb-3.5 gap-0 shadow-none">
         <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px]">Skills</Label>
-        <div className="mt-2">{st.skills.map(sk=><div key={sk} className="flex justify-between py-2 border-b border-gray-100"><span className="text-sm">{sk}</span><span className="text-[13px] text-gray-500">{st.rat[sk]}</span></div>)}</div>
-      </Card>
-
-      <Card className="p-5 mb-3.5 gap-0 shadow-none">
-        <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px]">Availability</Label>
-        <div className="mt-2 text-sm text-gray-600 leading-[1.7]">
-          <div className="mb-1">On campus: <strong>Mon, Wed</strong> afternoons</div>
-          <div>Can work: <strong>Mon, Wed</strong> afternoons, <strong>Tue</strong> evenings</div>
-        </div>
+        <div className="mt-2">{st.skills.map(sk=><div key={sk} className="flex justify-between py-2 border-b border-gray-100"><span className="text-sm">{sk}</span><span className={cn("text-[11px] font-semibold py-0.5 px-2.5 rounded-full border", st.rat[sk]==="Expert"?"bg-success-bg text-success border-success-border":st.rat[sk]==="Proficient"?"bg-blue-50 text-blue-700 border-blue-200":st.rat[sk]==="Intermediate"?"bg-warning-bg text-warning border-warning-border":"bg-gray-100 text-gray-500 border-gray-200")}>{st.rat[sk]}</span></div>)}</div>
       </Card>
 
       <Card className="p-5 mb-3.5 gap-0 shadow-none">
@@ -1150,94 +1148,6 @@ function ProfileView({ go }: GoProps) {
   </div>;
 }
 
-// Snapshot Good
-function SnapGood({ go }: GoProps) {
-  const c = COMPAT["Jesse Nguyen"];
-  const ds=["Mon","Tue","Wed","Thu","Fri"],ts=["9am–12pm","1–5pm","6–9pm"],my=new Set(["Mon-1","Wed-1","Fri-1"]),th=new Set(["Mon-1","Wed-1","Tue-2"]);
-  return <div className="bg-background min-h-screen pb-16">
-    <Nav go={go} />
-    <div className="max-w-[680px] mx-auto py-14 px-6">
-      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={()=>go("profile-view")}>← Back to Profile</Button>
-      <div className="flex gap-4 items-center mb-7">
-        <Avatar className="size-14"><AvatarFallback className="bg-gray-200 text-gray-500 text-lg font-bold">JN</AvatarFallback></Avatar>
-        <div><div className="text-[22px] font-bold">Jesse Nguyen</div><div className="text-sm text-gray-500">Section 202 · Looking for group</div></div>
-      </div>
-
-      {/* Score Breakdown Header */}
-      <Card className="p-5 mb-5 gap-0 shadow-none bg-success-bg border-success-border">
-        <div className="flex items-center gap-5 mb-3">
-          <div className="text-[42px] font-extrabold text-success">{c.overall}%</div>
-          <div><div className="text-[15px] font-bold text-success">Excellent Match</div><div className="text-[13px] text-success">High compatibility across schedule, skills, and work style.</div></div>
-        </div>
-        {([["Schedule", c.scheduleScore],["Skills", c.skillScore],["Work Style", c.workStyleScore]] as const).map(([label, score]) => (
-          <div key={label} className="flex items-center gap-2 mb-1">
-            <span className="text-[11px] text-success w-16">{label}</span>
-            <div className="flex-1 h-2 bg-success-border rounded-full overflow-hidden">
-              <div className="h-full rounded-full bg-success" style={{ width: `${score}%` }} />
-            </div>
-            <span className="text-[11px] font-semibold text-success w-8 text-right">{score}%</span>
-          </div>
-        ))}
-      </Card>
-
-      <div className="grid grid-cols-2 gap-7">
-        <div>
-          <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Schedule Overlap</Label>
-          <div className="grid grid-cols-[64px_repeat(5,1fr)] gap-[3px]">
-            <div />{ds.map(d=><div key={d} className="text-center text-xs font-semibold text-gray-500 p-1.5">{d}</div>)}
-            {ts.map((t,ti)=><Fragment key={ti}><div className="text-[11px] text-gray-500 flex items-center">{t}</div>
-              {ds.map(d=>{const k=`${d}-${ti}`,m=my.has(k),h=th.has(k),b=m&&h;return (<div key={k} className={cn("py-2.5 px-1 text-center rounded-md text-[10px] font-medium", b?"bg-primary text-primary-foreground":m?"bg-schedule-self text-gray-500":h?"bg-schedule-other text-gray-400":"bg-gray-50 text-gray-300")}>{b?"✓":m?"Me":h?"JN":""}</div>);})}</Fragment>)}
-          </div>
-          <div className="flex justify-between mt-2.5">
-            <div className="text-[11px] text-gray-500">◼ Both · <span className="text-gray-400">◼ You</span> · <span className="text-gray-300">◼ Jesse</span></div>
-            <span className="text-sm font-bold text-success">8h/wk</span>
-          </div>
-        </div>
-        <div>
-          <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skills</Label>
-          <div className="grid grid-cols-2 gap-2.5 mb-3.5">
-            <div className="p-3.5 bg-gray-50 rounded-[10px]"><div className="text-xs font-semibold mb-2">You</div><div className="text-[13px]">UI Design · Expert</div><div className="text-[13px]">User Research · Proficient</div></div>
-            <div className="p-3.5 bg-gray-50 rounded-[10px]"><div className="text-xs font-semibold mb-2">Jesse</div><div className="text-[13px]">Frontend Dev · Proficient</div><div className="text-[13px]">Prototyping · Expert</div></div>
-          </div>
-          <div className="py-2 px-3 bg-success-bg rounded-lg text-[13px] text-success mb-4">✓ Complementary — no overlap, strong coverage</div>
-          <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Work Style</Label>
-          {([["Meeting","2x/wk","2x/wk",true],["Style","In-person","In-person",true],["Platform","Discord","Discord",true]] as const).map(([l,y,t,ok])=>(
-            <div key={l} className="flex justify-between py-2 border-b border-gray-100 text-[13px]">
-              <span className="text-gray-500">{l}</span>
-              <div className="flex gap-2.5"><span>{y}</span><span className="text-gray-400">vs</span><span>{t}</span><span className={ok?"text-success":"text-danger"}>{ok?"✓":"⚠"}</span></div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Skill Complementarity Grid */}
-      <div className="mt-7">
-        <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skill Coverage Map</Label>
-        <div className="grid grid-cols-4 gap-2">
-          {c.skillComplementarity.map(({ skill, coveredBy }) => (
-            <div key={skill} className={cn("p-2.5 rounded-lg text-center text-[12px] font-medium border",
-              coveredBy === "you" ? "bg-blue-50 border-blue-200 text-blue-700" :
-              coveredBy === "them" ? "bg-success-bg border-success-border text-success" :
-              coveredBy === "both" ? "bg-primary text-primary-foreground border-primary" :
-              "bg-gray-50 border-dashed border-gray-300 text-gray-400"
-            )}>
-              <div className="text-[11px] mb-0.5">{skill}</div>
-              <div className="text-[10px] opacity-75">({coveredBy})</div>
-            </div>
-          ))}
-        </div>
-        <div className="flex gap-4 mt-2 text-[10px] text-gray-500">
-          <span>◼ You</span><span className="text-success">◼ Jesse</span><span>◼ Both</span><span className="text-gray-400">◻ Gap</span>
-        </div>
-      </div>
-
-      <div className="flex gap-3 mt-8">
-        <Button variant="outline" className="flex-1 px-7 py-3 h-auto" onClick={()=>go("board")}>Back to Board</Button>
-        <Button className="flex-1 px-7 py-3 h-auto" onClick={()=>go("sent-jesse")}>Send Group Request</Button>
-      </div>
-    </div>
-  </div>;
-}
 
 // Snapshot Warning (Priya)
 function SnapWarn({ go }: GoProps) {
@@ -1261,7 +1171,7 @@ function SnapWarn({ go }: GoProps) {
       <Card className="p-5 mb-5 gap-0 shadow-none bg-danger-bg border-danger-border">
         <div className="flex items-center gap-5 mb-3">
           <div className="text-[42px] font-extrabold text-danger">{c.overall}%</div>
-          <div><div className="text-[15px] font-bold text-danger">Low Compatibility</div><div className="text-[13px] text-danger-dark">Schedule and work style conflicts detected. Review carefully.</div></div>
+          <div><div className="text-[15px] font-bold text-danger">Low Compatibility</div><div className="text-[13px] text-danger-dark">Schedule and work style conflicts.</div></div>
         </div>
         {([["Schedule", c.scheduleScore],["Skills", c.skillScore],["Work Style", c.workStyleScore]] as const).map(([label, score]) => (
           <div key={label} className="flex items-center gap-2 mb-1">
@@ -1277,7 +1187,7 @@ function SnapWarn({ go }: GoProps) {
       {/* Warning banner */}
       <div className="py-3.5 px-[18px] bg-caution-bg rounded-[10px] border border-caution-border mb-7">
         <div className="text-[15px] font-bold text-caution mb-1">⚠ Compatibility warnings found</div>
-        <div className="text-[13px] text-caution-dark leading-relaxed">No schedule overlap detected. Meeting preferences also differ. Review the details below before you decide.</div>
+        <div className="text-[13px] text-caution-dark leading-relaxed">No schedule overlap. Meeting preferences differ.</div>
       </div>
 
       {/* Schedule */}
@@ -1303,7 +1213,7 @@ function SnapWarn({ go }: GoProps) {
           <div className="p-4 bg-gray-50 rounded-[10px]"><div className="text-xs font-semibold mb-2">You</div><div className="text-sm mb-1">UI Design</div><div className="text-sm">User Research</div></div>
           <div className="p-4 bg-gray-50 rounded-[10px]"><div className="text-xs font-semibold mb-2">Priya</div><div className="text-sm mb-1">Backend</div><div className="text-sm">Data Analysis</div></div>
         </div>
-        <div className="py-2 px-3 bg-success-bg rounded-lg text-[13px] text-success mt-2.5">✓ Complementary skills. No overlap, good coverage.</div>
+        <div className="py-2 px-3 bg-success-bg rounded-lg text-[13px] text-success mt-2.5">✓ Complementary skills</div>
       </div>
 
       {/* Skill Complementarity Grid */}
@@ -1348,7 +1258,7 @@ function SnapWarn({ go }: GoProps) {
       {/* Acknowledgment */}
       <label className="flex items-start gap-2.5 py-3.5 px-[18px] bg-gray-50 rounded-[10px] border border-gray-200 mb-5 cursor-pointer">
         <Checkbox checked={ack} onCheckedChange={(v) => setAck(v === true)} className="mt-[3px]" id="ack-checkbox" />
-        <span className="text-[13px] text-gray-600 leading-relaxed">I understand that Priya and I have no schedule overlap and different meeting preferences. We will need to coordinate asynchronously.</span>
+        <span className="text-[13px] text-gray-600 leading-relaxed">I understand there is no schedule overlap and we'll need to coordinate asynchronously.</span>
       </label>
 
       <div className="flex gap-3">
@@ -1393,11 +1303,10 @@ function Chat({ go }: GoProps) {
           <div className="text-base font-semibold">Jesse Nguyen</div>
           <div className="text-xs text-gray-500">CSC318 · Section 202 · Last seen 2:22 PM</div>
         </div>
-        <Button variant="outline" size="sm" className="px-4" onClick={()=>go("snap-good")}>View Compatibility</Button>
       </div>
       {/* Quick action bar */}
       <div className="flex gap-2 py-2.5 border-b border-gray-100">
-        <Button variant="outline" size="sm" className="text-xs px-3 h-7" onClick={()=>go("snap-good")}>Compatibility</Button>
+        <Button variant="outline" size="sm" className="text-xs px-3 h-7" onClick={()=>go("profile-view")}>Compatibility</Button>
         <Button variant="outline" size="sm" className="text-xs px-3 h-7" onClick={()=>go("mygroup")}>Group</Button>
         <Button variant="outline" size="sm" className="text-xs px-3 h-7">Share Contact</Button>
       </div>
@@ -1486,7 +1395,7 @@ function MyGroup({ go }: GoProps) {
 
       {!confirmed ? (
         <>
-          <p className="text-base text-gray-600 mb-9 leading-relaxed">3 of 4–6 members. You need at least 1 more person.</p>
+          <p className="text-base text-gray-600 mb-9 leading-relaxed">3/4–6 members — need 1+ more.</p>
           <div className="flex justify-between items-center px-4 py-3 bg-warning-bg rounded-[10px] mb-5 border border-warning-border">
             <span className="text-[13px] text-warning font-semibold">Group not yet confirmed</span>
             <Button size="sm" className="bg-gray-500 text-xs px-4 hover:bg-gray-600" onClick={()=>go("board")}>Find more members</Button>
@@ -1494,7 +1403,7 @@ function MyGroup({ go }: GoProps) {
         </>
       ) : (
         <>
-          <p className="text-base text-gray-600 mb-9 leading-relaxed">4 of 4–6 members. Your group is confirmed!</p>
+          <p className="text-base text-gray-600 mb-9 leading-relaxed">4/4–6 — Confirmed!</p>
           <div className="flex justify-between items-center px-4 py-3 bg-success-bg rounded-[10px] mb-5 border border-success-border">
             <span className="text-[13px] text-success font-semibold">✓ Group confirmed</span>
             <span className="text-xs text-success">Submitted to instructor</span>
@@ -1644,10 +1553,9 @@ function Urgent({ go }: GoProps) {
         )}>{tier.desc}</div>
       </div>
 
-      <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Suggested Matches</h1>
-      <p className="text-base text-gray-600 mb-9 leading-relaxed">Sorted by compatibility with your profile.</p>
+      <h1 className="text-[28px] font-bold text-foreground mb-5 -tracking-[0.5px]">Suggested Matches</h1>
       {recs.map((r,i)=>(
-        <Card key={i} className="p-5 mb-3.5 shadow-none cursor-pointer flex-row items-center gap-3.5 hover:border-gray-300 hover:shadow-sm transition-colors" onClick={()=>go("snap-good")}>
+        <Card key={i} className="p-5 mb-3.5 shadow-none cursor-pointer flex-row items-center gap-3.5 hover:border-gray-300 hover:shadow-sm transition-colors" onClick={()=>go("profile-view")}>
           <Avatar className="size-[46px]"><AvatarFallback className="bg-gray-200 text-gray-500 text-[15px] font-bold">{r.init}</AvatarFallback></Avatar>
           <div className="flex-1">
             <div className="text-[15px] font-semibold">{r.name}</div>
@@ -1664,7 +1572,7 @@ function Urgent({ go }: GoProps) {
       <Separator className="my-6 bg-gray-100" />
       <Card className="p-5 gap-0 shadow-none border-dashed border-caution-border bg-caution-bg mb-5">
         <div className="text-[15px] font-bold text-caution mb-1">Provisional Group</div>
-        <div className="text-[13px] text-caution-dark leading-relaxed mb-4">If no action is taken, the system will auto-form this group at the deadline.</div>
+        <div className="text-[13px] text-caution-dark leading-relaxed mb-4">Auto-forms at deadline if no action taken.</div>
         {provisionalMembers.map((m, i) => (
           <div key={i} className="flex items-center gap-3 py-2 border-b border-caution-border last:border-0">
             <Avatar className="size-8"><AvatarFallback className="bg-white text-caution text-xs font-bold">{m.init}</AvatarFallback></Avatar>
@@ -1761,7 +1669,7 @@ export default function Unitor() {
     "prof-0":<Prof0 go={go}/>, "prof-1":<Prof1 go={go}/>, "prof-2":<Prof2 go={go}/>, "prof-3":<Prof3 go={go}/>, "prof-done":<ProfDone go={go}/>,
     "ta-dash":<TADash go={go}/>, "ta-create":<TACreate go={go}/>,
     board:<Board go={go}/>, "profile-view":<ProfileView go={go}/>,
-    "snap-good":<SnapGood go={go}/>, "snap-warn":<SnapWarn go={go}/>, sent:<Sent go={go} targetName={sentTarget}/>,
+    "snap-warn":<SnapWarn go={go}/>, sent:<Sent go={go} targetName={sentTarget}/>,
     chat:<Chat go={go}/>, inbox:<Inbox go={go}/>, mygroup:<MyGroup go={go}/>,
     urgent:<Urgent go={go}/>, email:<EmailMock go={go}/>,
   };
