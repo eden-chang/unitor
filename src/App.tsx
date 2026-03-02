@@ -1050,7 +1050,7 @@ function ProfilePage({ go, studentName }: ProfilePageProps) {
   const workRows = WORK_STYLE_DATA[studentName];
   const ds = ["Mon","Tue","Wed","Thu","Fri"], ts = ["9am–12pm","1–5pm","6–9pm"];
   const firstName = studentName.split(" ")[0];
-  const tier: "good" | "normal" | "bad" = c.overall >= 70 ? "good" : c.overall >= 50 ? "normal" : "bad";
+  const tier: "good" | "normal" | "bad" = c.overall >= 80 ? "good" : c.overall >= 50 ? "normal" : "bad";
   const t = PROFILE_TIERS[tier];
   const hasWarnings = c.warnings.length > 0;
   const needsAck = tier === "bad" || tier === "normal";
