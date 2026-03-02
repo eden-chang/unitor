@@ -353,7 +353,7 @@ function Join({ go }: GoProps) {
 function Prof0({ go }: GoProps) {
   return <div className="bg-background min-h-screen pb-16">
     <Nav go={go} right={<span className="text-[13px] text-gray-500 leading-relaxed">CSC318 · Profile</span>} />
-    <div className="max-w-[500px] mx-auto py-14 px-6">
+    <div className="max-w-[680px] mx-auto py-14 px-6">
       <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={()=>go("join")}>← Back</Button>
       <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 1 of 4</div>
       <Progress value={(1/4)*100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
@@ -952,8 +952,8 @@ function Board({ go }: GoProps) {
 
           {/* Tier-aware urgent banner */}
           <div className="mb-2">
-            <div className="text-[9px] font-bold text-blue-500 uppercase tracking-[1px] mb-1.5">Demo: Deadline Tier</div>
-            <div className="flex gap-2 p-2 border-2 border-dashed border-blue-300 rounded-lg bg-blue-50 mb-3">
+            <div className="text-[9px] font-bold text-muted-foreground uppercase tracking-[1px] mb-1.5">Demo: Deadline Tier</div>
+            <div className="flex gap-2 p-2 border-2 border-dashed border-border rounded-lg bg-secondary mb-3">
               {(["Green","Yellow","Orange","Red"] as const).map((label, i) => (
                 <Button key={label} size="sm" variant={demoTier === i ? "default" : "outline"} className="text-xs px-3" onClick={() => setDemoTier(i)}>{label}</Button>
               ))}
@@ -1036,7 +1036,7 @@ function ProfileView({ go }: GoProps) {
           <h1 className="text-[28px] font-bold text-foreground -tracking-[0.5px] mb-1">{st.name}</h1>
           <div className="text-sm text-gray-500">Section {st.sec} · <span className="text-success font-semibold">Looking for group</span></div>
         </div>
-        <Button variant="outline" className="px-5 py-2.5 text-[13px] h-auto" onClick={()=>go("sent-jesse")}>Send Group Request</Button>
+        <Button variant="outline" size="sm" className="px-4" onClick={()=>go("sent-jesse")}>Send Group Request</Button>
       </div>
 
       {/* Compatibility Score Breakdown */}
@@ -1062,7 +1062,7 @@ function ProfileView({ go }: GoProps) {
         <div className="grid grid-cols-[64px_repeat(5,1fr)] gap-1">
           <div />{ds.map(d=><div key={d} className="text-center text-xs font-semibold text-gray-500 p-2">{d}</div>)}
           {ts.map((t,ti)=><Fragment key={ti}><div className="text-[11px] text-gray-500 flex items-center">{t}</div>
-            {ds.map(d=>{const k=`${d}-${ti}`,m=my.has(k),h=th.has(k),b=m&&h;return (<div key={k} className={cn("py-3 px-1 text-center rounded-md text-[11px] font-medium", b?"bg-primary text-primary-foreground":m?"bg-[#d0d0d0] text-gray-500":h?"bg-[#e0e0e0] text-gray-400":"bg-gray-50 text-gray-300")}>{b?"✓":m?"You":h?"JN":""}</div>);})}</Fragment>)}
+            {ds.map(d=>{const k=`${d}-${ti}`,m=my.has(k),h=th.has(k),b=m&&h;return (<div key={k} className={cn("py-3 px-1 text-center rounded-md text-[11px] font-medium", b?"bg-primary text-primary-foreground":m?"bg-schedule-self text-gray-500":h?"bg-schedule-other text-gray-400":"bg-gray-50 text-gray-300")}>{b?"✓":m?"You":h?"JN":""}</div>);})}</Fragment>)}
         </div>
         <div className="flex justify-between items-center mt-2.5">
           <div className="text-xs text-gray-500">◼ Both · <span className="text-gray-400">◼ You</span> · <span className="text-gray-300">◼ Jesse</span></div>
@@ -1088,7 +1088,7 @@ function ProfileView({ go }: GoProps) {
         <div className="grid grid-cols-4 gap-2">
           {c.skillComplementarity.map(({ skill, coveredBy }) => (
             <div key={skill} className={cn("p-2.5 rounded-lg text-center text-[12px] font-medium border",
-              coveredBy === "you" ? "bg-blue-50 border-blue-200 text-blue-700" :
+              coveredBy === "you" ? "bg-secondary border-border text-foreground" :
               coveredBy === "them" ? "bg-success-bg border-success-border text-success" :
               coveredBy === "both" ? "bg-primary text-primary-foreground border-primary" :
               "bg-gray-50 border-dashed border-gray-300 text-gray-400"
@@ -1126,7 +1126,7 @@ function ProfileView({ go }: GoProps) {
       {/* Profile Details */}
       <Card className="p-5 mb-3.5 gap-0 shadow-none">
         <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px]">Skills</Label>
-        <div className="mt-2">{st.skills.map(sk=><div key={sk} className="flex justify-between py-2 border-b border-gray-100"><span className="text-sm">{sk}</span><span className={cn("text-[11px] font-semibold py-0.5 px-2.5 rounded-full border", st.rat[sk]==="Expert"?"bg-success-bg text-success border-success-border":st.rat[sk]==="Proficient"?"bg-blue-50 text-blue-700 border-blue-200":st.rat[sk]==="Intermediate"?"bg-warning-bg text-warning border-warning-border":"bg-gray-100 text-gray-500 border-gray-200")}>{st.rat[sk]}</span></div>)}</div>
+        <div className="mt-2">{st.skills.map(sk=><div key={sk} className="flex justify-between py-2 border-b border-gray-100"><span className="text-sm">{sk}</span><span className={cn("text-[11px] font-semibold py-0.5 px-2.5 rounded-full border", st.rat[sk]==="Expert"?"bg-success-bg text-success border-success-border":st.rat[sk]==="Proficient"?"bg-secondary text-foreground border-border":st.rat[sk]==="Intermediate"?"bg-warning-bg text-warning border-warning-border":"bg-gray-100 text-gray-500 border-gray-200")}>{st.rat[sk]}</span></div>)}</div>
       </Card>
 
       <Card className="p-5 mb-3.5 gap-0 shadow-none">
@@ -1222,7 +1222,7 @@ function SnapWarn({ go }: GoProps) {
         <div className="grid grid-cols-4 gap-2">
           {c.skillComplementarity.map(({ skill, coveredBy }) => (
             <div key={skill} className={cn("p-2.5 rounded-lg text-center text-[12px] font-medium border",
-              coveredBy === "you" ? "bg-blue-50 border-blue-200 text-blue-700" :
+              coveredBy === "you" ? "bg-secondary border-border text-foreground" :
               coveredBy === "them" ? "bg-success-bg border-success-border text-success" :
               coveredBy === "both" ? "bg-primary text-primary-foreground border-primary" :
               "bg-gray-50 border-dashed border-gray-300 text-gray-400"
@@ -1306,9 +1306,9 @@ function Chat({ go }: GoProps) {
       </div>
       {/* Quick action bar */}
       <div className="flex gap-2 py-2.5 border-b border-gray-100">
-        <Button variant="outline" size="sm" className="text-xs px-3 h-7" onClick={()=>go("profile-view")}>Compatibility</Button>
-        <Button variant="outline" size="sm" className="text-xs px-3 h-7" onClick={()=>go("mygroup")}>Group</Button>
-        <Button variant="outline" size="sm" className="text-xs px-3 h-7">Share Contact</Button>
+        <Button variant="outline" size="sm" className="text-xs px-4" onClick={()=>go("profile-view")}>Compatibility</Button>
+        <Button variant="outline" size="sm" className="text-xs px-4" onClick={()=>go("mygroup")}>Group</Button>
+        <Button variant="outline" size="sm" className="text-xs px-4">Share Contact</Button>
       </div>
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto py-5 flex flex-col gap-3">
@@ -1358,7 +1358,7 @@ function Inbox({ go }: GoProps) {
             </div>
             <div className="text-[13px] text-gray-500 overflow-hidden text-ellipsis whitespace-nowrap">{cv.last}</div>
           </div>
-          {cv.unread&&<div className="w-2 h-2 rounded-full bg-blue-500 shrink-0"><span className="sr-only">Unread</span></div>}
+          {cv.unread&&<div className="w-2 h-2 rounded-full bg-secondary0 shrink-0"><span className="sr-only">Unread</span></div>}
         </Card>
       ))}
     </div>
@@ -1386,8 +1386,8 @@ function MyGroup({ go }: GoProps) {
 
       {/* Toggle for demo */}
       <div className="mb-5">
-        <div className="text-[9px] font-bold text-blue-500 uppercase tracking-[1px] mb-1.5">Demo Controls</div>
-        <div className="flex gap-2 p-2 border-2 border-dashed border-blue-300 rounded-lg bg-blue-50">
+        <div className="text-[9px] font-bold text-muted-foreground uppercase tracking-[1px] mb-1.5">Demo Controls</div>
+        <div className="flex gap-2 p-2 border-2 border-dashed border-border rounded-lg bg-secondary">
           <Button size="sm" variant={!confirmed?"default":"outline"} className="text-xs px-4" onClick={()=>setConfirmed(false)}>Before confirm (3/4)</Button>
           <Button size="sm" variant={confirmed?"default":"outline"} className="text-xs px-4" onClick={()=>setConfirmed(true)}>After confirm (4/4)</Button>
         </div>
@@ -1398,7 +1398,7 @@ function MyGroup({ go }: GoProps) {
           <p className="text-base text-gray-600 mb-9 leading-relaxed">3/4–6 members — need 1+ more.</p>
           <div className="flex justify-between items-center px-4 py-3 bg-warning-bg rounded-[10px] mb-5 border border-warning-border">
             <span className="text-[13px] text-warning font-semibold">Group not yet confirmed</span>
-            <Button size="sm" className="bg-gray-500 text-xs px-4 hover:bg-gray-600" onClick={()=>go("board")}>Find more members</Button>
+            <Button size="sm" variant="secondary" className="text-xs px-4" onClick={()=>go("board")}>Find more members</Button>
           </div>
         </>
       ) : (
