@@ -1591,7 +1591,7 @@ function GroupsView({ onSelectGroup, appliedGroups, filterRecruiting = false }: 
           </SelectContent>
         </Select>
       </div>
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {filtered.map(group => (
           <GroupCard
             key={group.id}
@@ -1773,7 +1773,7 @@ function FilterDropdown({ label, active, open, onToggle, onClose, children }: Fi
         <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M1 3l4 4 4-4" /></svg>
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1.5 bg-white border border-border rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.1)] z-[200] overflow-hidden min-w-max">
+        <div className="absolute left-0 top-full mt-1.5 bg-white border border-border rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.1)] z-[200] overflow-hidden w-[200px]">
           {children}
         </div>
       )}
@@ -3708,8 +3708,8 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
                                   <div className="text-[13px] text-[#111827] mt-0.5">What's your preferred working style — async or sync collaboration?</div>
                                 </div>
                               </div>
-                              {/* Action buttons */}
-                              {!isEnded && (
+                              {/* Action buttons — only for received requests */}
+                              {!isEnded && !iSent && (
                                 <div className="flex gap-2 pt-3 border-t border-[#F3F4F6]">
                                   <button onClick={() => { onContactStatusChange(conv.targetName, "accepted"); if (onAccept) onAccept(conv.targetName); }}
                                     className="flex-1 h-8 rounded-[8px] bg-[#8e57b8] text-white text-[13px] font-medium hover:bg-[#7a4a9e] cursor-pointer transition-colors">Accept</button>
@@ -3719,7 +3719,7 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
                                 </div>
                               )}
                               {/* Decline dropdown */}
-                              {showDeclineMenu && !isEnded && (
+                              {showDeclineMenu && !isEnded && !iSent && (
                                 <div className="mt-3 p-3 border border-[#E5E7EB] rounded-[8px] bg-[#F9FAFB]">
                                   <div className="text-[13px] font-medium mb-2">Select a reason:</div>
                                   <div className="space-y-1.5 mb-3">
