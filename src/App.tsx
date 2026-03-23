@@ -2675,7 +2675,7 @@ function ProfilePanelContent({ go, studentName, onClose, onContactStatusChange, 
                   onClose();
                 }}
               >
-                Send Request to Join
+                Send Request
               </Button>
             </div>
           </div>
@@ -2697,7 +2697,7 @@ function ProfilePanelContent({ go, studentName, onClose, onContactStatusChange, 
           <div className="flex gap-3">
             <Button variant="outline" className="flex-1" onClick={onClose}>Close</Button>
             <Button disabled={needsAck && !ack} className="flex-1" onClick={() => setRequestStep("form")}>
-              Join Their Group
+              Send Group Request
             </Button>
           </div>
         )}
