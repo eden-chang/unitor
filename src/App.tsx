@@ -1,4 +1,4 @@
-import { useState, Fragment, type ReactNode, type ReactElement } from "react";
+import { useState, useEffect, useRef, Fragment, type ReactNode, type ReactElement } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -21,8 +21,46 @@ interface RoleGoProps extends GoProps {
   role: string;
 }
 
+type NotificationType =
+  | "group-request-received"
+  | "group-application-received"
+  | "request-accepted"
+  | "request-declined"
+  | "application-accepted"
+  | "application-declined"
+  | "member-left"
+  | "confirm-requested"
+  | "urgent-mode";
+
+interface AppNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  timestamp: string;
+  read: boolean;
+  actionTarget?: string;
+}
+
+interface NotificationBellProps {
+  notifications: AppNotification[];
+  onNotificationClick: (n: AppNotification) => void;
+  onMarkAllRead: () => void;
+}
+
+interface NotificationItemProps {
+  notification: AppNotification;
+  icon: ReactElement;
+  onClick: () => void;
+}
+
 interface NavProps {
   go: (page: string) => void;
+  activePage?: string;
+  studentStatus?: "solo" | "open-group" | "closed";
+  notifications?: AppNotification[];
+  onNotificationClick?: (n: AppNotification) => void;
+  onMarkAllRead?: () => void;
   right?: ReactNode;
 }
 
@@ -30,10 +68,6 @@ interface FProps {
   l: string;
   id?: string;
   children: ReactNode;
-}
-
-interface ProfilePageProps extends GoProps {
-  studentName: string;
 }
 
 interface SentProps extends GoProps {
@@ -44,6 +78,7 @@ interface TGridProps {
   sel: Set<string>;
   set: (s: Set<string>) => void;
   label: string;
+  disabled?: boolean;
 }
 
 interface IconProps {
@@ -55,7 +90,8 @@ interface Student {
   name: string;
   sec: string;
   skills: string[];
-  status: "searching" | "talking" | "confirmed";
+  status: "solo" | "open-group" | "closed";
+  contactStatus: "none" | "request-sent" | "replied" | "declined" | "no-response";
   overlap: string;
   init: string;
   bio: string;
@@ -93,13 +129,158 @@ function parseActivityMinutes(lastActive: string): number {
 function isRecentlyActive(lastActive: string): boolean {
   return parseActivityMinutes(lastActive) < 30;
 }
-function Nav({ go, right }: NavProps) {
+function NotificationItem({ notification: n, icon, onClick }: NotificationItemProps) {
   return (
-    <div className="flex justify-between items-center h-14 px-12 bg-card border-b border-border sticky top-0 z-[100]">
-      <div className="flex items-center gap-5">
-        <span className="text-[22px] font-extrabold text-foreground -tracking-[1px] cursor-pointer" onClick={() => go("landing")}>unitor</span>
+    <button
+      onClick={onClick}
+      className={cn(
+        "w-full flex gap-3 items-start px-4 py-3 text-left transition-colors hover:bg-gray-50 border-b border-gray-100",
+        !n.read && "bg-accent/30"
+      )}
+    >
+      <span className="mt-0.5 shrink-0">{icon}</span>
+      <div className="flex-1 min-w-0">
+        <div className={cn("text-[12px] leading-snug", !n.read ? "font-semibold text-foreground" : "text-gray-700")}>
+          {n.title}
+        </div>
+        <div className="text-[11px] text-gray-500 mt-0.5 truncate">{n.body}</div>
+        <div className="text-[10px] text-gray-400 mt-1">{n.timestamp}</div>
       </div>
-      <div className="flex items-center gap-3">{right}</div>
+      {!n.read && <div className="w-2 h-2 rounded-full bg-primary shrink-0 mt-1.5" />}
+    </button>
+  );
+}
+
+function NotificationBell({ notifications, onNotificationClick, onMarkAllRead }: NotificationBellProps) {
+  const [open, setOpen] = useState(false);
+  const unreadCount = notifications.filter(n => !n.read).length;
+  const TYPE_ICONS: Record<NotificationType, ReactElement> = {
+    "group-request-received":     <Icon.wave size={16} color="#8e57b8" />,
+    "group-application-received": <Icon.document size={16} color="#8e57b8" />,
+    "request-accepted":           <Icon.checkCircle size={16} color="#16a34a" />,
+    "request-declined":           <Icon.xCircle size={16} color="#DC2626" />,
+    "application-accepted":       <Icon.checkCircle size={16} color="#16a34a" />,
+    "application-declined":       <Icon.xCircle size={16} color="#DC2626" />,
+    "member-left":                <Icon.userIcon size={16} color="#6B7280" />,
+    "confirm-requested":          <Icon.bellIcon size={16} color="#8e57b8" />,
+    "urgent-mode":                <Icon.warning size={16} color="#DC2626" />,
+  };
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="relative p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"
+        aria-label="Notifications"
+      >
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+          <path d="M12 22a2 2 0 0 0 2-2H10a2 2 0 0 0 2 2Zm6-6V11a6 6 0 0 0-5-5.92V4a1 1 0 0 0-2 0v1.08A6 6 0 0 0 6 11v5l-2 2v1h16v-1l-2-2Z" fill="currentColor" />
+        </svg>
+        {unreadCount > 0 && (
+          <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-[#DC2626] rounded-full">
+            {unreadCount > 9 ? "9+" : unreadCount}
+          </span>
+        )}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-[190]" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full mt-2 w-[360px] bg-white border border-[#E5E7EB] rounded-[12px] shadow-[0_8px_24px_rgba(0,0,0,0.12)] z-[200] overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <span className="text-sm font-bold">Notifications</span>
+              {unreadCount > 0 && (
+                <button onClick={onMarkAllRead} className="text-[11px] text-primary hover:text-accent-foreground cursor-pointer">
+                  Mark all read
+                </button>
+              )}
+            </div>
+            <div className="max-h-[480px] overflow-y-auto">
+              {notifications.length === 0 ? (
+                <div className="py-10 text-center text-[13px] text-gray-400">No notifications</div>
+              ) : (
+                notifications.map(n => (
+                  <NotificationItem
+                    key={n.id}
+                    notification={n}
+                    icon={TYPE_ICONS[n.type]}
+                    onClick={() => { onNotificationClick(n); setOpen(false); }}
+                  />
+                ))
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+const APP_PAGES = new Set(["board", "sent", "mygroup", "urgent", "email", "profile-edit", "chats"]);
+const PAGE_TO_TAB: Record<string, string> = {
+  "board": "board", "sent": "board", "urgent": "board", "email": "board",
+  "mygroup": "mygroup", "profile-edit": "profile-edit", "chats": "chats",
+};
+
+function Nav({ go, activePage = "", studentStatus = "solo", notifications = [], onNotificationClick = () => { }, onMarkAllRead = () => { }, right }: NavProps) {
+  const isAppPage = APP_PAGES.has(activePage);
+  const [avatarOpen, setAvatarOpen] = useState(false);
+
+  if (!isAppPage) {
+    return (
+      <div className="flex justify-between items-center h-14 px-12 bg-white border-b border-[#E5E7EB] sticky top-0 z-[100]">
+        <span className="text-[22px] font-extrabold text-foreground -tracking-[1px] cursor-pointer" onClick={() => go("landing")}>unitor</span>
+        <div className="flex items-center gap-3">{right}</div>
+      </div>
+    );
+  }
+
+  const activeTab = PAGE_TO_TAB[activePage] ?? "";
+  const tabs = [
+    { id: "board", label: "Discovery", show: studentStatus !== "closed" },
+    { id: "mygroup", label: "My Group", show: true },
+    { id: "chats", label: "Chats", show: true },
+    { id: "profile-edit", label: "Profile", show: true },
+  ];
+
+  return (
+    <div className="flex justify-between items-stretch h-14 px-12 bg-white border-b border-[#E5E7EB] sticky top-0 z-[100]">
+      <span className="flex items-center text-[22px] font-extrabold text-foreground -tracking-[1px] cursor-pointer" onClick={() => go("landing")}>unitor</span>
+      <div className="flex h-full items-end gap-1" role="tablist">
+        {tabs.filter(t => t.show).map(t => (
+          <button
+            key={t.id}
+            role="tab"
+            aria-selected={activeTab === t.id}
+            onClick={() => go(t.id)}
+            className={cn(
+              "px-4 pb-[14px] text-[14px] border-b-2 transition-colors cursor-pointer",
+              activeTab === t.id
+                ? "font-semibold text-[#111827] border-[#8e57b8]"
+                : "font-normal text-[#6B7280] border-transparent hover:border-[#8e57b8]/40"
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <NotificationBell
+          notifications={notifications}
+          onNotificationClick={onNotificationClick}
+          onMarkAllRead={onMarkAllRead}
+        />
+        <div className="relative">
+          {avatarOpen && <div className="fixed inset-0 z-[190]" onClick={() => setAvatarOpen(false)} />}
+          <button onClick={() => setAvatarOpen(o => !o)} className="rounded-full cursor-pointer">
+            <Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-xs font-bold">JD</AvatarFallback></Avatar>
+          </button>
+          {avatarOpen && (
+            <div className="absolute right-0 top-full mt-2 w-40 bg-background border border-border rounded-xl shadow-lg z-[200] overflow-hidden py-1">
+              <button onClick={() => { go("profile-edit"); setAvatarOpen(false); }} className="w-full text-left px-4 py-2.5 text-[13px] text-[#374151] hover:bg-gray-50">Edit Profile</button>
+              <button onClick={() => { go("landing"); setAvatarOpen(false); }} className="w-full text-left px-4 py-2.5 text-[13px] text-[#374151] hover:bg-gray-50">Log Out</button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -113,17 +294,41 @@ function F({ l, id, children }: FProps) {
   );
 }
 
-function TGrid({ sel, set, label }: TGridProps) {
-  const ds = ["Mon","Tue","Wed","Thu","Fri"], ts = ["9am–12pm","1–5pm","6–9pm"];
-  const tog = (k: string) => { const n = new Set(sel); n.has(k)?n.delete(k):n.add(k); set(n); };
+function TGrid({ sel, set, label, disabled = false }: TGridProps) {
+  const ds = ["Mon", "Tue", "Wed", "Thu", "Fri"], ts = ["9am–12pm", "12–4pm", "4–8pm", "8–11pm"];
+  const [dragging, setDragging] = useState(false);
+  const [dragMode, setDragMode] = useState<"add" | "remove">("add");
+  const tog = (k: string) => { if (disabled) return; const n = new Set(sel); n.has(k) ? n.delete(k) : n.add(k); set(n); };
+  const startDrag = (k: string) => {
+    if (disabled) return;
+    setDragging(true);
+    const mode = sel.has(k) ? "remove" : "add";
+    setDragMode(mode);
+    const n = new Set(sel);
+    mode === "add" ? n.add(k) : n.delete(k);
+    set(n);
+  };
+  const enterDrag = (k: string) => {
+    if (!dragging || disabled) return;
+    const n = new Set(sel);
+    dragMode === "add" ? n.add(k) : n.delete(k);
+    set(n);
+  };
+  const stopDrag = () => setDragging(false);
   return (
-    <div className="mb-7">
+    <div className={cn("mb-7", disabled && "opacity-40")} onMouseUp={stopDrag} onMouseLeave={stopDrag}>
       <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">{label}</Label>
-      <div className="grid grid-cols-[64px_repeat(5,1fr)] gap-[3px]">
-        <div />{ds.map(d=><div key={d} className="text-center text-xs font-semibold text-gray-500 p-1.5">{d}</div>)}
-        {ts.map((t,ti)=><Fragment key={ti}>
+      <div className="grid grid-cols-[64px_repeat(5,1fr)] gap-[3px]" style={{ userSelect: "none" }}>
+        <div />{ds.map(d => <div key={d} className="text-center text-xs font-semibold text-gray-500 p-1.5">{d}</div>)}
+        {ts.map((t, ti) => <Fragment key={ti}>
           <div className="text-[11px] text-gray-500 flex items-center">{t}</div>
-          {ds.map(d=>{ const k=`${d}-${ti}`; return <button key={k} type="button" role="checkbox" aria-checked={sel.has(k)} aria-label={`${d} ${t}`} onClick={()=>tog(k)} className={cn("py-2.5 px-1 text-center rounded-md cursor-pointer text-xs font-medium transition-colors", sel.has(k) ? "bg-primary text-primary-foreground" : "bg-gray-50 text-gray-400 hover:bg-gray-100")} />; })}
+          {ds.map(d => {
+            const k = `${d}-${ti}`; return <button key={k} type="button" role="checkbox" aria-checked={sel.has(k)} aria-label={`${d} ${t}`}
+              onMouseDown={(e) => { e.preventDefault(); startDrag(k); }}
+              onMouseEnter={() => enterDrag(k)}
+              onClick={() => { if (!dragging) tog(k); }}
+              className={cn("py-2.5 px-1 text-center rounded-md text-xs font-medium transition-colors", disabled ? "pointer-events-none cursor-default" : "cursor-pointer", sel.has(k) ? "bg-primary text-primary-foreground" : "bg-gray-50 text-gray-400 hover:bg-gray-100")} />;
+          })}
         </Fragment>)}
       </div>
     </div>
@@ -134,47 +339,132 @@ function TGrid({ sel, set, label }: TGridProps) {
 const Icon: Record<string, (props: IconProps) => ReactElement> = {
   graduation: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path fillRule="evenodd" clipRule="evenodd" d="M12 13c-2.755 0-5-2.245-5-5V3.5H4V2h14.75c.69 0 1.25.56 1.25 1.25V9h-1.5V3.5H17V8c0 2.755-2.245 5-5 5ZM8.5 8c0 1.93 1.57 3.5 3.5 3.5s3.5-1.57 3.5-3.5V7h-7v1Zm0-2.5h7v-2h-7v2Zm6.43 9a4.752 4.752 0 0 1 4.59 3.52l1.015 3.785-1.45.39-1.015-3.785A3.253 3.253 0 0 0 14.93 16H9.07c-1.47 0-2.76.99-3.14 2.41l-1.015 3.785-1.45-.39L4.48 18.02a4.762 4.762 0 0 1 4.59-3.52h5.86Z" fill={color}/>
+      <path fillRule="evenodd" clipRule="evenodd" d="M12 13c-2.755 0-5-2.245-5-5V3.5H4V2h14.75c.69 0 1.25.56 1.25 1.25V9h-1.5V3.5H17V8c0 2.755-2.245 5-5 5ZM8.5 8c0 1.93 1.57 3.5 3.5 3.5s3.5-1.57 3.5-3.5V7h-7v1Zm0-2.5h7v-2h-7v2Zm6.43 9a4.752 4.752 0 0 1 4.59 3.52l1.015 3.785-1.45.39-1.015-3.785A3.253 3.253 0 0 0 14.93 16H9.07c-1.47 0-2.76.99-3.14 2.41l-1.015 3.785-1.45-.39L4.48 18.02a4.762 4.762 0 0 1 4.59-3.52h5.86Z" fill={color} />
     </svg>
   ),
   clipboard: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path fillRule="evenodd" clipRule="evenodd" d="M7.105 5H5.5v15.5h5V22H4V3.5h3V2h10v1.5h3V11h-1.5V5h-1.605c-.33 1.15-1.39 2-2.645 2h-4.5c-1.26 0-2.315-.85-2.645-2ZM15.5 3.5h-7v.75c0 .69.56 1.25 1.25 1.25h4.5c.69 0 1.25-.56 1.25-1.25V3.5Zm2.22 9.72a2.164 2.164 0 1 1 3.06 3.06l-5.125 5.125-2.22.74a1.237 1.237 0 0 1-1.28-.3c-.335-.34-.45-.83-.3-1.28l.74-2.22 5.125-5.125Zm-2.875 6.875 4.875-4.875a.664.664 0 1 0-.94-.94l-4.875 4.875-.47 1.41 1.41-.47Z" fill={color}/>
+      <path fillRule="evenodd" clipRule="evenodd" d="M7.105 5H5.5v15.5h5V22H4V3.5h3V2h10v1.5h3V11h-1.5V5h-1.605c-.33 1.15-1.39 2-2.645 2h-4.5c-1.26 0-2.315-.85-2.645-2ZM15.5 3.5h-7v.75c0 .69.56 1.25 1.25 1.25h4.5c.69 0 1.25-.56 1.25-1.25V3.5Zm2.22 9.72a2.164 2.164 0 1 1 3.06 3.06l-5.125 5.125-2.22.74a1.237 1.237 0 0 1-1.28-.3c-.335-.34-.45-.83-.3-1.28l.74-2.22 5.125-5.125Zm-2.875 6.875 4.875-4.875a.664.664 0 1 0-.94-.94l-4.875 4.875-.47 1.41 1.41-.47Z" fill={color} />
     </svg>
   ),
   email: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path fillRule="evenodd" clipRule="evenodd" d="M19.25 20H6.5v-1.5h12.75c.69 0 1.25-.56 1.25-1.25V9.46L12 14.37 2 8.595V6.75A2.755 2.755 0 0 1 4.75 4h14.5A2.755 2.755 0 0 1 22 6.75v10.5A2.755 2.755 0 0 1 19.25 20ZM3.5 7.725 12 12.63l8.5-4.905V6.75c0-.69-.56-1.25-1.25-1.25H4.75c-.69 0-1.25.56-1.25 1.25v.975ZM9 15H3.5v1.5H9V15Zm-7-3h2.5v1.5H2V12Z" fill={color}/>
+      <path fillRule="evenodd" clipRule="evenodd" d="M19.25 20H6.5v-1.5h12.75c.69 0 1.25-.56 1.25-1.25V9.46L12 14.37 2 8.595V6.75A2.755 2.755 0 0 1 4.75 4h14.5A2.755 2.755 0 0 1 22 6.75v10.5A2.755 2.755 0 0 1 19.25 20ZM3.5 7.725 12 12.63l8.5-4.905V6.75c0-.69-.56-1.25-1.25-1.25H4.75c-.69 0-1.25.56-1.25 1.25v.975ZM9 15H3.5v1.5H9V15Zm-7-3h2.5v1.5H2V12Z" fill={color} />
     </svg>
   ),
   books: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M15 4a3.745 3.745 0 0 0-3 1.51A3.745 3.745 0 0 0 9 4H2v16h7.5c.69 0 1.25.56 1.25 1.25h2.5c0-.69.56-1.25 1.25-1.25H22V4h-7Zm-3.75 15.13a2.726 2.726 0 0 0-1.75-.63h-6v-13H9c1.24 0 2.25 1.01 2.25 2.25v11.38Zm9.25-.63h-6c-.665 0-1.275.235-1.75.63V7.75c0-1.24 1.01-2.25 2.25-2.25h5.5v13Z" fill={color}/>
+      <path d="M15 4a3.745 3.745 0 0 0-3 1.51A3.745 3.745 0 0 0 9 4H2v16h7.5c.69 0 1.25.56 1.25 1.25h2.5c0-.69.56-1.25 1.25-1.25H22V4h-7Zm-3.75 15.13a2.726 2.726 0 0 0-1.75-.63h-6v-13H9c1.24 0 2.25 1.01 2.25 2.25v11.38Zm9.25-.63h-6c-.665 0-1.275.235-1.75.63V7.75c0-1.24 1.01-2.25 2.25-2.25h5.5v13Z" fill={color} />
     </svg>
   ),
   camera: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path fillRule="evenodd" clipRule="evenodd" d="M2 17.25A2.755 2.755 0 0 0 4.75 20h14.5A2.755 2.755 0 0 0 22 17.25v-9a2.755 2.755 0 0 0-2.75-2.75h-2.64l-2-2.5H9.39l-2 2.5H4.75A2.755 2.755 0 0 0 2 8.25v9ZM8.11 7l2-2.5h3.78l2 2.5h3.36c.69 0 1.25.56 1.25 1.25v9c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-9C3.5 7.56 4.06 7 4.75 7h3.36Zm-.61 5.5c0 2.48 2.02 4.5 4.5 4.5s4.5-2.02 4.5-4.5S14.48 8 12 8s-4.5 2.02-4.5 4.5Zm1.5 0c0-1.655 1.345-3 3-3s3 1.345 3 3-1.345 3-3 3-3-1.345-3-3Z" fill={color}/>
+      <path fillRule="evenodd" clipRule="evenodd" d="M2 17.25A2.755 2.755 0 0 0 4.75 20h14.5A2.755 2.755 0 0 0 22 17.25v-9a2.755 2.755 0 0 0-2.75-2.75h-2.64l-2-2.5H9.39l-2 2.5H4.75A2.755 2.755 0 0 0 2 8.25v9ZM8.11 7l2-2.5h3.78l2 2.5h3.36c.69 0 1.25.56 1.25 1.25v9c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-9C3.5 7.56 4.06 7 4.75 7h3.36Zm-.61 5.5c0 2.48 2.02 4.5 4.5 4.5s4.5-2.02 4.5-4.5S14.48 8 12 8s-4.5 2.02-4.5 4.5Zm1.5 0c0-1.655 1.345-3 3-3s3 1.345 3 3-1.345 3-3 3-3-1.345-3-3Z" fill={color} />
     </svg>
   ),
   search: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="m21.78 20.72-5.62-5.62A7.96 7.96 0 0 0 18 10c0-4.41-3.59-8-8-8s-8 3.59-8 8 3.59 8 8 8a7.96 7.96 0 0 0 5.1-1.84l5.62 5.62 1.06-1.06ZM10 16.5A6.506 6.506 0 0 1 3.5 10c0-3.585 2.915-6.5 6.5-6.5s6.5 2.915 6.5 6.5-2.915 6.5-6.5 6.5Z" fill={color}/>
+      <path d="m21.78 20.72-5.62-5.62A7.96 7.96 0 0 0 18 10c0-4.41-3.59-8-8-8s-8 3.59-8 8 3.59 8 8 8a7.96 7.96 0 0 0 5.1-1.84l5.62 5.62 1.06-1.06ZM10 16.5A6.506 6.506 0 0 1 3.5 10c0-3.585 2.915-6.5 6.5-6.5s6.5 2.915 6.5 6.5-2.915 6.5-6.5 6.5Z" fill={color} />
     </svg>
   ),
   balance: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path fillRule="evenodd" clipRule="evenodd" d="M12.75 12.5h9.265l-.02-.77a9.99 9.99 0 0 0-9.725-9.725l-.77-.02v9.265c0 .69.56 1.25 1.25 1.25Zm7.69-1.5H13V3.56A8.493 8.493 0 0 1 20.44 11ZM3.5 12c0 4.685 3.815 8.5 8.5 8.5 3.965 0 7.345-2.785 8.255-6.5h1.535c-.94 4.545-5 8-9.79 8-5.515 0-10-4.485-10-10 0-4.83 3.44-8.87 8-9.8v1.545C6.275 4.65 3.5 8.005 3.5 12Z" fill={color}/>
+      <path fillRule="evenodd" clipRule="evenodd" d="M12.75 12.5h9.265l-.02-.77a9.99 9.99 0 0 0-9.725-9.725l-.77-.02v9.265c0 .69.56 1.25 1.25 1.25Zm7.69-1.5H13V3.56A8.493 8.493 0 0 1 20.44 11ZM3.5 12c0 4.685 3.815 8.5 8.5 8.5 3.965 0 7.345-2.785 8.255-6.5h1.535c-.94 4.545-5 8-9.79 8-5.515 0-10-4.485-10-10 0-4.83 3.44-8.87 8-9.8v1.545C6.275 4.65 3.5 8.005 3.5 12Z" fill={color} />
     </svg>
   ),
   chat: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path fillRule="evenodd" clipRule="evenodd" d="M2.77 17.7c.155.065.32.095.48.095l.005-.005c.32 0 .64-.125.88-.365L6.56 15h8.19a2.755 2.755 0 0 0 2.75-2.75v-6.5A2.755 2.755 0 0 0 14.75 3h-10A2.755 2.755 0 0 0 2 5.75v10.795c0 .51.3.96.77 1.155ZM3.5 5.75c0-.69.56-1.25 1.25-1.25h10c.69 0 1.25.56 1.25 1.25v6.5c0 .69-.56 1.25-1.25 1.25H5.94L3.5 15.94V5.75Zm16.365 15.68c.24.24.56.365.885.365v.005A1.245 1.245 0 0 0 22 20.55V10.255a2.755 2.755 0 0 0-2.75-2.75H19v1.5h.25c.69 0 1.25.56 1.25 1.25v9.69l-1.94-1.94h-6.81c-.69 0-1.25-.56-1.25-1.25V16.5H9v.255a2.755 2.755 0 0 0 2.75 2.75h6.19l1.925 1.925Z" fill={color}/>
+      <path fillRule="evenodd" clipRule="evenodd" d="M2.77 17.7c.155.065.32.095.48.095l.005-.005c.32 0 .64-.125.88-.365L6.56 15h8.19a2.755 2.755 0 0 0 2.75-2.75v-6.5A2.755 2.755 0 0 0 14.75 3h-10A2.755 2.755 0 0 0 2 5.75v10.795c0 .51.3.96.77 1.155ZM3.5 5.75c0-.69.56-1.25 1.25-1.25h10c.69 0 1.25.56 1.25 1.25v6.5c0 .69-.56 1.25-1.25 1.25H5.94L3.5 15.94V5.75Zm16.365 15.68c.24.24.56.365.885.365v.005A1.245 1.245 0 0 0 22 20.55V10.255a2.755 2.755 0 0 0-2.75-2.75H19v1.5h.25c.69 0 1.25.56 1.25 1.25v9.69l-1.94-1.94h-6.81c-.69 0-1.25-.56-1.25-1.25V16.5H9v.255a2.755 2.755 0 0 0 2.75 2.75h6.19l1.925 1.925Z" fill={color} />
     </svg>
   ),
   clockAlert: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path fillRule="evenodd" clipRule="evenodd" d="M12 22C6.485 22 2 17.515 2 12S6.485 2 12 2s10 4.485 10 10-4.485 10-10 10Zm0-18.5c-4.685 0-8.5 3.815-8.5 8.5 0 4.685 3.815 8.5 8.5 8.5 4.685 0 8.5-3.815 8.5-8.5 0-4.685-3.815-8.5-8.5-8.5Zm.75 10V8h-1.5v5.5h1.5ZM13 16a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z" fill={color}/>
+      <path fillRule="evenodd" clipRule="evenodd" d="M12 22C6.485 22 2 17.515 2 12S6.485 2 12 2s10 4.485 10 10-4.485 10-10 10Zm0-18.5c-4.685 0-8.5 3.815-8.5 8.5 0 4.685 3.815 8.5 8.5 8.5 4.685 0 8.5-3.815 8.5-8.5 0-4.685-3.815-8.5-8.5-8.5Zm.75 10V8h-1.5v5.5h1.5ZM13 16a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z" fill={color} />
+    </svg>
+  ),
+  star: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+    </svg>
+  ),
+  starFilled: ({ size = 24, color = "#8e57b8" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color} stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+    </svg>
+  ),
+  eyeOpen: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+    </svg>
+  ),
+  eyeOff: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
+    </svg>
+  ),
+  wave: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 11V6a2 2 0 0 0-4 0v1M14 10V4a2 2 0 0 0-4 0v6M10 10V6a2 2 0 0 0-4 0v8c0 4.42 3.58 8 8 8h1a7 7 0 0 0 7-7v-3a2 2 0 0 0-4 0"/>
+    </svg>
+  ),
+  document: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+    </svg>
+  ),
+  checkCircle: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+    </svg>
+  ),
+  xCircle: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+    </svg>
+  ),
+  userIcon: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+    </svg>
+  ),
+  bellIcon: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+    </svg>
+  ),
+  thumbUp: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+    </svg>
+  ),
+  thumbDown: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z"/><path d="M17 2h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"/>
+    </svg>
+  ),
+  warning: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
+  ),
+  messageCircle: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+    </svg>
+  ),
+  chevronLeft: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="15 18 9 12 15 6"/>
+    </svg>
+  ),
+  chevronRight: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="9 18 15 12 9 6"/>
+    </svg>
+  ),
+  x: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
     </svg>
   ),
 };
@@ -183,20 +473,20 @@ const Icon: Record<string, (props: IconProps) => ReactElement> = {
 
 // Landing
 function Landing({ go }: GoProps) {
-  return <div className="bg-background min-h-screen pb-16">
-    <Nav go={go} right={<><Button variant="outline" size="sm" className="px-4" onClick={()=>go("login")}>Log In</Button><Button size="sm" className="px-4" onClick={()=>go("signup-role")}>Sign Up</Button></>} />
+  return <div className="bg-background min-h-screen pb-6">
+    <Nav go={go} right={<><Button variant="outline" size="sm" className="px-4" onClick={() => go("login")}>Log In</Button><Button size="sm" className="px-4" onClick={() => go("signup-role")}>Sign Up</Button></>} />
     <div className="text-center pt-[120px] px-6 pb-20">
-      <h1 className="text-[52px] font-extrabold -tracking-[2px] text-foreground mb-4 leading-[1.05]">Find your people.<br/>Form your team.</h1>
+      <h1 className="text-[52px] font-extrabold -tracking-[2px] text-foreground mb-4 leading-[1.05]">Find your people.<br />Form your team.</h1>
       <p className="text-lg text-gray-600 max-w-[520px] mx-auto mb-11 leading-[1.7]">Match with classmates by skills, schedule, and work style.</p>
       <div className="flex gap-3.5 justify-center">
-        <Button className="px-9 py-3.5 text-base h-auto" onClick={()=>go("signup-role")}>Get Started</Button>
-        <Button variant="outline" className="px-9 py-3.5 text-base h-auto" onClick={()=>go("login")}>Log In</Button>
+        <Button className="px-9 py-3.5 text-base h-auto" onClick={() => go("signup-role")}>Get Started</Button>
+        <Button variant="outline" className="px-9 py-3.5 text-base h-auto" onClick={() => go("login")}>Log In</Button>
       </div>
     </div>
     <div className="max-w-[880px] mx-auto px-6 pb-[100px] grid grid-cols-3 gap-5">
-      {(["Discover","Compare","Connect"] as const).map((t,i)=>{
-        const descs = ["Browse available teammates.","Compare schedules, skills, and work style.","Message and form your group."];
-        const icons = [<Icon.search key="s" size={32} />,<Icon.balance key="b" size={32} />,<Icon.chat key="c" size={32} />];
+      {(["Discover", "Compare", "Connect"] as const).map((t, i) => {
+        const descs = ["Browse available teammates.", "Compare schedules, skills, and work style.", "Message and form your group."];
+        const icons = [<Icon.search key="s" size={32} />, <Icon.balance key="b" size={32} />, <Icon.chat key="c" size={32} />];
         return (
           <Card key={i} className="px-7 py-8 gap-0 shadow-none rounded-[14px]">
             <div className="mb-3.5">{icons[i]}</div>
@@ -217,13 +507,13 @@ function Landing({ go }: GoProps) {
 
 // Signup Role
 function SignupRole({ go }: GoProps) {
-  return <div className="bg-background min-h-screen pb-16">
+  return <div className="bg-background min-h-screen pb-6">
     <Nav go={go} />
     <div className="max-w-[500px] mx-auto py-14 px-6">
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Join unitor</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed">How will you use unitor?</p>
-      {[{i:<Icon.graduation size={24} />,t:"Student",d:"Find and join project groups",to:"signup-s"},{i:<Icon.clipboard size={24} />,t:"TA / Instructor",d:"Create courses and manage groups",to:"signup-t"}].map(r=>(
-        <Card key={r.t} className="p-5 mb-3.5 shadow-none cursor-pointer flex-row items-center gap-4 hover:border-gray-300 hover:shadow-sm transition-colors" onClick={()=>go(r.to)}>
+      {[{ i: <Icon.graduation size={24} />, t: "Student", d: "Find and join project groups", to: "signup-s" }, { i: <Icon.clipboard size={24} />, t: "TA / Instructor", d: "Create courses and manage groups", to: "signup-t" }].map(r => (
+        <Card key={r.t} className="p-5 mb-3.5 shadow-none cursor-pointer flex-row items-center gap-4 hover:border-gray-300 hover:shadow-sm transition-colors" onClick={() => go(r.to)}>
           <div className="w-[50px] h-[50px] rounded-xl bg-gray-50 flex items-center justify-center">{r.i}</div>
           <div className="flex-1"><div className="text-base font-semibold">{r.t}</div><div className="text-sm text-gray-500">{r.d}</div></div>
           <span className="text-gray-300 text-lg">→</span>
@@ -236,9 +526,16 @@ function SignupRole({ go }: GoProps) {
 // Signup Form
 function SignupForm({ role, go }: RoleGoProps) {
   const [showError, setShowError] = useState(false);
+  const [emailError, setEmailError] = useState(false);
+  const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
   const handleSubmit = () => {
+    if (email === "unknown@mail.utoronto.ca") {
+      setEmailError(true);
+      return;
+    }
+    setEmailError(false);
     if (pw !== pw2 && pw2.length > 0) {
       setShowError(true);
       return;
@@ -246,11 +543,11 @@ function SignupForm({ role, go }: RoleGoProps) {
     setShowError(false);
     go("verify");
   };
-  return <div className="bg-background min-h-screen pb-16">
-    <Nav go={go} right={<span className="text-[13px] text-gray-500">{role==="t"?"TA / Instructor":"Student"}</span>} />
+  return <div className="bg-background min-h-screen pb-6">
+    <Nav go={go} right={<span className="text-[13px] text-gray-500">{role === "t" ? "TA / Instructor" : "Student"}</span>} />
     <div className="max-w-[500px] mx-auto py-14 px-6">
       <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 1 of 2</div>
-      <Progress value={(1/2)*100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
+      <Progress value={(1 / 2) * 100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Create your account</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed">Verification link will be sent to your email.</p>
       <F l="Full Name" id="signup-name"><Input id="signup-name" placeholder="e.g. John Doe" /></F>
@@ -263,10 +560,15 @@ function SignupForm({ role, go }: RoleGoProps) {
           </SelectContent>
         </Select>
       </F>
-      <F l="University Email" id="signup-email"><Input id="signup-email" placeholder="you@mail.utoronto.ca" /></F>
+      <div className="mb-[18px]">
+        <Label htmlFor="signup-email" className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">University Email</Label>
+        <Input id="signup-email" placeholder="yourid@mail.utoronto.ca" value={email} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEmail(e.target.value); setEmailError(false); }} className={emailError ? "border-danger" : ""} />
+        <p className="text-[13px] text-gray-500 mt-1.5">Must match your course enrollment email.</p>
+        {emailError && <p className="text-[13px] text-danger mt-1">Your email was not found in this course. Contact your TA.</p>}
+      </div>
       <div className="grid grid-cols-2 gap-3 mb-1">
-        <F l="Password" id="signup-pw"><Input id="signup-pw" type="password" placeholder="Min 8 characters" value={pw} onChange={(e: React.ChangeEvent<HTMLInputElement>)=>{setPw(e.target.value);setShowError(false);}} /></F>
-        <F l="Confirm Password" id="signup-pw2"><Input id="signup-pw2" type="password" placeholder="Re-enter" className={showError ? "border-danger" : ""} value={pw2} onChange={(e: React.ChangeEvent<HTMLInputElement>)=>{setPw2(e.target.value);setShowError(false);}} /></F>
+        <F l="Password" id="signup-pw"><Input id="signup-pw" type="password" placeholder="Min 8 characters" value={pw} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setPw(e.target.value); setShowError(false); }} /></F>
+        <F l="Confirm Password" id="signup-pw2"><Input id="signup-pw2" type="password" placeholder="Re-enter" className={showError ? "border-danger" : ""} value={pw2} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setPw2(e.target.value); setShowError(false); }} /></F>
       </div>
       {showError && <div className="text-[13px] text-danger mb-4">Passwords don't match.</div>}
       {!showError && <div className="mb-5" />}
@@ -277,15 +579,15 @@ function SignupForm({ role, go }: RoleGoProps) {
 
 // Email Verify
 function Verify({ role, go }: RoleGoProps) {
-  return <div className="bg-background min-h-screen pb-16">
+  return <div className="bg-background min-h-screen pb-6">
     <Nav go={go} />
     <div className="max-w-[500px] mx-auto pt-20 px-6 text-center">
       <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 2 of 2</div>
-      <Progress value={(2/2)*100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
+      <Progress value={(2 / 2) * 100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
       <div className="mb-5 flex justify-center"><Icon.email size={48} /></div>
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px] text-center">Check your inbox</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed text-center">We sent a link to <strong>j.doe@mail.utoronto.ca</strong></p>
-      <Button className="w-full px-7 py-3 h-auto" onClick={()=>go(role==="t"?"ta-dash":"dash")}>I've Verified My Email</Button>
+      <Button className="w-full px-7 py-3 h-auto" onClick={() => go(role === "t" ? "ta-dash" : "dash")}>I've Verified My Email</Button>
       <div className="mt-3.5"><Button variant="link" className="text-foreground">Resend email</Button></div>
     </div>
   </div>;
@@ -293,20 +595,20 @@ function Verify({ role, go }: RoleGoProps) {
 
 // Student Dashboard
 function Dash({ go }: GoProps) {
-  return <div className="bg-background min-h-screen pb-16">
-    <Nav go={go} right={<div className="flex items-center gap-4"><Button variant="outline" size="sm" className="px-4" onClick={()=>go("board")}>Board</Button><Button variant="outline" size="sm" className="inline-flex items-center gap-1.5 px-4" onClick={()=>go("inbox")}><Icon.chat size={16} /> Messages</Button><Button variant="outline" size="sm" className="px-4" onClick={()=>go("mygroup")}>My Group</Button><span className="text-sm text-gray-600">John</span><Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-[13px] font-bold">JD</AvatarFallback></Avatar></div>} />
+  return <div className="bg-background min-h-screen pb-6">
+    <Nav go={go} right={<div className="flex items-center gap-4"><Button variant="outline" size="sm" className="px-4" onClick={() => go("mygroup")}>My Group</Button><span className="text-sm text-gray-600">John</span><Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-[13px] font-bold">JD</AvatarFallback></Avatar></div>} />
     <div className="max-w-[680px] mx-auto py-14 px-6">
       <div className="flex justify-between items-center mb-7">
         <div><div className="text-sm text-gray-500 mb-0.5">Welcome back,</div><h1 className="text-[28px] font-bold text-foreground -tracking-[0.5px]">My Courses</h1></div>
-        <Button size="sm" className="px-4" onClick={()=>go("join")}>+ Join a Course</Button>
+        <Button size="sm" className="px-4" onClick={() => go("join")}>+ Join a Course</Button>
       </div>
       <Card className="py-[52px] px-6 mb-3.5 gap-0 shadow-none text-center border-dashed border-gray-300">
         <div className="mb-3 flex justify-center"><Icon.books size={36} /></div>
         <p className="text-[15px] text-gray-500 mb-4">No courses yet.</p>
-        <Button variant="outline" size="sm" className="px-4 mx-auto" onClick={()=>go("join")}>Join your first course</Button>
+        <Button variant="outline" size="sm" className="px-4 mx-auto" onClick={() => go("join")}>Join your first course</Button>
       </Card>
       <div className="mt-2.5" />
-      <Card className="p-5 mb-3.5 gap-0 shadow-none cursor-pointer hover:border-gray-300 hover:shadow-sm transition-colors" onClick={()=>go("board")}>
+      <Card className="p-5 mb-3.5 gap-0 shadow-none cursor-pointer hover:border-gray-300 hover:shadow-sm transition-colors" onClick={() => go("board")}>
         <div className="flex justify-between items-start">
           <div><div className="text-lg font-semibold">CSC318</div><div className="text-sm text-gray-500">The Design of Interactive Computational Media</div><div className="text-[13px] text-gray-400 mt-1">Winter 2026 · Section 201</div></div>
           <Badge variant="success">Active</Badge>
@@ -321,46 +623,46 @@ function Dash({ go }: GoProps) {
 // Join Course
 function Join({ go }: GoProps) {
   const [step, setStep] = useState(0);
-  return <div className="bg-background min-h-screen pb-16">
+  return <div className="bg-background min-h-screen pb-6">
     <Nav go={go} />
     <div className="max-w-[500px] mx-auto py-14 px-6">
-      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={()=>go("dash")}>← Back to Dashboard</Button>
-      {step===0?<>
+      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={() => go("dash")}>← Back to Dashboard</Button>
+      {step === 0 ? <>
         <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Join a Course</h1>
         <p className="text-base text-gray-600 mb-9 leading-relaxed">Enter course code from your TA.</p>
         <F l="Course Code"><Input className="text-[22px] font-bold tracking-[6px] text-center py-[18px] h-auto" placeholder="ABC123" /></F>
-        <Button className="w-full px-7 py-3 h-auto" onClick={()=>setStep(1)}>Look Up</Button>
-      </>:
-      <>
-        <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Confirm Course</h1>
-        <p className="text-base text-gray-600 mb-9 leading-relaxed">Is this the right one?</p>
-        <Card className="p-5 gap-0 shadow-none bg-gray-50">
-          <div className="text-[22px] font-bold mb-1">CSC318</div>
-          <div className="text-[15px] text-gray-600">The Design of Interactive Computational Media</div>
-          <div className="text-sm text-gray-400 mb-3">Winter 2026 · University of Toronto</div>
-          <Separator className="my-3 bg-gray-100" />
-          <div className="grid grid-cols-2 gap-1.5 text-[13px] text-gray-500">
-            <span>Sections: 201, 202, 203</span><span>Group size: 4–6</span>
-            <span>Deadline: Mar 15, 2026</span><span>Code: W543M7</span>
+        <Button className="w-full px-7 py-3 h-auto" onClick={() => setStep(1)}>Look Up</Button>
+      </> :
+        <>
+          <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Confirm Course</h1>
+          <p className="text-base text-gray-600 mb-9 leading-relaxed">Is this the right one?</p>
+          <Card className="p-5 gap-0 shadow-none bg-gray-50">
+            <div className="text-[22px] font-bold mb-1">CSC318</div>
+            <div className="text-[15px] text-gray-600">The Design of Interactive Computational Media</div>
+            <div className="text-sm text-gray-400 mb-3">Winter 2026 · University of Toronto</div>
+            <Separator className="my-3 bg-gray-100" />
+            <div className="grid grid-cols-2 gap-1.5 text-[13px] text-gray-500">
+              <span>Sections: 201, 202, 203</span><span>Group size: 4–6</span>
+              <span>Deadline: Mar 15, 2026</span><span>Code: W543M7</span>
+            </div>
+          </Card>
+          <div className="flex gap-3 mt-6">
+            <Button variant="outline" className="flex-1 px-7 py-3 h-auto" onClick={() => setStep(0)}>Back</Button>
+            <Button className="flex-1 px-7 py-3 h-auto" onClick={() => go("prof-0")}>Join & Set Up Profile</Button>
           </div>
-        </Card>
-        <div className="flex gap-3 mt-6">
-          <Button variant="outline" className="flex-1 px-7 py-3 h-auto" onClick={()=>setStep(0)}>Back</Button>
-          <Button className="flex-1 px-7 py-3 h-auto" onClick={()=>go("prof-0")}>Join & Set Up Profile</Button>
-        </div>
-      </>}
+        </>}
     </div>
   </div>;
 }
 
 // Profile 0 - Name & Photo
 function Prof0({ go }: GoProps) {
-  return <div className="bg-background min-h-screen pb-16">
+  return <div className="bg-background min-h-screen pb-6">
     <Nav go={go} right={<span className="text-[13px] text-gray-500 leading-relaxed">CSC318 · Profile</span>} />
     <div className="max-w-[680px] mx-auto py-14 px-6">
-      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={()=>go("join")}>← Back</Button>
+      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={() => go("join")}>← Back</Button>
       <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 1 of 4</div>
-      <Progress value={(1/4)*100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
+      <Progress value={(1 / 4) * 100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Your Profile</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed">How teammates will see you.</p>
       <div className="text-center mb-7">
@@ -370,88 +672,89 @@ function Prof0({ go }: GoProps) {
         <Button variant="outline" size="sm" className="px-4">Upload Photo</Button>
       </div>
       <F l="Display Name"><Input placeholder="e.g. John D." /></F>
-      <Button className="w-full px-7 py-3 h-auto" onClick={()=>go("prof-1")}>Next</Button>
+      <Button className="w-full px-7 py-3 h-auto" onClick={() => go("prof-1")}>Next</Button>
     </div>
   </div>;
 }
 
 // Profile 1 - Skills
 function Prof1({ go }: GoProps) {
-  const pre = ["UI Design","Frontend Dev","Backend","User Research","Prototyping","Data Analysis","UX Writing","Project Mgmt"];
-  const [sel, setSel] = useState<string[]>(["UI Design","User Research"]);
-  const [rat, setRat] = useState<Record<string, string>>({"UI Design":"Expert","User Research":"Proficient"});
-  const lvl = ["Beginner","Intermediate","Proficient","Expert"];
-  const tog = (sk: string) => { if(sel.includes(sk)){setSel(sel.filter(x=>x!==sk));const r={...rat};delete r[sk];setRat(r);}else{setSel([...sel,sk]);setRat({...rat,[sk]:"Intermediate"});} };
-  return <div className="bg-background min-h-screen pb-16">
+  const pre = ["UI Design", "Frontend Dev", "Backend", "User Research", "Prototyping", "Data Analysis", "UX Writing", "Project Mgmt"];
+  const [sel, setSel] = useState<string[]>(["UI Design", "User Research"]);
+  const [rat, setRat] = useState<Record<string, string>>({ "UI Design": "Expert", "User Research": "Proficient" });
+  const lvl = ["Beginner", "Intermediate", "Proficient", "Expert"];
+  const tog = (sk: string) => { if (sel.includes(sk)) { setSel(sel.filter(x => x !== sk)); const r = { ...rat }; delete r[sk]; setRat(r); } else { setSel([...sel, sk]); setRat({ ...rat, [sk]: "Intermediate" }); } };
+  return <div className="bg-background min-h-screen pb-6">
     <Nav go={go} right={<span className="text-[13px] text-gray-500 leading-relaxed">CSC318 · Profile</span>} />
     <div className="max-w-[680px] mx-auto py-14 px-6">
-      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={()=>go("prof-0")}>← Back</Button>
+      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={() => go("prof-0")}>← Back</Button>
       <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 2 of 4</div>
-      <Progress value={(2/4)*100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
+      <Progress value={(2 / 4) * 100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Your Skills</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed">Select or add skills.</p>
       <div className="mb-5">
-        {pre.map(sk=><button key={sk} type="button" aria-pressed={sel.includes(sk)} className={cn("inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium cursor-pointer mr-1.5 mb-2 border-[1.5px] transition-colors", sel.includes(sk) ? "bg-primary text-primary-foreground border-primary" : "bg-gray-100 text-gray-600 border-gray-200 hover:border-gray-300")} onClick={()=>tog(sk)}>{sk}</button>)}
+        {pre.map(sk => <button key={sk} type="button" aria-pressed={sel.includes(sk)} className={cn("inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium cursor-pointer mr-1.5 mb-2 border-[1.5px] transition-colors", sel.includes(sk) ? "bg-primary text-primary-foreground border-primary" : "bg-gray-100 text-gray-600 border-gray-200 hover:border-gray-300")} onClick={() => tog(sk)}>{sk}</button>)}
         <button type="button" className="inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium cursor-pointer mr-1.5 mb-2 border-[1.5px] bg-gray-100 text-gray-600 border-gray-200 border-dashed">+ Custom</button>
       </div>
-      {sel.length>0&&<Card className="p-0 mb-6 gap-0 shadow-none overflow-hidden">
-        {sel.map((sk,i)=><div key={sk} className={cn("flex justify-between items-center px-5 py-3", i<sel.length-1 && "border-b border-gray-100")}>
+      {sel.length > 0 && <Card className="p-0 mb-6 gap-0 shadow-none overflow-hidden">
+        {sel.map((sk, i) => <div key={sk} className={cn("flex justify-between items-center px-5 py-3", i < sel.length - 1 && "border-b border-gray-100")}>
           <span className="text-sm font-medium">{sk}</span>
-          <div className="flex gap-1">{lvl.map(l=><button key={l} type="button" aria-pressed={rat[sk]===l} className={cn("py-1 px-2.5 rounded-md text-xs font-medium cursor-pointer transition-colors", rat[sk]===l ? "bg-primary text-primary-foreground" : "bg-gray-100 text-gray-500 hover:bg-gray-200")} onClick={()=>setRat({...rat,[sk]:l})}>{l}</button>)}</div>
+          <div className="flex gap-1">{lvl.map(l => <button key={l} type="button" aria-pressed={rat[sk] === l} className={cn("py-1 px-2.5 rounded-md text-xs font-medium cursor-pointer transition-colors", rat[sk] === l ? "bg-primary text-primary-foreground" : "bg-gray-100 text-gray-500 hover:bg-gray-200")} onClick={() => setRat({ ...rat, [sk]: l })}>{l}</button>)}</div>
         </div>)}
       </Card>}
-      <Button className="w-full px-7 py-3 h-auto" onClick={()=>go("prof-2")}>Next</Button>
+      <Button className="w-full px-7 py-3 h-auto" onClick={() => go("prof-2")}>Next</Button>
     </div>
   </div>;
 }
 
 // Profile 2 - Section & Schedule
 function Prof2({ go }: GoProps) {
-  const [camp, setCamp] = useState<Set<string>>(new Set(["Mon-0","Wed-0","Mon-1","Wed-1","Fri-1"]));
-  const [work, setWork] = useState<Set<string>>(new Set(["Mon-1","Tue-1","Wed-1","Thu-2","Fri-1"]));
-  return <div className="bg-background min-h-screen pb-16">
+  const [sched, setSched] = useState<Set<string>>(new Set(["Mon-1", "Tue-1", "Wed-1", "Thu-2", "Fri-1"]));
+  const [flexible, setFlexible] = useState(false);
+  return <div className="bg-background min-h-screen pb-6">
     <Nav go={go} right={<span className="text-[13px] text-gray-500 leading-relaxed">CSC318 · Profile</span>} />
     <div className="max-w-[680px] mx-auto py-14 px-6">
-      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={()=>go("prof-1")}>← Back</Button>
+      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={() => go("prof-1")}>← Back</Button>
       <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 3 of 4</div>
-      <Progress value={(3/4)*100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
+      <Progress value={(3 / 4) * 100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Section & Schedule</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed">For matching compatible schedules.</p>
-      <F l="Your Section">
-        <Select defaultValue="201">
-          <SelectTrigger className="w-full"><SelectValue placeholder="Select section..." /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="201">Section 201</SelectItem>
-            <SelectItem value="202">Section 202</SelectItem>
-            <SelectItem value="203">Section 203</SelectItem>
-          </SelectContent>
-        </Select>
-      </F>
-      <TGrid sel={camp} set={setCamp} label="When are you on campus?" />
-      <TGrid sel={work} set={setWork} label="When can you work on the project?" />
-      <Button className="w-full px-7 py-3 h-auto" onClick={()=>go("prof-3")}>Next</Button>
+      <div className="mb-[18px]">
+        <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Your Section</Label>
+        <div className="flex items-center gap-2 py-2 px-3 bg-gray-50 rounded-md border border-gray-200">
+          <span className="text-sm font-medium">L0201</span>
+          <span className="text-[11px] text-gray-400 ml-auto">Pre-filled from enrollment</span>
+        </div>
+      </div>
+      <p className="text-[13px] text-gray-500 mb-3">Click or drag to select available times.</p>
+      <TGrid sel={sched} set={setSched} label="When can you work on the project?" disabled={flexible} />
+      <label className="flex items-center gap-2 -mt-4 mb-7 cursor-pointer">
+        <Checkbox checked={flexible} onCheckedChange={(v) => setFlexible(v === true)} />
+        <span className="text-[13px] text-gray-600">Flexible / Not sure</span>
+      </label>
+      <Button className="w-full px-7 py-3 h-auto" onClick={() => go("prof-3")}>Next</Button>
     </div>
   </div>;
 }
 
 // Profile 3 - Communication & Bio
 function Prof3({ go }: GoProps) {
-  const plats = ["Discord","WhatsApp","Email","Instagram DM","iMessage","KakaoTalk"];
+  const plats = ["Discord", "WhatsApp", "Email", "Instagram DM", "iMessage", "KakaoTalk"];
   const [sp, setSp] = useState<string[]>(["Discord"]);
-  const tp = (p: string) => setSp(sp.includes(p)?sp.filter(x=>x!==p):[...sp,p]);
-  return <div className="bg-background min-h-screen pb-16">
+  const tp = (p: string) => setSp(sp.includes(p) ? sp.filter(x => x !== p) : [...sp, p]);
+  return <div className="bg-background min-h-screen pb-6">
     <Nav go={go} right={<span className="text-[13px] text-gray-500 leading-relaxed">CSC318 · Profile</span>} />
     <div className="max-w-[680px] mx-auto py-14 px-6">
-      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={()=>go("prof-2")}>← Back</Button>
+      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={() => go("prof-2")}>← Back</Button>
       <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 4 of 4</div>
-      <Progress value={(4/4)*100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
+      <Progress value={(4 / 4) * 100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Communication & About You</h1>
       <div className="mb-5">
         <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Preferred Platforms</Label>
-        <div className="flex flex-wrap gap-1.5">{plats.map(p=><button key={p} type="button" aria-pressed={sp.includes(p)} className={cn("inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium cursor-pointer border-[1.5px] transition-colors", sp.includes(p) ? "bg-primary text-primary-foreground border-primary" : "bg-gray-100 text-gray-600 border-gray-200 hover:border-gray-300")} onClick={()=>tp(p)}>{p}</button>)}</div>
+        <div className="flex flex-wrap gap-1.5">{plats.map(p => <button key={p} type="button" aria-pressed={sp.includes(p)} className={cn("inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium cursor-pointer border-[1.5px] transition-colors", sp.includes(p) ? "bg-primary text-primary-foreground border-primary" : "bg-gray-100 text-gray-600 border-gray-200 hover:border-gray-300")} onClick={() => tp(p)}>{p}</button>)}</div>
       </div>
-      {sp.length>0&&<div className={cn("grid gap-3 mb-5", sp.length>1?"grid-cols-2":"grid-cols-1")}>
-        {sp.map(p=><F key={p} l={`${p} handle`}><Input placeholder={`Your ${p} username`} /></F>)}
+      {sp.length > 0 && <div className={cn("grid gap-3 mb-5", sp.length > 1 ? "grid-cols-2" : "grid-cols-1")}>
+        {sp.map(p => <F key={p} l={`${p} handle`}><Input placeholder={`Your ${p} username`} /></F>)}
       </div>}
       <Separator className="my-6 bg-gray-100" />
       <F l="About You"><Textarea className="min-h-[100px] resize-y" placeholder="About you and your ideal group" /><div className="text-[13px] text-gray-500 leading-relaxed text-right mt-1">0/300</div></F>
@@ -461,20 +764,20 @@ function Prof3({ go }: GoProps) {
           <Input placeholder="Label" /><Input placeholder="https://..." /><Button variant="outline" size="sm" className="px-4">Add</Button>
         </div>
       </div>
-      <Button className="w-full px-7 py-3 h-auto" onClick={()=>go("prof-done")}>Complete Profile</Button>
+      <Button className="w-full px-7 py-3 h-auto" onClick={() => go("prof-done")}>Complete Profile</Button>
     </div>
   </div>;
 }
 
 // Profile Complete Confirmation
 function ProfDone({ go }: GoProps) {
-  return <div className="bg-background min-h-screen pb-16">
+  return <div className="bg-background min-h-screen pb-6">
     <Nav go={go} />
     <div className="max-w-[500px] mx-auto pt-[100px] px-6 text-center">
       <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-success-bg flex items-center justify-center"><span className="text-3xl text-success">✓</span></div>
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Profile Complete!</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed">You're ready to find teammates.</p>
-      <Button className="px-9 py-3.5 text-base h-auto" onClick={()=>go("board")}>Go to Matching Board</Button>
+      <Button className="px-9 py-3.5 text-base h-auto" onClick={() => go("board")}>Go to Matching Board</Button>
     </div>
   </div>;
 }
@@ -482,7 +785,7 @@ function ProfDone({ go }: GoProps) {
 // TA Admin Data
 const ADMIN_DATA = {
   atRisk: [
-    { name: "Priya Sharma", sec: "201", init: "PS", daysSinceActivity: 8, skills: ["Backend","Data Analysis"] },
+    { name: "Priya Sharma", sec: "201", init: "PS", daysSinceActivity: 8, skills: ["Backend", "Data Analysis"] },
     { name: "Omar Ali", sec: "203", init: "OA", daysSinceActivity: 5, skills: ["Project Mgmt"] },
     { name: "Wei Zhang", sec: "202", init: "WZ", daysSinceActivity: 12, skills: ["Frontend Dev"] },
   ],
@@ -494,9 +797,9 @@ const ADMIN_DATA = {
     { date: "Mar 8", grouped: 28, ungrouped: 14 },
   ],
   sectionBreakdown: [
-    { section: "201", total: 18, grouped: 12, ungrouped: 6 },
-    { section: "202", total: 14, grouped: 10, ungrouped: 4 },
-    { section: "203", total: 10, grouped: 6, ungrouped: 4 },
+    { section: "201", total: 18, grouped: 12, ungrouped: 6, searching: 4, forming: 2 },
+    { section: "202", total: 14, grouped: 10, ungrouped: 4, searching: 2, forming: 2 },
+    { section: "203", total: 10, grouped: 6, ungrouped: 4, searching: 3, forming: 1 },
   ],
   skillDemand: [
     { skill: "Frontend Dev", seekers: 12, available: 5 },
@@ -506,11 +809,25 @@ const ADMIN_DATA = {
   ],
 };
 
+const UNGROUPED_STUDENTS = [
+  { name: "Omar Ali", sec: "L0101", requestsSent: 0, requestsReceived: 1, lastActive: "3 days ago" },
+  { name: "Priya S.", sec: "L0201", requestsSent: 2, requestsReceived: 0, lastActive: "1 day ago" },
+  { name: "Chris Lee", sec: "L0101", requestsSent: 0, requestsReceived: 0, lastActive: "5 days ago" },
+];
+
+const POST_DEADLINE_GROUPS = [
+  { id: "G1", members: ["Jesse Nguyen", "Sofia Rodriguez", "David Park"], autoAssigned: false },
+  { id: "G2", members: ["Marcus Lee", "Lisa Wang", "Kai Tanaka"], autoAssigned: false },
+  { id: "G3", members: ["Omar Ali", "Chris Lee", "Priya S.", "Elena Popov"], autoAssigned: true },
+  { id: "G4", members: ["Wei Zhang", "Aisha Khan"], autoAssigned: true },
+];
+
 // TA Dashboard
 function TADash({ go }: GoProps) {
   const [copied, setCopied] = useState(false);
   const [tab, setTab] = useState<"overview" | "students" | "alerts">("overview");
   const [studentFilter, setStudentFilter] = useState("all");
+  const [postDeadline, setPostDeadline] = useState(false);
   const handleCopy = () => {
     navigator.clipboard.writeText("W543M7").then(() => {
       setCopied(true);
@@ -518,21 +835,21 @@ function TADash({ go }: GoProps) {
     });
   };
   const filteredAdminStudents = STU.filter(s => {
-    if (studentFilter === "ungrouped") return s.status !== "confirmed";
+    if (studentFilter === "ungrouped") return s.status !== "grouped";
     if (studentFilter === "atrisk") return ADMIN_DATA.atRisk.some(r => r.name === s.name);
     return true;
   });
-  return <div className="bg-background min-h-screen pb-16">
+  return <div className="bg-background min-h-screen pb-6">
     <Nav go={go} right={<div className="flex items-center gap-2.5"><span className="text-sm text-gray-600">Prof. Truong</span><Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-xs font-bold">KT</AvatarFallback></Avatar></div>} />
     <div className="max-w-[780px] mx-auto py-14 px-6">
       <div className="flex justify-between items-center mb-7">
         <div><div className="text-sm text-gray-500 mb-0.5">TA Dashboard</div><h1 className="text-[28px] font-bold text-foreground -tracking-[0.5px]">CSC318</h1></div>
-        <Button size="sm" className="px-4" onClick={()=>go("ta-create")}>+ Create Course</Button>
+        <Button size="sm" className="px-4" onClick={() => go("ta-create")}>+ Create Course</Button>
       </div>
 
       {/* Tab bar */}
       <div className="flex gap-1 mb-6" role="tablist">
-        {(["overview","students","alerts"] as const).map(t => (
+        {(["overview", "students", "alerts"] as const).map(t => (
           <button key={t} type="button" role="tab" aria-selected={tab === t} className={cn("py-[7px] px-4 rounded-lg text-[13px] font-semibold cursor-pointer capitalize relative", tab === t ? "bg-primary text-primary-foreground" : "bg-gray-100 text-gray-500")} onClick={() => setTab(t)}>
             {t}
             {t === "alerts" && <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-danger text-white text-[9px] font-bold flex items-center justify-center">{ADMIN_DATA.atRisk.length}</span>}
@@ -548,10 +865,16 @@ function TADash({ go }: GoProps) {
             <Badge variant="success">Active</Badge>
           </div>
           <div className="grid grid-cols-4 gap-4 text-center mb-4">
-            {([["42","Students"],["6","Groups"],["14","Ungrouped"],["12 days left","Deadline"]] as const).map(([v,l])=><div key={l}><div className={cn("font-bold", v === "12 days left" ? "text-base" : "text-2xl")}>{v}</div><div className="text-xs text-gray-500">{l}</div></div>)}
+            {([["42", "Students"], ["6", "Groups"], ["14", "Ungrouped"], ["12 days left", "Deadline"]] as const).map(([v, l]) => <div key={l}><div className={cn("font-bold", v === "12 days left" ? "text-base" : "text-2xl")}>{v}</div><div className="text-xs text-gray-500">{l}</div></div>)}
           </div>
-          <div className="h-[3px] bg-gray-100 rounded-sm mb-1"><div className="h-full w-[67%] bg-success rounded-sm" /></div>
-          <div className="text-xs text-gray-500 mb-4">67% of students grouped</div>
+          <div className="mb-4">
+            <div className="flex justify-between items-center mb-1.5">
+              <span className="text-[13px] font-medium">Group confirmation progress</span>
+              <span className="text-[13px] font-bold text-success">21%</span>
+            </div>
+            <Progress value={21} className="h-2" />
+            <div className="text-[11px] text-gray-500 mt-1">10 of 45 students confirmed</div>
+          </div>
           <Separator className="my-3.5 bg-gray-100" />
           <div className="flex justify-between items-center">
             <div><div className="text-[13px] font-semibold mb-1">Invite Code</div><code className="py-2 px-4 bg-gray-50 rounded-md text-lg font-bold tracking-[3px] border border-gray-200">W543M7</code></div>
@@ -583,20 +906,27 @@ function TADash({ go }: GoProps) {
         {/* Section Breakdown */}
         <Card className="p-5 gap-0 shadow-none mb-4">
           <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-3 block">Section Breakdown</Label>
-          <div className="overflow-hidden rounded-lg border border-gray-200">
-            <table className="w-full text-sm">
-              <thead><tr className="bg-gray-50"><th className="text-left py-2 px-3 text-[11px] font-semibold text-gray-500">Section</th><th className="text-center py-2 px-3 text-[11px] font-semibold text-gray-500">Total</th><th className="text-center py-2 px-3 text-[11px] font-semibold text-gray-500">Grouped</th><th className="text-center py-2 px-3 text-[11px] font-semibold text-gray-500">Ungrouped</th></tr></thead>
-              <tbody>
-                {ADMIN_DATA.sectionBreakdown.map((s, i) => (
-                  <tr key={s.section} className={i < ADMIN_DATA.sectionBreakdown.length - 1 ? "border-b border-gray-100" : ""}>
-                    <td className="py-2 px-3 font-medium">{s.section}</td>
-                    <td className="py-2 px-3 text-center">{s.total}</td>
-                    <td className="py-2 px-3 text-center text-success font-semibold">{s.grouped}</td>
-                    <td className="py-2 px-3 text-center text-danger font-semibold">{s.ungrouped}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="flex flex-col gap-3">
+            {ADMIN_DATA.sectionBreakdown.map((s) => (
+              <div key={s.section} className="rounded-lg border border-gray-200 p-3">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm font-semibold">Section {s.section}</span>
+                  <span className="text-xs text-gray-500">{s.total} students</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: "Solo", count: s.searching, cls: "text-danger" },
+                    { label: "Open Group", count: s.forming, cls: "text-warning" },
+                    { label: "Grouped", count: s.grouped, cls: "text-success" },
+                  ].map(({ label, count, cls }) => (
+                    <div key={label} className="text-center py-2 bg-gray-50 rounded-lg">
+                      <div className={cn("text-lg font-bold", cls)}>{count}</div>
+                      <div className="text-[10px] text-gray-500">{label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         </Card>
 
@@ -620,6 +950,70 @@ function TADash({ go }: GoProps) {
             </table>
           </div>
         </Card>
+
+        {/* Ungrouped Students */}
+        <Card className="p-5 gap-0 shadow-none mt-4">
+          <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-3 block">Ungrouped Students</Label>
+          <div className="overflow-hidden rounded-lg border border-gray-200">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="text-left py-2 px-3 text-[11px] font-semibold text-gray-500">Name</th>
+                  <th className="text-center py-2 px-3 text-[11px] font-semibold text-gray-500">Section</th>
+                  <th className="text-center py-2 px-3 text-[11px] font-semibold text-gray-500">Sent</th>
+                  <th className="text-center py-2 px-3 text-[11px] font-semibold text-gray-500">Received</th>
+                  <th className="text-center py-2 px-3 text-[11px] font-semibold text-gray-500">Last Active</th>
+                  <th className="py-2 px-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {UNGROUPED_STUDENTS.map((st, i) => {
+                  const inactive = parseActivityMinutes(st.lastActive) > 3 * 24 * 60;
+                  return (
+                    <tr key={st.name} className={i < UNGROUPED_STUDENTS.length - 1 ? "border-b border-gray-100" : ""}>
+                      <td className="py-2 px-3 font-medium">{st.name}</td>
+                      <td className="py-2 px-3 text-center text-gray-500">{st.sec}</td>
+                      <td className="py-2 px-3 text-center">{st.requestsSent}</td>
+                      <td className="py-2 px-3 text-center">{st.requestsReceived}</td>
+                      <td className="py-2 px-3 text-center text-gray-500">{st.lastActive}</td>
+                      <td className="py-2 px-3 text-right">
+                        {inactive && <Badge variant="warning" className="text-[10px]">Inactive</Badge>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+
+        {/* Post-deadline demo toggle */}
+        <div className="flex justify-end mt-4">
+          <Button size="sm" variant="outline" className="text-xs" onClick={() => setPostDeadline(pd => !pd)}>
+            {postDeadline ? "Normal View" : "Post-deadline View"}
+          </Button>
+        </div>
+
+        {/* Post-deadline group list */}
+        {postDeadline && (
+          <Card className="p-5 gap-0 shadow-none mt-3">
+            <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-3 block">All Groups (confirmed + auto-assigned)</Label>
+            <div className="flex flex-col gap-2">
+              {POST_DEADLINE_GROUPS.map((g) => (
+                <div key={g.id} className="rounded-lg border border-gray-200 p-3">
+                  <div className="flex justify-between items-center mb-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold">Group {g.id}</span>
+                      {g.autoAssigned && <Badge variant="warning" className="text-[10px]">Auto-assigned</Badge>}
+                    </div>
+                    <Button size="sm" variant="outline" className="text-xs h-7 px-3" onClick={() => window.alert("Move student — stub")}>Move student</Button>
+                  </div>
+                  <div className="text-xs text-gray-500">{g.members.join(", ")}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
       </>}
 
       {/* Students tab */}
@@ -636,7 +1030,7 @@ function TADash({ go }: GoProps) {
           </Select>
         </div>
         {filteredAdminStudents.map((st, i) => {
-          const ss = SS[st.status];
+          const ss = SS[st.status] ?? { l: st.status, variant: "secondary" as const };
           return <Card key={i} className="p-4 mb-2.5 gap-0 shadow-none flex-row items-center gap-3">
             <Avatar className="size-9"><AvatarFallback className="bg-gray-200 text-gray-500 text-xs font-bold">{st.init}</AvatarFallback></Avatar>
             <div className="flex-1">
@@ -696,13 +1090,14 @@ function TADash({ go }: GoProps) {
 
 // TA Create Course
 function TACreate({ go }: GoProps) {
-  const [skills, setSkills] = useState<string[]>(["UI Design","Frontend Dev","Backend","User Research","Prototyping","Data Analysis"]);
-  const [secs, setSecs] = useState<string[]>(["201","202","203"]);
+  const [skills, setSkills] = useState<string[]>(["UI Design", "Frontend Dev", "Backend", "User Research", "Prototyping", "Data Analysis"]);
+  const [secs, setSecs] = useState<string[]>(["201", "202", "203"]);
   const [newSec, setNewSec] = useState("");
-  return <div className="bg-background min-h-screen pb-16">
+  const [uploaded, setUploaded] = useState(false);
+  return <div className="bg-background min-h-screen pb-6">
     <Nav go={go} />
     <div className="max-w-[680px] mx-auto py-14 px-6">
-      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={()=>go("ta-dash")}>← Back</Button>
+      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={() => go("ta-dash")}>← Back</Button>
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Create a Course</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed">Students join with this code.</p>
       <div className="grid grid-cols-2 gap-3 mb-1">
@@ -730,88 +1125,181 @@ function TACreate({ go }: GoProps) {
       <div className="mb-6">
         <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Sections</Label>
         <div className="flex flex-wrap gap-1.5 mb-2.5">
-          {secs.map(sc=><span key={sc} className="inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium border-[1.5px] bg-primary text-primary-foreground border-primary">{sc} <span className="ml-1.5 opacity-60 cursor-pointer" onClick={()=>setSecs(secs.filter(x=>x!==sc))}>×</span></span>)}
+          {secs.map(sc => <span key={sc} className="inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium border-[1.5px] bg-primary text-primary-foreground border-primary">{sc} <span className="ml-1.5 opacity-60 cursor-pointer" onClick={() => setSecs(secs.filter(x => x !== sc))}>×</span></span>)}
         </div>
         <div className="flex gap-2">
-          <Input className="w-[120px]" placeholder="e.g. 204" value={newSec} onChange={(e: React.ChangeEvent<HTMLInputElement>)=>setNewSec(e.target.value)} />
-          <Button variant="outline" size="sm" className="px-4" onClick={()=>{if(newSec.trim()){setSecs([...secs,newSec.trim()]);setNewSec("");}}}>+ Add</Button>
+          <Input className="w-[120px]" placeholder="e.g. 204" value={newSec} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewSec(e.target.value)} />
+          <Button variant="outline" size="sm" className="px-4" onClick={() => { if (newSec.trim()) { setSecs([...secs, newSec.trim()]); setNewSec(""); } }}>+ Add</Button>
         </div>
       </div>
 
       <div className="mb-7">
         <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skills for this Course</Label>
         <p className="text-[13px] text-gray-500 leading-relaxed mb-2.5">Students pick from these.</p>
-        <div>{skills.map(sk=><span key={sk} className="inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium cursor-pointer mr-1.5 mb-2 border-[1.5px] bg-primary text-primary-foreground border-primary">{sk} <span className="ml-1.5 opacity-60 cursor-pointer" onClick={()=>setSkills(skills.filter(x=>x!==sk))}>×</span></span>)}<span className="inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium cursor-pointer mr-1.5 mb-2 border-[1.5px] bg-gray-100 text-gray-600 border-gray-200 border-dashed">+ Add Skill</span></div>
+        <div>{skills.map(sk => <span key={sk} className="inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium cursor-pointer mr-1.5 mb-2 border-[1.5px] bg-primary text-primary-foreground border-primary">{sk} <span className="ml-1.5 opacity-60 cursor-pointer" onClick={() => setSkills(skills.filter(x => x !== sk))}>×</span></span>)}<span className="inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium cursor-pointer mr-1.5 mb-2 border-[1.5px] bg-gray-100 text-gray-600 border-gray-200 border-dashed">+ Add Skill</span></div>
       </div>
-      <Button className="w-full px-7 py-3 h-auto" onClick={()=>go("ta-dash")}>Create Course</Button>
+      <Separator className="my-6 bg-gray-100" />
+      <div className="mb-7">
+        <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Import Student Roster (Optional)</Label>
+        <p className="text-[13px] text-gray-500 leading-relaxed mb-3">Upload a CSV with columns: name, email, section.</p>
+        <Input type="file" accept=".csv" className="text-sm" onChange={() => setUploaded(true)} />
+        {uploaded && (
+          <div className="py-3 px-4 bg-success-bg rounded-lg border border-success-border mt-3">
+            <div className="text-[13px] font-bold text-success mb-1">✓ 45 students imported</div>
+            <div className="text-[12px] text-success">L0101: 23 students · L0201: 22 students</div>
+          </div>
+        )}
+      </div>
+      <Button className="w-full px-7 py-3 h-auto" onClick={() => go("ta-dash")}>Create Course</Button>
     </div>
   </div>;
 }
 
 // Student data
 const STU: Student[] = [
-  { name: "Jesse Nguyen", sec: "202", skills: ["Frontend Dev","Prototyping"], status: "searching", overlap: "8h/wk", init: "JN", bio: "Love building things. Looking for a design-focused team.", rat: {"Frontend Dev":"Proficient","Prototyping":"Expert"}, lastActive: "5 min ago", compatScore: 87, scheduleOverlapHrs: 8 },
-  { name: "Priya Sharma", sec: "201", skills: ["Backend","Data Analysis"], status: "searching", overlap: "0h/wk", init: "PS", bio: "Data nerd. Prefer async work.", rat: {"Backend":"Proficient","Data Analysis":"Expert"}, lastActive: "8 days ago", compatScore: 41, scheduleOverlapHrs: 0 },
-  { name: "Marcus Lee", sec: "201", skills: ["UI Design","Frontend Dev"], status: "talking", overlap: "5h/wk", init: "ML", bio: "Design + code. In talks with a group.", rat: {"UI Design":"Proficient","Frontend Dev":"Intermediate"}, lastActive: "20 min ago", compatScore: 72, scheduleOverlapHrs: 5 },
-  { name: "Aisha Khan", sec: "203", skills: ["Project Mgmt","UX Writing"], status: "searching", overlap: "3h/wk", init: "AK", bio: "Organized and reliable.", rat: {"Project Mgmt":"Expert","UX Writing":"Proficient"}, lastActive: "1 hour ago", compatScore: 65, scheduleOverlapHrs: 3 },
-  { name: "Tom Chen", sec: "201", skills: ["Backend","Prototyping"], status: "confirmed", overlap: "—", init: "TC", bio: "", rat: {}, lastActive: "2 days ago", compatScore: 0, scheduleOverlapHrs: 0 },
-  { name: "David Park", sec: "202", skills: ["Backend","Data Analysis"], status: "searching", overlap: "6h/wk", init: "DP", bio: "Full-stack developer interested in data-driven projects.", rat: {"Backend":"Expert","Data Analysis":"Proficient"}, lastActive: "15 min ago", compatScore: 76, scheduleOverlapHrs: 6 },
-  { name: "Lisa Wang", sec: "201", skills: ["Frontend Dev","UX Writing"], status: "searching", overlap: "4h/wk", init: "LW", bio: "I bridge the gap between design and development.", rat: {"Frontend Dev":"Proficient","UX Writing":"Intermediate"}, lastActive: "2 hours ago", compatScore: 68, scheduleOverlapHrs: 4 },
-  { name: "Omar Ali", sec: "203", skills: ["Project Mgmt"], status: "searching", overlap: "2h/wk", init: "OA", bio: "Experienced PM looking for a motivated team.", rat: {"Project Mgmt":"Expert"}, lastActive: "5 days ago", compatScore: 52, scheduleOverlapHrs: 2 },
-  { name: "Sofia Rodriguez", sec: "202", skills: ["UI Design","User Research"], status: "talking", overlap: "7h/wk", init: "SR", bio: "UX researcher passionate about accessible design.", rat: {"UI Design":"Intermediate","User Research":"Expert"}, lastActive: "10 min ago", compatScore: 81, scheduleOverlapHrs: 7 },
-  { name: "Wei Zhang", sec: "202", skills: ["Frontend Dev","Backend"], status: "searching", overlap: "9h/wk", init: "WZ", bio: "Full-stack dev. Strong in React and Node.", rat: {"Frontend Dev":"Expert","Backend":"Proficient"}, lastActive: "12 days ago", compatScore: 79, scheduleOverlapHrs: 9 },
-  { name: "Elena Popov", sec: "203", skills: ["Data Analysis","UX Writing"], status: "searching", overlap: "5h/wk", init: "EP", bio: "Research-oriented. Love working with data.", rat: {"Data Analysis":"Expert","UX Writing":"Intermediate"}, lastActive: "30 min ago", compatScore: 63, scheduleOverlapHrs: 5 },
-  { name: "Kai Tanaka", sec: "201", skills: ["Prototyping","UI Design"], status: "confirmed", overlap: "—", init: "KT", bio: "Figma wizard.", rat: {"Prototyping":"Expert","UI Design":"Proficient"}, lastActive: "3 days ago", compatScore: 0, scheduleOverlapHrs: 0 },
+  { name: "Jesse Nguyen", sec: "202", skills: ["Frontend Dev", "Prototyping"], status: "solo", contactStatus: "none", overlap: "8h/wk", init: "JN", bio: "Love building things. Looking for a design-focused team.", rat: { "Frontend Dev": "Proficient", "Prototyping": "Expert" }, lastActive: "5 min ago", compatScore: 87, scheduleOverlapHrs: 8 },
+  { name: "Priya Sharma", sec: "201", skills: ["Backend", "Data Analysis"], status: "solo", contactStatus: "none", overlap: "0h/wk", init: "PS", bio: "Data nerd. Prefer async work.", rat: { "Backend": "Proficient", "Data Analysis": "Expert" }, lastActive: "8 days ago", compatScore: 41, scheduleOverlapHrs: 0 },
+  { name: "Marcus Lee", sec: "201", skills: ["UI Design", "Frontend Dev"], status: "open-group", contactStatus: "none", overlap: "5h/wk", init: "ML", bio: "Design + code. Currently forming a group.", rat: { "UI Design": "Proficient", "Frontend Dev": "Intermediate" }, lastActive: "20 min ago", compatScore: 72, scheduleOverlapHrs: 5 },
+  { name: "Aisha Khan", sec: "203", skills: ["Project Mgmt", "UX Writing"], status: "solo", contactStatus: "none", overlap: "3h/wk", init: "AK", bio: "Organized and reliable.", rat: { "Project Mgmt": "Expert", "UX Writing": "Proficient" }, lastActive: "1 hour ago", compatScore: 65, scheduleOverlapHrs: 3 },
+  { name: "Tom Chen", sec: "201", skills: ["Backend", "Prototyping"], status: "closed", contactStatus: "none", overlap: "—", init: "TC", bio: "Backend dev and creative prototyper.", rat: { "Backend": "Intermediate", "Prototyping": "Proficient" }, lastActive: "2 days ago", compatScore: 0, scheduleOverlapHrs: 0 },
+  { name: "David Park", sec: "202", skills: ["Backend", "Data Analysis"], status: "solo", contactStatus: "none", overlap: "6h/wk", init: "DP", bio: "Full-stack developer interested in data-driven projects.", rat: { "Backend": "Expert", "Data Analysis": "Proficient" }, lastActive: "15 min ago", compatScore: 76, scheduleOverlapHrs: 6 },
+  { name: "Lisa Wang", sec: "201", skills: ["Frontend Dev", "UX Writing"], status: "solo", contactStatus: "none", overlap: "4h/wk", init: "LW", bio: "I bridge the gap between design and development.", rat: { "Frontend Dev": "Proficient", "UX Writing": "Intermediate" }, lastActive: "2 hours ago", compatScore: 68, scheduleOverlapHrs: 4 },
+  { name: "Omar Ali", sec: "203", skills: ["Project Mgmt"], status: "solo", contactStatus: "none", overlap: "2h/wk", init: "OA", bio: "Experienced PM looking for a motivated team.", rat: { "Project Mgmt": "Expert" }, lastActive: "5 days ago", compatScore: 52, scheduleOverlapHrs: 2 },
+  { name: "Sofia Rodriguez", sec: "202", skills: ["UI Design", "User Research"], status: "open-group", contactStatus: "none", overlap: "7h/wk", init: "SR", bio: "UX researcher passionate about accessible design.", rat: { "UI Design": "Intermediate", "User Research": "Expert" }, lastActive: "10 min ago", compatScore: 81, scheduleOverlapHrs: 7 },
+  { name: "Wei Zhang", sec: "202", skills: ["Frontend Dev", "Backend"], status: "solo", contactStatus: "none", overlap: "9h/wk", init: "WZ", bio: "Full-stack dev. Strong in React and Node.", rat: { "Frontend Dev": "Expert", "Backend": "Proficient" }, lastActive: "12 days ago", compatScore: 79, scheduleOverlapHrs: 9 },
+  { name: "Elena Popov", sec: "203", skills: ["Data Analysis", "UX Writing"], status: "solo", contactStatus: "none", overlap: "5h/wk", init: "EP", bio: "Research-oriented. Love working with data.", rat: { "Data Analysis": "Expert", "UX Writing": "Intermediate" }, lastActive: "30 min ago", compatScore: 63, scheduleOverlapHrs: 5 },
+  { name: "Nadia Kim", sec: "202", skills: ["UX Writing", "User Research"], status: "open-group", contactStatus: "none", overlap: "6h/wk", init: "NK", bio: "UX writer building a team around accessibility.", rat: { "UX Writing": "Expert", "User Research": "Proficient" }, lastActive: "25 min ago", compatScore: 74, scheduleOverlapHrs: 6 },
+  { name: "Ben Okafor", sec: "203", skills: ["Backend", "Project Mgmt"], status: "closed", contactStatus: "none", overlap: "—", init: "BO", bio: "Systems thinker and natural team organizer.", rat: { "Backend": "Expert", "Project Mgmt": "Proficient" }, lastActive: "4 days ago", compatScore: 0, scheduleOverlapHrs: 0 },
+  { name: "Kai Tanaka", sec: "201", skills: ["Prototyping", "UI Design"], status: "closed", contactStatus: "none", overlap: "—", init: "KT", bio: "Figma wizard.", rat: { "Prototyping": "Expert", "UI Design": "Proficient" }, lastActive: "3 days ago", compatScore: 0, scheduleOverlapHrs: 0 },
 ];
 const SS: Record<string, StatusInfo> = {
-  searching: { l: "Looking", variant: "success" },
-  talking: { l: "In talks", variant: "warning" },
-  confirmed: { l: "Grouped", cls: "bg-gray-100 text-gray-500 border-transparent" },
+  solo: { l: "Solo", variant: "success" },
+  "open-group": { l: "Open Group", variant: "warning" },
+  // legacy removed, variant: "warning" },
+  closed: { l: "Closed", cls: "bg-gray-100 text-gray-500 border-transparent" },
+  // legacy removed, cls: "bg-gray-100 text-gray-500 border-transparent" },
 };
 
 const COMPAT: Record<string, CompatibilityBreakdown> = {
   "Jesse Nguyen": {
     overall: 87, scheduleScore: 90, skillScore: 95, workStyleScore: 100,
-    matchReasons: ["Strong schedule overlap (8h/wk)","Complementary skills — no redundancy","Same meeting preference (in-person, 2x/wk)"],
+    matchReasons: ["Strong schedule overlap (8h/wk)", "Complementary skills — no redundancy", "Same meeting preference (in-person, 2x/wk)"],
     warnings: [],
     skillComplementarity: [
-      { skill: "UI Design", coveredBy: "you" },{ skill: "User Research", coveredBy: "you" },
-      { skill: "Frontend Dev", coveredBy: "them" },{ skill: "Prototyping", coveredBy: "them" },
-      { skill: "Backend", coveredBy: "gap" },{ skill: "Data Analysis", coveredBy: "gap" },
-      { skill: "UX Writing", coveredBy: "gap" },{ skill: "Project Mgmt", coveredBy: "gap" },
+      { skill: "UI Design", coveredBy: "you" }, { skill: "User Research", coveredBy: "you" },
+      { skill: "Frontend Dev", coveredBy: "them" }, { skill: "Prototyping", coveredBy: "them" },
+      { skill: "Backend", coveredBy: "gap" }, { skill: "Data Analysis", coveredBy: "gap" },
+      { skill: "UX Writing", coveredBy: "gap" }, { skill: "Project Mgmt", coveredBy: "gap" },
     ],
   },
   "Priya Sharma": {
     overall: 41, scheduleScore: 0, skillScore: 90, workStyleScore: 33,
     matchReasons: ["Complementary skills — good coverage"],
-    warnings: ["No schedule overlap detected","Different meeting frequency (2x/wk vs 1x/wk)","Different meeting style (in-person vs online)"],
+    warnings: ["No schedule overlap detected", "Different meeting frequency (2x/wk vs 1x/wk)", "Different meeting style (in-person vs online)"],
     skillComplementarity: [
-      { skill: "UI Design", coveredBy: "you" },{ skill: "User Research", coveredBy: "you" },
-      { skill: "Backend", coveredBy: "them" },{ skill: "Data Analysis", coveredBy: "them" },
-      { skill: "Frontend Dev", coveredBy: "gap" },{ skill: "Prototyping", coveredBy: "gap" },
-      { skill: "UX Writing", coveredBy: "gap" },{ skill: "Project Mgmt", coveredBy: "gap" },
+      { skill: "UI Design", coveredBy: "you" }, { skill: "User Research", coveredBy: "you" },
+      { skill: "Backend", coveredBy: "them" }, { skill: "Data Analysis", coveredBy: "them" },
+      { skill: "Frontend Dev", coveredBy: "gap" }, { skill: "Prototyping", coveredBy: "gap" },
+      { skill: "UX Writing", coveredBy: "gap" }, { skill: "Project Mgmt", coveredBy: "gap" },
     ],
   },
   "David Park": {
     overall: 76, scheduleScore: 75, skillScore: 85, workStyleScore: 67,
-    matchReasons: ["Good schedule overlap (6h/wk)","Complementary skills"],
+    matchReasons: ["Good schedule overlap (6h/wk)", "Complementary skills"],
     warnings: ["Different meeting style (in-person vs hybrid)"],
     skillComplementarity: [
-      { skill: "UI Design", coveredBy: "you" },{ skill: "User Research", coveredBy: "you" },
-      { skill: "Backend", coveredBy: "them" },{ skill: "Data Analysis", coveredBy: "them" },
-      { skill: "Frontend Dev", coveredBy: "gap" },{ skill: "Prototyping", coveredBy: "gap" },
-      { skill: "UX Writing", coveredBy: "gap" },{ skill: "Project Mgmt", coveredBy: "gap" },
+      { skill: "UI Design", coveredBy: "you" }, { skill: "User Research", coveredBy: "you" },
+      { skill: "Backend", coveredBy: "them" }, { skill: "Data Analysis", coveredBy: "them" },
+      { skill: "Frontend Dev", coveredBy: "gap" }, { skill: "Prototyping", coveredBy: "gap" },
+      { skill: "UX Writing", coveredBy: "gap" }, { skill: "Project Mgmt", coveredBy: "gap" },
     ],
   },
   "Sofia Rodriguez": {
     overall: 81, scheduleScore: 85, skillScore: 70, workStyleScore: 100,
-    matchReasons: ["Strong schedule overlap (7h/wk)","Same work style preferences"],
+    matchReasons: ["Strong schedule overlap (7h/wk)", "Same work style preferences"],
     warnings: ["Overlapping skill sets — both do UI Design"],
     skillComplementarity: [
-      { skill: "UI Design", coveredBy: "both" },{ skill: "User Research", coveredBy: "both" },
-      { skill: "Frontend Dev", coveredBy: "gap" },{ skill: "Prototyping", coveredBy: "gap" },
-      { skill: "Backend", coveredBy: "gap" },{ skill: "Data Analysis", coveredBy: "gap" },
-      { skill: "UX Writing", coveredBy: "gap" },{ skill: "Project Mgmt", coveredBy: "gap" },
+      { skill: "UI Design", coveredBy: "both" }, { skill: "User Research", coveredBy: "both" },
+      { skill: "Frontend Dev", coveredBy: "gap" }, { skill: "Prototyping", coveredBy: "gap" },
+      { skill: "Backend", coveredBy: "gap" }, { skill: "Data Analysis", coveredBy: "gap" },
+      { skill: "UX Writing", coveredBy: "gap" }, { skill: "Project Mgmt", coveredBy: "gap" },
+    ],
+  },
+  "Marcus Lee": {
+    overall: 72, scheduleScore: 70, skillScore: 80, workStyleScore: 67,
+    matchReasons: ["Good schedule overlap (5h/wk)", "Complementary skills"],
+    warnings: ["Different communication tools (Discord vs Slack)"],
+    skillComplementarity: [
+      { skill: "UI Design", coveredBy: "both" }, { skill: "User Research", coveredBy: "you" },
+      { skill: "Frontend Dev", coveredBy: "them" }, { skill: "Prototyping", coveredBy: "gap" },
+      { skill: "Backend", coveredBy: "gap" }, { skill: "Data Analysis", coveredBy: "gap" },
+      { skill: "UX Writing", coveredBy: "gap" }, { skill: "Project Mgmt", coveredBy: "gap" },
+    ],
+  },
+  "Aisha Khan": {
+    overall: 65, scheduleScore: 50, skillScore: 90, workStyleScore: 56,
+    matchReasons: ["Strong skill complementarity", "Different strengths"],
+    warnings: ["Limited schedule overlap (3h/wk)", "Different meeting style (in-person vs online)"],
+    skillComplementarity: [
+      { skill: "UI Design", coveredBy: "you" }, { skill: "User Research", coveredBy: "you" },
+      { skill: "Project Mgmt", coveredBy: "them" }, { skill: "UX Writing", coveredBy: "them" },
+      { skill: "Frontend Dev", coveredBy: "gap" }, { skill: "Prototyping", coveredBy: "gap" },
+      { skill: "Backend", coveredBy: "gap" }, { skill: "Data Analysis", coveredBy: "gap" },
+    ],
+  },
+  "Lisa Wang": {
+    overall: 68, scheduleScore: 60, skillScore: 75, workStyleScore: 67,
+    matchReasons: ["Decent overlap (4h/wk)", "Frontend + UX Writing complement your research"],
+    warnings: ["Both lack backend skills", "Different meeting frequency (2x vs 3x/wk)"],
+    skillComplementarity: [
+      { skill: "UI Design", coveredBy: "you" }, { skill: "User Research", coveredBy: "you" },
+      { skill: "Frontend Dev", coveredBy: "them" }, { skill: "UX Writing", coveredBy: "them" },
+      { skill: "Backend", coveredBy: "gap" }, { skill: "Data Analysis", coveredBy: "gap" },
+      { skill: "Prototyping", coveredBy: "gap" }, { skill: "Project Mgmt", coveredBy: "gap" },
+    ],
+  },
+  "Omar Ali": {
+    overall: 52, scheduleScore: 35, skillScore: 85, workStyleScore: 33,
+    matchReasons: ["Project Mgmt fills a clear gap in your team"],
+    warnings: ["Very limited schedule overlap (2h/wk)", "Different communication style", "Rarely active (5 days ago)"],
+    skillComplementarity: [
+      { skill: "UI Design", coveredBy: "you" }, { skill: "User Research", coveredBy: "you" },
+      { skill: "Project Mgmt", coveredBy: "them" }, { skill: "Backend", coveredBy: "gap" },
+      { skill: "Frontend Dev", coveredBy: "gap" }, { skill: "Data Analysis", coveredBy: "gap" },
+      { skill: "UX Writing", coveredBy: "gap" }, { skill: "Prototyping", coveredBy: "gap" },
+    ],
+  },
+  "Wei Zhang": {
+    overall: 79, scheduleScore: 85, skillScore: 90, workStyleScore: 56,
+    matchReasons: ["Strong schedule overlap (9h/wk)", "Full-stack covers frontend + backend gaps"],
+    warnings: ["Different meeting style (in-person vs hybrid)", "Rarely active (12 days ago)"],
+    skillComplementarity: [
+      { skill: "UI Design", coveredBy: "you" }, { skill: "User Research", coveredBy: "you" },
+      { skill: "Frontend Dev", coveredBy: "them" }, { skill: "Backend", coveredBy: "them" },
+      { skill: "Data Analysis", coveredBy: "gap" }, { skill: "UX Writing", coveredBy: "gap" },
+      { skill: "Prototyping", coveredBy: "gap" }, { skill: "Project Mgmt", coveredBy: "gap" },
+    ],
+  },
+  "Elena Popov": {
+    overall: 63, scheduleScore: 60, skillScore: 80, workStyleScore: 44,
+    matchReasons: ["Data Analysis + UX Writing complement your design skills"],
+    warnings: ["Work style differences", "Different meeting frequency"],
+    skillComplementarity: [
+      { skill: "UI Design", coveredBy: "you" }, { skill: "User Research", coveredBy: "you" },
+      { skill: "Data Analysis", coveredBy: "them" }, { skill: "UX Writing", coveredBy: "them" },
+      { skill: "Frontend Dev", coveredBy: "gap" }, { skill: "Backend", coveredBy: "gap" },
+      { skill: "Prototyping", coveredBy: "gap" }, { skill: "Project Mgmt", coveredBy: "gap" },
+    ],
+  },
+  "Nadia Kim": {
+    overall: 74, scheduleScore: 70, skillScore: 75, workStyleScore: 78,
+    matchReasons: ["Good schedule overlap (6h/wk)", "UX Writing + Research complement UI skills"],
+    warnings: ["Both forming groups — coordination needed"],
+    skillComplementarity: [
+      { skill: "UI Design", coveredBy: "you" }, { skill: "User Research", coveredBy: "both" },
+      { skill: "UX Writing", coveredBy: "them" }, { skill: "Frontend Dev", coveredBy: "gap" },
+      { skill: "Backend", coveredBy: "gap" }, { skill: "Data Analysis", coveredBy: "gap" },
+      { skill: "Prototyping", coveredBy: "gap" }, { skill: "Project Mgmt", coveredBy: "gap" },
     ],
   },
 };
@@ -823,15 +1311,29 @@ const PROFILE_TIERS = {
 } as const;
 
 const SCHEDULE_DATA: Record<string, { my: Set<string>; theirs: Set<string>; overlapHrs: number }> = {
-  "Jesse Nguyen": { my: new Set(["Mon-1","Wed-1","Fri-1"]), theirs: new Set(["Mon-1","Wed-1","Tue-2"]), overlapHrs: 8 },
-  "David Park": { my: new Set(["Mon-1","Wed-1","Fri-1"]), theirs: new Set(["Mon-1","Tue-1","Wed-1","Thu-2"]), overlapHrs: 6 },
-  "Priya Sharma": { my: new Set(["Mon-1","Wed-1","Fri-1"]), theirs: new Set(["Tue-0","Thu-0"]), overlapHrs: 0 },
+  "Jesse Nguyen": { my: new Set(["Mon-1", "Wed-1", "Fri-1"]), theirs: new Set(["Mon-1", "Wed-1", "Tue-2"]), overlapHrs: 8 },
+  "David Park": { my: new Set(["Mon-1", "Wed-1", "Fri-1"]), theirs: new Set(["Mon-1", "Tue-1", "Wed-1", "Thu-2"]), overlapHrs: 6 },
+  "Priya Sharma": { my: new Set(["Mon-1", "Wed-1", "Fri-1"]), theirs: new Set(["Tue-0", "Thu-0"]), overlapHrs: 0 },
+  "Marcus Lee": { my: new Set(["Mon-1", "Wed-1", "Fri-1"]), theirs: new Set(["Mon-1", "Tue-1", "Wed-1"]), overlapHrs: 5 },
+  "Aisha Khan": { my: new Set(["Mon-1", "Wed-1", "Fri-1"]), theirs: new Set(["Mon-1", "Fri-2"]), overlapHrs: 3 },
+  "Lisa Wang": { my: new Set(["Mon-1", "Wed-1", "Fri-1"]), theirs: new Set(["Mon-1", "Wed-1", "Fri-2"]), overlapHrs: 4 },
+  "Omar Ali": { my: new Set(["Mon-1", "Wed-1", "Fri-1"]), theirs: new Set(["Thu-0", "Fri-0"]), overlapHrs: 2 },
+  "Wei Zhang": { my: new Set(["Mon-1", "Wed-1", "Fri-1"]), theirs: new Set(["Mon-1", "Tue-1", "Wed-1", "Thu-1", "Fri-1"]), overlapHrs: 9 },
+  "Elena Popov": { my: new Set(["Mon-1", "Wed-1", "Fri-1"]), theirs: new Set(["Mon-0", "Wed-1", "Fri-1"]), overlapHrs: 5 },
+  "Nadia Kim": { my: new Set(["Mon-1", "Wed-1", "Fri-1"]), theirs: new Set(["Mon-1", "Wed-1", "Fri-2"]), overlapHrs: 6 },
 };
 
 const WORK_STYLE_DATA: Record<string, [string, string, string, boolean][]> = {
-  "Jesse Nguyen": [["Meeting frequency","2x/wk","2x/wk",true],["Meeting style","In-person","In-person",true],["Communication","Discord","Discord",true]],
-  "David Park": [["Meeting frequency","2x/wk","2x/wk",true],["Meeting style","In-person","Hybrid",false],["Communication","Discord","Discord",true]],
-  "Priya Sharma": [["Meeting frequency","2x/wk","1x/wk",false],["Meeting style","In-person","Online",false],["Communication","Discord","Discord",true]],
+  "Jesse Nguyen": [["Meeting frequency", "2x/wk", "2x/wk", true], ["Meeting style", "In-person", "In-person", true], ["Communication", "Discord", "Discord", true]],
+  "David Park": [["Meeting frequency", "2x/wk", "2x/wk", true], ["Meeting style", "In-person", "Hybrid", false], ["Communication", "Discord", "Discord", true]],
+  "Priya Sharma": [["Meeting frequency", "2x/wk", "1x/wk", false], ["Meeting style", "In-person", "Online", false], ["Communication", "Discord", "Discord", true]],
+  "Marcus Lee": [["Meeting frequency", "2x/wk", "2x/wk", true], ["Meeting style", "In-person", "In-person", true], ["Communication", "Discord", "Slack", false]],
+  "Aisha Khan": [["Meeting frequency", "2x/wk", "2x/wk", true], ["Meeting style", "In-person", "Online", false], ["Communication", "Discord", "Email", false]],
+  "Lisa Wang": [["Meeting frequency", "2x/wk", "3x/wk", false], ["Meeting style", "In-person", "In-person", true], ["Communication", "Discord", "Discord", true]],
+  "Omar Ali": [["Meeting frequency", "2x/wk", "1x/wk", false], ["Meeting style", "In-person", "Online", false], ["Communication", "Discord", "Slack", false]],
+  "Wei Zhang": [["Meeting frequency", "2x/wk", "2x/wk", true], ["Meeting style", "In-person", "Hybrid", false], ["Communication", "Discord", "Discord", true]],
+  "Elena Popov": [["Meeting frequency", "2x/wk", "3x/wk", false], ["Meeting style", "In-person", "In-person", true], ["Communication", "Discord", "Slack", false]],
+  "Nadia Kim": [["Meeting frequency", "2x/wk", "2x/wk", true], ["Meeting style", "In-person", "In-person", true], ["Communication", "Discord", "Slack", false]],
 };
 
 const DEADLINE_CONFIG = {
@@ -851,204 +1353,1148 @@ function getDeadlineTier(daysLeft: number) {
   return DEADLINE_CONFIG.tiers[DEADLINE_CONFIG.tiers.length - 1];
 }
 
+// ==================== GROUPS DATA ====================
+interface FormingGroup {
+  id: string;
+  leaderName: string;
+  leaderInit: string;
+  members: { name: string; init: string; skills: string[] }[];
+  maxSize: number;
+  section: string;
+  neededSkills: string[];
+  description: string;
+  applicationQuestions: string[];
+}
+
+interface Conversation {
+  id: string;
+  targetName: string;
+  targetInit: string;
+  type: "request-sent" | "request-received" | "application-sent" | "application-received" | "group-chat";
+  status: "pending" | "replied" | "accepted" | "declined" | "active";
+  lastMessage: string;
+  timestamp: string;
+  unread: boolean;
+  isGroup?: boolean;
+  groupMembers?: { name: string; init: string }[];
+}
+
+const DEMO_CONVERSATIONS: Conversation[] = [
+  { id: "conv-group", targetName: "CSC318 Group", targetInit: "G", type: "group-chat", status: "active", lastMessage: "Aisha: I set up the shared doc", timestamp: "10m ago", unread: true, isGroup: true, groupMembers: [
+    { name: "Jesse Nguyen", init: "JN" },
+    { name: "Aisha Khan", init: "AK" },
+    { name: "David Park", init: "DP" },
+  ] },
+  { id: "conv-1", targetName: "David Park", targetInit: "DP", type: "request-sent", status: "replied", lastMessage: "Sounds great! When are you free this week?", timestamp: "2h ago", unread: true },
+  { id: "conv-2", targetName: "Priya Sharma", targetInit: "PS", type: "application-received", status: "pending", lastMessage: "I applied to your group.", timestamp: "15m ago", unread: true },
+  { id: "conv-3", targetName: "Jesse Nguyen", targetInit: "JN", type: "request-received", status: "accepted", lastMessage: "Welcome to the team!", timestamp: "1d ago", unread: false },
+  { id: "conv-4", targetName: "Aisha Khan", targetInit: "AK", type: "request-sent", status: "pending", lastMessage: "Sent a group request.", timestamp: "3h ago", unread: false },
+  { id: "conv-5", targetName: "Wei Zhang", targetInit: "WZ", type: "request-sent", status: "declined", lastMessage: "Sorry, I found another group.", timestamp: "2d ago", unread: false },
+];
+
+const FORMING_GROUPS: FormingGroup[] = [
+  {
+    id: "group-alpha",
+    leaderName: "Jesse Nguyen",
+    leaderInit: "JN",
+    section: "201",
+    members: [
+      { name: "Jesse Nguyen", init: "JN", skills: ["Frontend Dev", "Prototyping"] },
+      { name: "Aisha Khan", init: "AK", skills: ["Project Mgmt", "UX Writing"] },
+    ],
+    maxSize: 5,
+    neededSkills: ["Backend", "Data Analysis", "UI Design"],
+    description: "Building an accessibility-focused study app. Looking for someone strong in backend or data.",
+    applicationQuestions: [
+      "What skills can you contribute?",
+      "What role do you want?",
+      "When are you free to work?",
+    ],
+  },
+  {
+    id: "group-beta",
+    leaderName: "Chris Lee",
+    leaderInit: "CL",
+    section: "202",
+    members: [
+      { name: "Chris Lee", init: "CL", skills: ["Backend", "Data Analysis"] },
+      { name: "Mia Torres", init: "MT", skills: ["UI Design"] },
+      { name: "Sam Park", init: "SP", skills: ["User Research"] },
+    ],
+    maxSize: 5,
+    neededSkills: ["Frontend Dev", "Project Mgmt"],
+    description: "Working on a campus resource-sharing platform. Great schedule overlap already.",
+    applicationQuestions: [
+      "What skills can you contribute?",
+      "What role do you want?",
+      "When are you free to work?",
+    ],
+  },
+];
+
+// ==================== CONFIRM DIALOG ====================
+interface ConfirmDialogProps {
+  open: boolean;
+  title: string;
+  body: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function ConfirmDialog({ open, title, body, confirmLabel, onConfirm, onCancel }: ConfirmDialogProps) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 bg-black/40 z-[300] flex items-center justify-center p-6">
+      <div className="bg-white rounded-[12px] p-6 w-full max-w-[400px] shadow-[0_8px_24px_rgba(0,0,0,0.15)]">
+        <h2 className="text-[18px] font-semibold text-[#111827] mb-2">{title}</h2>
+        <p className="text-[14px] text-[#374151] mb-5 leading-relaxed">{body}</p>
+        <div className="flex gap-2">
+          <button onClick={onCancel} className="flex-1 h-10 rounded-[8px] border border-[#D1D5DB] text-[#374151] text-[14px] hover:bg-gray-50 cursor-pointer">Cancel</button>
+          <button onClick={onConfirm} className="flex-1 h-10 rounded-[8px] bg-[#DC2626] text-white text-[14px] font-medium hover:bg-[#B91C1C] cursor-pointer">{confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==================== SLIDE PANEL ====================
+interface SlidePanelProps {
+  open: boolean;
+  onClose: () => void;
+  children: ReactNode;
+  footer?: ReactNode;
+  title?: string;
+}
+
+function SlidePanel({ open, onClose, children, footer, title = "Details" }: SlidePanelProps) {
+  return (
+    <>
+      {open && (
+        <div className="fixed inset-0 bg-foreground/20 z-[150]" onClick={onClose} />
+      )}
+      <div className={cn(
+        "fixed top-0 right-0 h-full w-[480px] max-w-[95vw] bg-background border-l border-border z-[160]",
+        "flex flex-col overflow-hidden",
+        "transition-transform duration-300 ease-in-out",
+        open ? "translate-x-0" : "translate-x-full"
+      )}>
+        <div className="flex items-center justify-between h-14 px-5 border-b border-border shrink-0">
+          <span className="text-sm font-semibold text-gray-600">{title}</span>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 leading-none"><Icon.x size={18} color="#9CA3AF" /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {children}
+        </div>
+        {footer && <div className="shrink-0">{footer}</div>}
+      </div>
+    </>
+  );
+}
+
+// ==================== GROUP COMPONENTS ====================
+interface GroupCardProps {
+  group: FormingGroup;
+  appliedStatus: string;
+  onClick: () => void;
+}
+
+function GroupCard({ group, appliedStatus, onClick }: GroupCardProps) {
+  const STATUS_LABELS: Record<string, { l: string; cls: string }> = {
+    "applied": { l: "Applied", cls: "bg-[#DBEAFE] text-[#1E40AF] border-[#BFDBFE]" },
+    "accepted": { l: "Accepted", cls: "bg-[#DCFCE7] text-[#166534] border-[#86EFAC]" },
+    "declined": { l: "Declined", cls: "bg-[#FEE2E2] text-[#991B1B] border-[#FCA5A5]" },
+  };
+
+  return (
+    <Card
+      className="p-4 gap-0 bg-white border-0 rounded-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.08)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.12)] hover:-translate-y-0.5 transition-all duration-150 cursor-pointer"
+      onClick={onClick}
+    >
+      {/* Row 1: Group name + member count pill */}
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[15px] font-semibold text-[#111827]">{group.leaderName}'s Group</span>
+        <span className="inline-flex items-center h-[22px] px-2 rounded-[12px] text-[12px] bg-[#8e57b8]/10 text-[#8e57b8]">
+          {group.members.length}/{group.maxSize}
+        </span>
+      </div>
+
+      {/* Row 2: Section */}
+      <div className="text-[12px] text-[#6B7280] mb-2.5">Section {group.section}</div>
+
+      {/* Row 3: Skills needed */}
+      <div className="flex flex-wrap items-center gap-1 mb-2.5">
+        <span className="text-[12px] text-[#6B7280] mr-0.5">Looking for:</span>
+        {group.neededSkills.slice(0, 3).map(sk => (
+          <span key={sk} className="inline-flex items-center h-6 px-2 rounded-[6px] text-[12px] font-medium bg-[#8e57b8]/10 text-[#8e57b8]">
+            {sk}
+          </span>
+        ))}
+        {group.neededSkills.length > 3 && (
+          <span className="text-[12px] text-[#6B7280]">+{group.neededSkills.length - 3}</span>
+        )}
+      </div>
+
+      {/* Row 4: Overlap bar (avg) */}
+      <div className="mb-2">
+        <div className="flex justify-between items-center mb-1">
+          <span className="text-[12px] text-[#6B7280]">Avg. overlap</span>
+          <span className="text-[13px] font-semibold text-[#8e57b8]">
+            {Math.round(group.members.reduce((acc, m) => {
+              const s = STU.find(s => s.name === m.name);
+              return acc + (s?.scheduleOverlapHrs ?? 0);
+            }, 0) / Math.max(group.members.length, 1))}h/wk
+          </span>
+        </div>
+        <div className="h-1 rounded-full bg-[#E5E7EB] overflow-hidden">
+          <div className="h-full rounded-full bg-[#8e57b8]" style={{
+            width: `${Math.min(100, (group.members.reduce((acc, m) => acc + (STU.find(s => s.name === m.name)?.scheduleOverlapHrs ?? 0), 0) / Math.max(group.members.length, 1) / 10) * 100)}%`
+          }} />
+        </div>
+      </div>
+
+      {/* Row 5: Application status (conditional) */}
+      {appliedStatus && appliedStatus !== "none" && STATUS_LABELS[appliedStatus] && (
+        <div className="mt-2 pt-2 border-t border-[#F3F4F6]">
+          <span className={cn("inline-flex items-center h-[22px] px-2 rounded-[12px] text-[11px] font-medium border", STATUS_LABELS[appliedStatus].cls)}>
+            {STATUS_LABELS[appliedStatus].l}
+          </span>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+interface GroupsViewProps {
+  onSelectGroup: (groupId: string) => void;
+  appliedGroups: Record<string, string>;
+  filterRecruiting?: boolean;
+}
+
+function GroupsView({ onSelectGroup, appliedGroups, filterRecruiting = false }: GroupsViewProps) {
+  const [secFilter, setSecFilter] = useState("all");
+  const filtered = FORMING_GROUPS.filter(g => {
+    if (secFilter !== "all" && g.section !== secFilter) return false;
+    if (filterRecruiting && g.members.length >= g.maxSize) return false;
+    return true;
+  });
+
+  return (
+    <div>
+      <div className="flex gap-2 mb-5">
+        <Select value={secFilter} onValueChange={setSecFilter}>
+          <SelectTrigger className="w-[130px] h-8 text-xs"><SelectValue placeholder="Section" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Sections</SelectItem>
+            <SelectItem value="201">201</SelectItem>
+            <SelectItem value="202">202</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-3">
+        {filtered.map(group => (
+          <GroupCard
+            key={group.id}
+            group={group}
+            appliedStatus={appliedGroups[group.id] || "none"}
+            onClick={() => onSelectGroup(group.id)}
+          />
+        ))}
+        {filtered.length === 0 && (
+          <div className="text-center py-16 text-gray-400">No recruiting groups found.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface GroupDetailPanelProps extends GoProps {
+  groupId: string;
+  onClose: () => void;
+  onApplied: (groupId: string) => void;
+}
+
+function GroupDetailPanel({ groupId, onClose, onApplied }: GroupDetailPanelProps) {
+  const group = FORMING_GROUPS.find(g => g.id === groupId)!;
+  const [submitted, setSubmitted] = useState(false);
+  const [answers, setAnswers] = useState<string[]>(group.applicationQuestions.map(() => ""));
+
+  if (submitted) {
+    return (
+      <div className="p-6 text-center pt-16">
+        <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-success-bg flex items-center justify-center">
+          <span className="text-2xl text-success">✓</span>
+        </div>
+        <div className="text-lg font-bold mb-2">Application Sent!</div>
+        <p className="text-[13px] text-gray-600 mb-6">{group.leaderName} will review your application.</p>
+        <Button variant="outline" onClick={onClose}>Close</Button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="p-6">
+        <div className="mb-5">
+          <div className="text-lg font-bold mb-1">{group.leaderName}'s Group</div>
+          <div className="text-xs text-gray-500 mb-3">Section {group.section} · {group.members.length}/{group.maxSize} members</div>
+          <p className="text-[13px] text-gray-700">{group.description}</p>
+        </div>
+        <div className="mb-5">
+          <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2 block">Members</Label>
+          {group.members.map((m, i) => (
+            <div key={i} className="flex items-center gap-2 mb-2">
+              <Avatar className="size-7"><AvatarFallback className="text-xs bg-gray-200">{m.init}</AvatarFallback></Avatar>
+              <span className="text-[12px] font-medium">{m.name}</span>
+              <div className="flex gap-1 ml-auto">
+                {m.skills.map(sk => (
+                  <span key={sk} className="text-[10px] bg-gray-100 px-1.5 py-0.5 rounded">{sk}</span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mb-5">
+          <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2 block">Skills Composition</Label>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="p-3 bg-gray-50 rounded-lg">
+              <div className="text-[10px] font-bold text-gray-400 uppercase mb-2">Has</div>
+              <div className="flex flex-wrap gap-1">
+                {Array.from(new Set(group.members.flatMap(m => m.skills))).map(sk => (
+                  <span key={sk} className="text-[11px] bg-success-bg text-success px-2 py-0.5 rounded-lg border border-success-border">{sk}</span>
+                ))}
+              </div>
+            </div>
+            <div className="p-3 bg-gray-50 rounded-lg">
+              <div className="text-[10px] font-bold text-gray-400 uppercase mb-2">Needs</div>
+              <div className="flex flex-wrap gap-1">
+                {group.neededSkills.map(sk => (
+                  <span key={sk} className="text-[11px] bg-accent text-accent-foreground px-2 py-0.5 rounded-lg border border-border">{sk}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="mb-5">
+          <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2 block">Combined Schedule</Label>
+          <div className="grid grid-cols-[48px_repeat(5,1fr)] gap-[2px]">
+            <div />{["Mon", "Tue", "Wed", "Thu", "Fri"].map(d => <div key={d} className="text-center text-[10px] font-semibold text-gray-500 py-1">{d}</div>)}
+            {["9a–12p", "1–5p", "6–9p"].map((t, ti) => <Fragment key={ti}>
+              <div className="text-[10px] text-gray-500 flex items-center">{t}</div>
+              {["Mon", "Tue", "Wed", "Thu", "Fri"].map(d => {
+                const counts: Record<string, number> = { "Mon-0": 1, "Mon-1": 2, "Tue-1": 1, "Wed-0": 1, "Wed-1": 2, "Thu-2": 1, "Fri-1": 2 };
+                const c = counts[`${d}-${ti}`] || 0;
+                const total = group.members.length;
+                return <div key={d} className={cn("py-2 text-center rounded text-[10px] font-medium",
+                  c >= total ? "bg-primary text-primary-foreground" :
+                    c >= total / 2 ? "bg-success-bg text-success" :
+                      c > 0 ? "bg-gray-100 text-gray-500" :
+                        "bg-gray-50 text-gray-300"
+                )}>{c > 0 ? `${c}/${total}` : ""}</div>;
+              })}
+            </Fragment>)}
+          </div>
+          <div className="text-[10px] text-gray-400 mt-1.5">Darker = more members available</div>
+        </div>
+        <div className="border-t border-gray-100 pt-5">
+          <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-3 block">Application</Label>
+          {group.applicationQuestions.map((q, i) => (
+            <F key={i} l={q}>
+              <Textarea
+                value={answers[i]}
+                onChange={(e) => {
+                  const next = [...answers];
+                  next[i] = e.target.value;
+                  setAnswers(next);
+                }}
+                className="text-[12px] resize-none h-16"
+                placeholder="Your answer..."
+              />
+            </F>
+          ))}
+        </div>
+      </div>
+      <div className="border-t border-border p-4">
+        <div className="flex gap-3">
+          <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
+          <Button
+            className="flex-1"
+            disabled={answers.some(a => a.trim() === "")}
+            onClick={() => {
+              setSubmitted(true);
+              onApplied(group.id);
+            }}
+          >
+            Submit Application
+          </Button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // Matching Board
-function Board({ go }: GoProps) {
+const DEMO_NOTIFICATIONS: AppNotification[] = [
+  { id: "n1", type: "group-request-received", title: "Group Request from David Park", body: "David wants to team up for CSC318.", timestamp: "2 min ago", read: false, actionTarget: "David Park" },
+  { id: "n2", type: "group-application-received", title: "New Application from Priya Sharma", body: "Priya applied to your group.", timestamp: "15 min ago", read: false, actionTarget: "mygroup" },
+  { id: "n3", type: "request-accepted", title: "Jesse Nguyen accepted your request", body: "You're now forming a group together.", timestamp: "1 hour ago", read: true, actionTarget: "Jesse Nguyen" },
+  { id: "n4", type: "confirm-requested", title: "Group confirmation requested", body: "Jesse is requesting everyone to confirm.", timestamp: "3 hours ago", read: true, actionTarget: "mygroup" },
+  { id: "n5", type: "urgent-mode", title: "Urgent Mode activated", body: "Deadline in 3 days. 12 students still ungrouped.", timestamp: "1 day ago", read: true, actionTarget: "board" },
+];
+
+const CONTACT_STATUS_LABELS: Record<string, { l: string; cls: string }> = {
+  "request-sent": { l: "Request Sent", cls: "bg-accent text-accent-foreground" },
+  "replied": { l: "Replied", cls: "bg-primary/15 text-primary" },
+  "no-response": { l: "No Response", cls: "bg-gray-100 text-gray-500" },
+  "declined": { l: "Declined", cls: "bg-danger-bg text-danger" },
+};
+
+interface FilterDropdownProps {
+  label: string;
+  active: boolean;
+  open: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+  children: ReactNode;
+}
+
+function FilterDropdown({ label, active, open, onToggle, onClose, children }: FilterDropdownProps) {
+  return (
+    <div className="relative shrink-0">
+      {open && <div className="fixed inset-0 z-[190]" onClick={onClose} />}
+      <button onClick={onToggle}
+        className={cn(
+          "flex items-center gap-1.5 h-[34px] px-[14px] rounded-[20px] text-[13px] border transition-colors cursor-pointer whitespace-nowrap",
+          active
+            ? "bg-[#8e57b8]/10 border-[#8e57b8] text-[#8e57b8]"
+            : "bg-white border-[#D1D5DB] text-[#374151] hover:border-gray-400"
+        )}>
+        {label}
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M1 3l4 4 4-4" /></svg>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1.5 bg-white border border-border rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.1)] z-[200] overflow-hidden min-w-max">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ConversationSidebarProps {
+  conversations: Conversation[];
+  onSelect: (targetName: string) => void;
+  activeTarget?: string | null;
+}
+
+function ConversationSidebar({ conversations, onSelect, activeTarget }: ConversationSidebarProps) {
+  const [tab, setTab] = useState<"all" | "sent" | "received">("all");
+
+  const filtered = conversations.filter(c => {
+    if (tab === "sent") return c.type === "request-sent" || c.type === "application-sent";
+    if (tab === "received") return c.type === "request-received" || c.type === "application-received";
+    return true;
+  });
+
+  const unreadCount = conversations.filter(c => c.unread).length;
+
+  const STATUS_COLORS: Record<string, string> = {
+    pending: "bg-[#FEF3C7] text-[#92400E]",
+    replied: "bg-[#8e57b8]/15 text-[#8e57b8]",
+    accepted: "bg-[#DCFCE7] text-[#166534]",
+    declined: "bg-[#FEE2E2] text-[#991B1B]",
+  };
+
+  const TYPE_LABELS: Record<string, string> = {
+    "request-sent": "Request Sent",
+    "request-received": "Request Received",
+    "application-sent": "Applied",
+    "application-received": "Application",
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="px-4 py-3 border-b border-border shrink-0">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-[15px] font-semibold">Conversations</span>
+          {unreadCount > 0 && (
+            <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[#8e57b8] text-white text-[11px] font-bold">
+              {unreadCount}
+            </span>
+          )}
+        </div>
+        <div className="flex gap-1">
+          {(["all", "sent", "received"] as const).map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={cn(
+                "flex-1 py-1.5 text-[12px] font-medium rounded-md transition-colors capitalize cursor-pointer",
+                tab === t ? "bg-[#8e57b8]/10 text-[#8e57b8]" : "text-[#6B7280] hover:bg-gray-50"
+              )}>
+              {t}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {filtered.length === 0 ? (
+          <div className="py-8 text-center text-[13px] text-[#9CA3AF]">No conversations</div>
+        ) : (
+          filtered.map(c => (
+            <button
+              key={c.id}
+              onClick={() => onSelect(c.targetName)}
+              className={cn(
+                "w-full flex items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50 border-b border-[#F3F4F6] cursor-pointer",
+                activeTarget === c.targetName && "bg-[#8e57b8]/5",
+                c.unread && "bg-[#8e57b8]/[0.03]"
+              )}
+            >
+              <div className="w-2 shrink-0 pt-2">
+                {c.unread && <div className="w-1.5 h-1.5 rounded-full bg-[#8e57b8]" />}
+              </div>
+
+              <Avatar className="size-9 shrink-0">
+                <AvatarFallback className="bg-gray-200 text-gray-500 text-[11px] font-bold">{c.targetInit}</AvatarFallback>
+              </Avatar>
+
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className={cn("text-[13px] truncate", c.unread ? "font-semibold text-[#111827]" : "font-medium text-[#374151]")}>
+                    {c.targetName}
+                  </span>
+                  <span className="text-[11px] text-[#9CA3AF] shrink-0 ml-2">{c.timestamp}</span>
+                </div>
+                <div className="text-[12px] text-[#6B7280] truncate mb-1">{c.lastMessage}</div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-[#9CA3AF]">{TYPE_LABELS[c.type]}</span>
+                  <span className={cn("inline-flex items-center h-[18px] px-1.5 rounded-full text-[10px] font-medium capitalize", STATUS_COLORS[c.status])}>
+                    {c.status}
+                  </span>
+                </div>
+              </div>
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface DiscoveryProps extends GoProps {
+  onSelectStudent: (name: string) => void;
+  urgentMode?: boolean;
+  onSelectGroup?: (id: string) => void;
+  appliedGroups?: Record<string, string>;
+  contactStatuses?: Record<string, string>;
+  onContactStatusChange?: (name: string, status: string) => void;
+  onOpenChat?: (name: string) => void;
+}
+
+function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, appliedGroups = {}, contactStatuses = {}, onContactStatusChange, onOpenChat }: DiscoveryProps) {
+  const [view, setView] = useState<"people" | "groups">("people");
+  const [urgentDismissed, setUrgentDismissed] = useState(false);
   const [secFilter, setSecFilter] = useState("all");
   const [skillFilter, setSkillFilter] = useState("any");
   const [overlapFilter, setOverlapFilter] = useState("any");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState("best");
   const [searchQuery, setSearchQuery] = useState("");
-  const [demoTier, setDemoTier] = useState(2);
-  const tierDays = [10, 5, 3, 1];
-  const currentTier = getDeadlineTier(tierDays[demoTier]);
+  const [hiddenStudents, setHiddenStudents] = useState<Set<string>>(() => {
+    try { const s = localStorage.getItem("easea-hidden"); return s ? new Set(JSON.parse(s)) : new Set(); } catch { return new Set(); }
+  });
+  const [starredStudents, setStarredStudents] = useState<Set<string>>(() => {
+    try { const s = localStorage.getItem("easea-starred"); return s ? new Set(JSON.parse(s)) : new Set(); } catch { return new Set(); }
+  });
+  const [filterSolo, setFilterSolo] = useState(false);
+  const [filterOpenGroup, setFilterOpenGroup] = useState(false);
+  const [filterFavorites, setFilterFavorites] = useState(false);
+  const [filterRecruiting, setFilterRecruiting] = useState(false);
+  const [hideConfirmTarget, setHideConfirmTarget] = useState<string | null>(null);
+  const [hiddenPopover, setHiddenPopover] = useState(false);
+  const [sectionPopover, setSectionPopover] = useState(false);
+  const [skillsPopover, setSkillsPopover] = useState(false);
+  const [overlapPopover, setOverlapPopover] = useState(false);
+  const [activityPopover, setActivityPopover] = useState(false);
+  const [spotsPopover, setSpotsPopover] = useState(false);
+  const [minOverlapPct, setMinOverlapPct] = useState(0);
+  const [activityFilter2, setActivityFilter2] = useState("all");
+  const [spotsFilter, setSpotsFilter] = useState("any");
+
+  useEffect(() => { localStorage.setItem("easea-starred", JSON.stringify([...starredStudents])); }, [starredStudents]);
+  useEffect(() => { localStorage.setItem("easea-hidden", JSON.stringify([...hiddenStudents])); }, [hiddenStudents]);
+
+  useEffect(() => {
+    if (urgentMode) {
+      setFilterSolo(true);
+      setFilterOpenGroup(false);
+    } else {
+      setFilterSolo(false);
+    }
+  }, [urgentMode]);
+
+  const toggleStar = (name: string) => setStarredStudents(prev => {
+    const n = new Set(prev); n.has(name) ? n.delete(name) : n.add(name); return n;
+  });
 
   const filteredStudents = STU.filter(st => {
+    if (st.status === "closed") return false;
     if (secFilter !== "all" && st.sec !== secFilter) return false;
     if (skillFilter !== "any") {
       const target = skillFilter === "frontend" ? "Frontend Dev" : skillFilter === "backend" ? "Backend" : skillFilter === "ui" ? "UI Design" : skillFilter === "research" ? "User Research" : skillFilter === "proto" ? "Prototyping" : skillFilter === "data" ? "Data Analysis" : skillFilter === "ux" ? "UX Writing" : "Project Mgmt";
       if (!st.skills.includes(target)) return false;
     }
     if (overlapFilter !== "any" && st.scheduleOverlapHrs < parseInt(overlapFilter)) return false;
-    if (statusFilter === "looking" && st.status !== "searching") return false;
-    if (statusFilter === "talking" && st.status !== "talking") return false;
+    if (minOverlapPct > 0 && (st.scheduleOverlapHrs / 10) * 100 < minOverlapPct) return false;
+    if (filterSolo && !filterOpenGroup && st.status !== "searching") return false;
+    if (filterOpenGroup && !filterSolo && st.status !== "forming") return false;
+    if (filterSolo && filterOpenGroup && st.status !== "searching" && st.status !== "forming") return false;
+    if (filterFavorites && !starredStudents.has(st.name)) return false;
+    if (activityFilter2 !== "all") {
+      const cs = contactStatuses[st.name] || "none";
+      const labelMap: Record<string, string> = {
+        "none": "No contact yet",
+        "request-sent": "Request Sent",
+        "replied": "Replied",
+        "no-response": "No Response",
+        "declined": "Declined",
+      };
+      if (labelMap[cs] !== activityFilter2) return false;
+    }
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       if (!st.name.toLowerCase().includes(q) && !st.skills.some(sk => sk.toLowerCase().includes(q)) && !st.bio.toLowerCase().includes(q)) return false;
     }
     return true;
   }).sort((a, b) => {
+    const hidA = hiddenStudents.has(a.name) ? 1 : 0;
+    const hidB = hiddenStudents.has(b.name) ? 1 : 0;
+    if (hidA !== hidB) return hidA - hidB;
+    const aS = starredStudents.has(a.name) ? 1 : 0;
+    const bS = starredStudents.has(b.name) ? 1 : 0;
+    if (bS !== aS) return bS - aS;
     switch (sortBy) {
       case "best": return b.compatScore - a.compatScore;
       case "overlap": return b.scheduleOverlapHrs - a.scheduleOverlapHrs;
       case "active": return parseActivityMinutes(a.lastActive) - parseActivityMinutes(b.lastActive);
       case "name": return a.name.localeCompare(b.name);
+      case "newest": return STU.indexOf(b) - STU.indexOf(a);
       default: return 0;
     }
   });
 
-  const clearFilters = () => { setSecFilter("all"); setSkillFilter("any"); setOverlapFilter("any"); setStatusFilter("all"); setSearchQuery(""); setSortBy("best"); };
+  const clearFilters = () => {
+    setSecFilter("all"); setSkillFilter("any"); setOverlapFilter("any");
+    setStatusFilter("all"); setSearchQuery(""); setSortBy("best");
+    setFilterSolo(false); setFilterOpenGroup(false); setFilterFavorites(false);
+  };
 
-  return <div className="bg-background min-h-screen pb-16">
-    <Nav go={go} right={<div className="flex items-center gap-3"><Button variant="outline" size="sm" className="inline-flex items-center gap-1.5 px-4" onClick={()=>go("inbox")}><Icon.chat size={16} /> Messages</Button><Button variant="outline" size="sm" className="px-4" onClick={()=>go("mygroup")}>My Group</Button><Button variant="outline" size="sm" className="px-4" onClick={()=>go("dash")}>Dashboard</Button><Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-xs font-bold">JD</AvatarFallback></Avatar></div>} />
+  return <div className="bg-background min-h-screen pb-6">
     <div className="max-w-[1120px] mx-auto py-10 px-12">
-      <div className="flex gap-8">
-        {/* Sidebar filters */}
-        <div className="w-[220px] shrink-0">
-          <Card className="py-5 px-[18px] gap-0 shadow-none">
-            <div className="text-sm font-bold mb-4">Filters</div>
-            <F l="Section">
-              <Select value={secFilter} onValueChange={setSecFilter}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="All Sections" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Sections</SelectItem>
-                  <SelectItem value="201">201</SelectItem>
-                  <SelectItem value="202">202</SelectItem>
-                  <SelectItem value="203">203</SelectItem>
-                </SelectContent>
-              </Select>
-            </F>
-            <F l="Skills">
-              <Select value={skillFilter} onValueChange={setSkillFilter}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="Any skill" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Any skill</SelectItem>
-                  <SelectItem value="frontend">Frontend Dev</SelectItem>
-                  <SelectItem value="backend">Backend</SelectItem>
-                  <SelectItem value="ui">UI Design</SelectItem>
-                  <SelectItem value="research">User Research</SelectItem>
-                  <SelectItem value="proto">Prototyping</SelectItem>
-                  <SelectItem value="data">Data Analysis</SelectItem>
-                  <SelectItem value="ux">UX Writing</SelectItem>
-                  <SelectItem value="pm">Project Mgmt</SelectItem>
-                </SelectContent>
-              </Select>
-            </F>
-            <F l="Min Overlap">
-              <Select value={overlapFilter} onValueChange={setOverlapFilter}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="Any" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Any</SelectItem>
-                  <SelectItem value="2">2+ hours</SelectItem>
-                  <SelectItem value="4">4+ hours</SelectItem>
-                  <SelectItem value="8">8+ hours</SelectItem>
-                </SelectContent>
-              </Select>
-            </F>
-            <F l="Status">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="All" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="looking">Looking</SelectItem>
-                  <SelectItem value="talking">In talks</SelectItem>
-                </SelectContent>
-              </Select>
-            </F>
-          </Card>
-        </div>
-
-        {/* Main content */}
-        <div className="flex-1">
           <div className="flex justify-between items-end mb-4">
-            <div><div className="text-[13px] text-gray-500">CSC318 · Section 201</div><h1 className="text-[28px] font-bold text-foreground -tracking-[0.5px]">Find Teammates</h1></div>
-            <span className="text-[13px] text-gray-500">{filteredStudents.length} student{filteredStudents.length !== 1 ? "s" : ""} found</span>
-          </div>
+        <div><div className="text-[13px] text-gray-500">CSC318 · Section 201</div><h1 className="text-[28px] font-bold text-foreground -tracking-[0.5px]">Find Teammates</h1></div>
+        {view === "people"
+          ? <span className="text-[13px] text-gray-500">{filteredStudents.length} student{filteredStudents.length !== 1 ? "s" : ""} found</span>
+          : <span className="text-[13px] text-gray-500">{FORMING_GROUPS.length} group{FORMING_GROUPS.length !== 1 ? "s" : ""} recruiting</span>
+        }
+      </div>
 
-          {/* Search + Sort row */}
-          <div className="flex gap-3 mb-4">
-            <div className="flex-1 relative">
-              <div className="absolute left-3 top-1/2 -translate-y-1/2"><Icon.search size={16} color="var(--gray-400)" /></div>
-              <Input className="pl-9" placeholder="Search by name, skill, or keyword..." value={searchQuery} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)} />
+      {urgentMode && !urgentDismissed && (
+        <div className="flex items-center gap-3 px-5 py-3 bg-danger-bg border border-danger-border rounded-xl mb-5">
+          <span className="text-danger text-lg">⚠</span>
+          <div className="flex-1">
+            <div className="text-[13px] font-bold text-danger">Deadline in 3 days</div>
+            <div className="text-[12px] text-danger">12 students still ungrouped. Respond quickly — No Response triggers after 24h.</div>
+          </div>
+          <Button size="sm" variant="destructive" className="text-xs px-3" onClick={() => go("email")}>View Email</Button>
+          <button onClick={() => setUrgentDismissed(true)} className="text-[12px] text-[#6B7280] hover:underline cursor-pointer shrink-0">Dismiss</button>
+        </div>
+      )}
+
+      {/* Layer 1: View Toggle */}
+      <div className="flex items-end justify-between border-b border-border h-12 px-0 mb-0">
+        <div className="flex h-full items-end gap-6">
+          {(["people", "groups"] as const).map(v => (
+            <button key={v} onClick={() => setView(v)}
+              className={cn(
+                "pb-[14px] text-[14px] border-b-2 capitalize transition-colors cursor-pointer",
+                view === v
+                  ? "font-semibold text-[#111827] border-[#8e57b8]"
+                  : "font-normal text-[#9CA3AF] border-transparent hover:border-[#8e57b8]/40"
+              )}>
+              {v === "people" ? "People" : "Groups"}
+            </button>
+          ))}
+        </div>
+        <span className="text-[13px] text-[#6B7280] pb-3">
+          {view === "people"
+            ? `${filteredStudents.length} student${filteredStudents.length !== 1 ? "s" : ""} available`
+            : `${FORMING_GROUPS.length} groups recruiting`}
+        </span>
+      </div>
+
+      {/* Layer 2: Filter Bar */}
+      <div className="flex items-center gap-2.5 py-3 border-b border-border overflow-x-auto flex-nowrap">
+        {view === "people" ? (<>
+          {[
+            { label: "Solo", active: filterSolo, toggle: () => setFilterSolo(v => !v) },
+            { label: "Open Group", active: filterOpenGroup, toggle: () => setFilterOpenGroup(v => !v) },
+            { label: "Favorites", active: filterFavorites, toggle: () => setFilterFavorites(v => !v) },
+          ].map(({ label, active, toggle }) => (
+            <button key={label} onClick={toggle}
+              className={cn(
+                "flex items-center gap-1.5 h-[34px] px-[14px] rounded-[20px] text-[13px] border shrink-0 transition-colors cursor-pointer whitespace-nowrap",
+                active
+                  ? "bg-[#8e57b8]/10 border-[#8e57b8] text-[#8e57b8]"
+                  : "bg-white border-[#D1D5DB] text-[#374151] hover:border-gray-400"
+              )}>
+              {active && <span className="text-[11px]">✓</span>}
+              {label}
+            </button>
+          ))}
+
+          <FilterDropdown
+            label={secFilter !== "all" ? secFilter : "Section"}
+            active={secFilter !== "all"}
+            open={sectionPopover}
+            onToggle={() => setSectionPopover(o => !o)}
+            onClose={() => setSectionPopover(false)}
+          >
+            <div className="py-1">
+              {["all", "201", "202", "203"].map(s => (
+                <button key={s} onClick={() => { setSecFilter(s); setSectionPopover(false); }}
+                  className={cn("w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50", secFilter === s && "text-[#8e57b8] font-medium")}>
+                  {s === "all" ? "All Sections" : `Section ${s}`}
+                </button>
+              ))}
             </div>
+          </FilterDropdown>
+
+          <FilterDropdown
+            label={skillFilter !== "any" ? `Skills (1)` : "Skills"}
+            active={skillFilter !== "any"}
+            open={skillsPopover}
+            onToggle={() => setSkillsPopover(o => !o)}
+            onClose={() => setSkillsPopover(false)}
+          >
+            <div className="py-1 min-w-[200px]">
+              {["any", "frontend", "backend", "ui", "research", "proto", "data", "ux", "pm"].map(s => (
+                <button key={s} onClick={() => { setSkillFilter(s); setSkillsPopover(false); }}
+                  className={cn("w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50", skillFilter === s && "text-[#8e57b8] font-medium")}>
+                  {s === "any" ? "Any skill" : s === "frontend" ? "Frontend Dev" : s === "backend" ? "Backend" : s === "ui" ? "UI Design" : s === "research" ? "User Research" : s === "proto" ? "Prototyping" : s === "data" ? "Data Analysis" : s === "ux" ? "UX Writing" : "Project Mgmt"}
+                </button>
+              ))}
+            </div>
+          </FilterDropdown>
+
+          <FilterDropdown
+            label={minOverlapPct > 0 ? `Overlap ≥${minOverlapPct}%` : "Overlap"}
+            active={minOverlapPct > 0}
+            open={overlapPopover}
+            onToggle={() => setOverlapPopover(o => !o)}
+            onClose={() => setOverlapPopover(false)}
+          >
+            <div className="p-4 w-56">
+              <div className="flex justify-between text-[12px] text-[#6B7280] mb-2">
+                <span>0%</span><span className="font-semibold text-[#111827]">{minOverlapPct}%+</span><span>100%</span>
+              </div>
+              <input type="range" min={0} max={100} step={10} value={minOverlapPct}
+                onChange={e => setMinOverlapPct(Number(e.target.value))}
+                className="w-full accent-[#8e57b8]" />
+              {minOverlapPct > 0 && (
+                <button onClick={() => setMinOverlapPct(0)} className="mt-2 text-[12px] text-[#8e57b8] hover:underline">Clear</button>
+              )}
+            </div>
+          </FilterDropdown>
+
+          <FilterDropdown
+            label={activityFilter2 !== "all" ? activityFilter2 : "My Activity"}
+            active={activityFilter2 !== "all"}
+            open={activityPopover}
+            onToggle={() => setActivityPopover(o => !o)}
+            onClose={() => setActivityPopover(false)}
+          >
+            <div className="py-1">
+              {[["all", "All"], ["none", "No contact yet"], ["request-sent", "Request Sent"], ["replied", "Replied"], ["no-response", "No Response"], ["declined", "Declined"]].map(([v, l]) => (
+                <button key={v} onClick={() => { setActivityFilter2(l); setActivityPopover(false); }}
+                  className={cn("w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50 whitespace-nowrap", activityFilter2 === l && "text-[#8e57b8] font-medium")}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </FilterDropdown>
+
+          {hiddenStudents.size > 0 && (
+            <FilterDropdown
+              label={`Hidden (${hiddenStudents.size})`}
+              active={true}
+              open={hiddenPopover}
+              onToggle={() => setHiddenPopover(o => !o)}
+              onClose={() => setHiddenPopover(false)}
+            >
+              <div className="py-1 min-w-[180px]">
+                {[...hiddenStudents].map(name => (
+                  <div key={name} className="flex items-center justify-between px-3 py-2">
+                    <span className="text-[13px]">{name}</span>
+                    <button onClick={() => {
+                      setHiddenStudents(prev => { const n = new Set(prev); n.delete(name); return n; });
+                    }} className="text-[12px] text-[#8e57b8] hover:underline cursor-pointer">Restore</button>
+                  </div>
+                ))}
+                <div className="border-t border-gray-100 mt-1 pt-1 px-3 pb-1">
+                  <button onClick={() => { setHiddenStudents(new Set()); setHiddenPopover(false); }}
+                    className="text-[12px] text-[#991B1B] hover:underline cursor-pointer">Restore All</button>
+                </div>
+              </div>
+            </FilterDropdown>
+          )}
+        </>) : (<>
+          <button onClick={() => setFilterRecruiting(v => !v)}
+            className={cn(
+              "flex items-center gap-1.5 h-[34px] px-[14px] rounded-[20px] text-[13px] border shrink-0 transition-colors cursor-pointer whitespace-nowrap",
+              filterRecruiting ? "bg-[#8e57b8]/10 border-[#8e57b8] text-[#8e57b8]" : "bg-white border-[#D1D5DB] text-[#374151] hover:border-gray-400"
+            )}>
+            {filterRecruiting && <span className="text-[11px]">✓</span>}
+            Recruiting
+          </button>
+
+          <FilterDropdown
+            label={secFilter !== "all" ? secFilter : "Section"}
+            active={secFilter !== "all"}
+            open={sectionPopover}
+            onToggle={() => setSectionPopover(o => !o)}
+            onClose={() => setSectionPopover(false)}
+          >
+            <div className="py-1">
+              {["all", "201", "202", "203"].map(s => (
+                <button key={s} onClick={() => { setSecFilter(s); setSectionPopover(false); }}
+                  className={cn("w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50", secFilter === s && "text-[#8e57b8] font-medium")}>
+                  {s === "all" ? "All Sections" : `Section ${s}`}
+                </button>
+              ))}
+            </div>
+          </FilterDropdown>
+
+          <FilterDropdown
+            label="Spots Open"
+            active={spotsFilter !== "any"}
+            open={spotsPopover}
+            onToggle={() => setSpotsPopover(o => !o)}
+            onClose={() => setSpotsPopover(false)}
+          >
+            <div className="py-1">
+              {[["any", "Any"], ["1+", "1+"], ["2+", "2+"], ["3+", "3+"]].map(([v, l]) => (
+                <button key={v} onClick={() => { setSpotsFilter(v); setSpotsPopover(false); }}
+                  className={cn("w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50", spotsFilter === v && "text-[#8e57b8] font-medium")}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </FilterDropdown>
+        </>)}
+      </div>
+
+      <ConfirmDialog
+        open={hideConfirmTarget !== null}
+        title="Hide this student?"
+        body="They'll be moved to the bottom of the list and grayed out. You can restore them anytime."
+        confirmLabel="Hide"
+        onConfirm={() => {
+          if (hideConfirmTarget) {
+            setHiddenStudents(prev => new Set([...prev, hideConfirmTarget]));
+          }
+          setHideConfirmTarget(null);
+        }}
+        onCancel={() => setHideConfirmTarget(null)}
+      />
+
+      {view === "groups" ? (
+        <GroupsView
+          onSelectGroup={onSelectGroup ?? (() => { })}
+          appliedGroups={appliedGroups}
+          filterRecruiting={filterRecruiting}
+        />
+      ) : (<>
+        {/* Layer 3: Sort Control */}
+        <div className="flex justify-end items-center py-2">
+          <div className="flex items-center gap-1 text-[13px] text-[#6B7280]">
+            <span>Sort:</span>
             <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Sort by..." /></SelectTrigger>
+              <SelectTrigger className="h-7 border-none shadow-none text-[13px] text-[#6B7280] w-auto gap-1 px-1">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
-                <SelectItem value="best">Best match</SelectItem>
-                <SelectItem value="overlap">Most overlap</SelectItem>
-                <SelectItem value="active">Recently active</SelectItem>
-                <SelectItem value="name">Name A–Z</SelectItem>
+                <SelectItem value="best">Best Match</SelectItem>
+                <SelectItem value="overlap">Most Overlap</SelectItem>
+                <SelectItem value="active">Recently Active</SelectItem>
+                <SelectItem value="name">Name</SelectItem>
+                <SelectItem value="newest">Newest</SelectItem>
               </SelectContent>
             </Select>
           </div>
+        </div>
 
-          {/* Tier-aware urgent banner */}
-          <div className="mb-2">
-            <div className="text-[9px] font-bold text-muted-foreground uppercase tracking-[1px] mb-1.5">Demo: Deadline Tier</div>
-            <div className="flex gap-2 p-2 border-2 border-dashed border-border rounded-lg bg-secondary mb-3">
-              {(["Green","Yellow","Orange","Red"] as const).map((label, i) => (
-                <Button key={label} size="sm" variant={demoTier === i ? "default" : "outline"} className="text-xs px-3" onClick={() => setDemoTier(i)}>{label}</Button>
-              ))}
-            </div>
-          </div>
-          {currentTier.color !== "success" && (
-            <div onClick={() => go("urgent")} className={cn("flex justify-between items-center px-[18px] py-3 rounded-[10px] border mb-[18px] cursor-pointer hover:shadow-sm transition-shadow",
-              currentTier.color === "warning" ? "bg-warning-bg border-warning-border" :
-              currentTier.color === "caution" ? "bg-caution-bg border-caution-border" :
-              "bg-danger-bg border-danger-border"
-            )}>
-              <div className="flex items-center gap-3">
-                <span className={cn("text-sm font-bold inline-flex items-center gap-1",
-                  currentTier.color === "warning" ? "text-warning" : currentTier.color === "caution" ? "text-caution" : "text-danger"
-                )}><Icon.clockAlert size={16} color={currentTier.color === "warning" ? "var(--warning)" : currentTier.color === "caution" ? "var(--caution)" : "var(--danger)"} /> {tierDays[demoTier]} days left</span>
-                <span className={cn("text-[13px]",
-                  currentTier.color === "warning" ? "text-warning" : currentTier.color === "caution" ? "text-caution-dark" : "text-danger-dark"
-                )}>{currentTier.color === "danger" ? "Provisional groups form soon!" : currentTier.desc}</span>
-              </div>
-              <span className={cn("text-[13px] font-semibold",
-                currentTier.color === "warning" ? "text-warning" : currentTier.color === "caution" ? "text-caution" : "text-danger"
-              )}>View suggestions →</span>
-            </div>
-          )}
-
-          {/* Student cards or empty state */}
-          {filteredStudents.length === 0 ? (
-            <Card className="py-[52px] px-6 gap-0 shadow-none text-center border-dashed border-gray-300">
-              <p className="text-[15px] text-gray-500 mb-4">No students match your filters.</p>
-              <Button variant="outline" size="sm" className="px-4 mx-auto" onClick={clearFilters}>Clear all filters</Button>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-2 gap-3.5">
-              {filteredStudents.map((st,i)=>{const ss=SS[st.status]; const dest = st.status==="confirmed"?null:st.compatScore>=80?"profile-view-good":st.compatScore>=50?"profile-view-normal":"profile-view-bad"; return (
-                <Card key={i} className={cn("p-0 gap-0 shadow-none overflow-hidden transition-colors", st.status==="confirmed"?"bg-gray-50 pointer-events-none":"cursor-pointer hover:border-gray-300 hover:shadow-sm")} onClick={()=>dest&&go(dest)}>
-                  <div className="flex">
-                    <div className={cn("w-16 flex flex-col items-center justify-center shrink-0 py-3 border-r", st.status==="confirmed" ? "bg-gray-100 border-gray-200" : st.compatScore>=80 ? "bg-success-bg border-success-border" : st.compatScore>=50 ? "bg-warning-bg border-warning-border" : "bg-danger-bg border-danger-border")}>
-                      <div className={cn("text-lg font-extrabold", st.status==="confirmed" ? "text-gray-400" : st.compatScore>=80 ? "text-success" : st.compatScore>=50 ? "text-warning" : "text-danger")}>{st.overlap === "—" ? "—" : st.overlap.replace("/wk","")}</div>
-                      {st.overlap !== "—" && <div className={cn("text-[10px] mt-0.5", st.compatScore>=80 ? "text-success" : st.compatScore>=50 ? "text-warning" : "text-danger")}>/wk</div>}
-                      {st.status !== "confirmed" && st.compatScore > 0 && <div className={cn("text-[10px] mt-1 font-semibold", st.compatScore>=80 ? "text-success" : st.compatScore>=50 ? "text-warning" : "text-danger")}>{st.compatScore}%</div>}
-                    </div>
-                    <div className="flex-1 px-4 py-3.5">
-                      <div className="flex justify-between mb-1">
-                        <span className="text-[15px] font-semibold inline-flex items-center gap-1.5">
-                          <span className={cn("w-2 h-2 rounded-full shrink-0", isRecentlyActive(st.lastActive) ? "bg-success" : "bg-gray-300")} />
-                          {st.name}
-                        </span>
-                        <Badge variant={ss.variant} className={ss.cls}>{ss.l}</Badge>
-                      </div>
-                      <div className="text-xs text-gray-500 mb-1.5">Section {st.sec} · <span className="text-gray-400">{st.lastActive}</span></div>
-                      <div className="flex gap-1 flex-wrap">
-                        {st.skills.map(sk=><span key={sk} className="py-0.5 px-2.5 bg-gray-100 rounded-[10px] text-[11px] text-gray-600">{sk}</span>)}
-                      </div>
+        {filteredStudents.length === 0 ? (
+          <Card className="py-[52px] px-6 gap-0 shadow-none text-center border-dashed border-gray-300">
+            <p className="text-[15px] text-gray-500 mb-4">No students match your filters.</p>
+            <Button variant="outline" size="sm" className="px-4 mx-auto" onClick={clearFilters}>Clear all filters</Button>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {filteredStudents.map((st, i) => {
+              const cs = contactStatuses[st.name];
+              return (
+                <Card
+                  key={i}
+                  className={cn(
+                    "p-4 gap-0 bg-white border-0 rounded-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.08)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.12)] hover:-translate-y-0.5 transition-all duration-150 cursor-pointer relative group",
+                    hiddenStudents.has(st.name) && "opacity-40 pointer-events-none select-none"
+                  )}
+                  onClick={() => !hiddenStudents.has(st.name) && onSelectStudent(st.name)}
+                >
+                  {/* Row 1: Name + Actions */}
+                  <div className="flex items-start justify-between mb-1.5">
+                    <span className="text-[15px] font-semibold text-[#111827] leading-snug">{st.name}</span>
+                    <div className="flex gap-1 ml-2 shrink-0 items-center pointer-events-auto relative z-10">
+                      <button onClick={(e) => { e.stopPropagation(); toggleStar(st.name); }}
+                        className="p-0.5 rounded transition-colors cursor-pointer" aria-label="Toggle favorite">
+                        {starredStudents.has(st.name)
+                          ? <Icon.starFilled size={14} color="#8e57b8" />
+                          : <Icon.star size={14} color="#D1D5DB" />}
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); setHideConfirmTarget(st.name); }}
+                        className="p-0.5 rounded transition-all cursor-pointer" aria-label="Toggle visibility">
+                        {hiddenStudents.has(st.name)
+                          ? <Icon.eyeOff size={14} color="#9CA3AF" />
+                          : <Icon.eyeOpen size={14} color="#D1D5DB" />}
+                      </button>
                     </div>
                   </div>
+
+                  {/* Row 2: Status + Section */}
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <span className={cn(
+                      "inline-flex items-center h-[22px] px-2 rounded-[12px] text-[11px] font-medium",
+                      st.status === "solo" ? "bg-[#DCFCE7] text-[#166534]" : "bg-[#FEF3C7] text-[#92400E]"
+                    )}>
+                      {st.status === "solo" ? "Solo" : "Open Group"}
+                    </span>
+                    <span className="text-[12px] text-[#6B7280]">{st.sec}</span>
+                    {isRecentlyActive(st.lastActive) && <span className="w-1.5 h-1.5 rounded-full bg-green-400 ml-auto" />}
+                  </div>
+
+                  {/* Row 3: Skills (max 3 + overflow) */}
+                  <div className="flex flex-wrap gap-1 mb-2.5">
+                    {st.skills.slice(0, 3).map(sk => (
+                      <span key={sk} className="inline-flex items-center h-6 px-2 rounded-[6px] text-[12px] font-medium bg-[#8e57b8]/10 text-[#8e57b8]">
+                        {sk}
+                      </span>
+                    ))}
+                    {st.skills.length > 3 && (
+                      <span className="text-[12px] text-[#6B7280]">+{st.skills.length - 3}</span>
+                    )}
+                  </div>
+
+                  {/* Row 4: Schedule Overlap bar */}
+                  <div className="mb-2">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[12px] text-[#6B7280]">Overlap</span>
+                      <span className={cn("text-[13px] font-semibold",
+                        st.scheduleOverlapHrs >= 6 ? "text-[#8e57b8]" : "text-[#9CA3AF]"
+                      )}>
+                        {st.overlap}
+                      </span>
+                    </div>
+                    <div className="h-1 rounded-full bg-[#E5E7EB] overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{
+                        width: `${Math.min(100, (st.scheduleOverlapHrs / 10) * 100)}%`,
+                        backgroundColor: st.scheduleOverlapHrs >= 7 ? "#22C55E" : st.scheduleOverlapHrs >= 4 ? "#8e57b8" : "#9CA3AF"
+                      }} />
+                    </div>
+                  </div>
+
+                  {/* Row 5: Contact Status (conditional) */}
+                  {cs && cs !== "none" && CONTACT_STATUS_LABELS[cs] && (
+                    <div className="mt-2 pt-2 border-t border-[#F3F4F6]">
+                      <span className={cn("inline-flex items-center h-[22px] px-2 rounded-[12px] text-[11px] font-medium", CONTACT_STATUS_LABELS[cs].cls)}>
+                        {CONTACT_STATUS_LABELS[cs].l}
+                      </span>
+                    </div>
+                  )}
                 </Card>
-              );})}
-            </div>
-          )}
-        </div>
-      </div>
+              );
+            })}
+          </div>
+        )}
+      </>)}
     </div>
   </div>;
 }
 
-// Unified Profile Page
-function ProfilePage({ go, studentName }: ProfilePageProps) {
+// FormingStudentPanel
+function FormingStudentPanel({ student, onViewGroup }: { student: Student; onViewGroup: () => void }) {
+  return (
+    <div className="p-6">
+      <div className="flex gap-4 items-center mb-5">
+        <Avatar className="size-12"><AvatarFallback className="bg-gray-200 text-gray-500 text-base font-bold">{student.init}</AvatarFallback></Avatar>
+        <div className="flex-1">
+          <div className="text-[18px] font-bold">{student.name}</div>
+          <div className="text-sm text-gray-500">Section {student.sec}</div>
+        </div>
+        <span className="ml-auto py-1 px-3 bg-warning-bg text-warning text-xs font-semibold rounded-full border border-warning-border">Formed</span>
+      </div>
+      <div className="py-4 px-5 bg-gray-50 rounded-xl border border-gray-200 mb-5">
+        <div className="text-[13px] font-semibold mb-1">{student.name.split(" ")[0]} is already in a formed group</div>
+        <div className="text-[12px] text-gray-600">You can’t send a direct request, but you can apply to join their group.</div>
+      </div>
+      <Button className="w-full" onClick={onViewGroup}>Join Their Group →</Button>
+    </div>
+  );
+}
+
+// ReceivedRequestPanel
+interface ReceivedRequestPanelProps {
+  senderName: string;
+  onClose: () => void;
+  onAccept?: () => void;
+  onReply?: () => void;
+}
+
+function ReceivedRequestPanel({ senderName, onClose, onAccept, onReply }: ReceivedRequestPanelProps) {
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [declineOpen, setDeclineOpen] = useState(false);
+  const [declineReason, setDeclineReason] = useState("");
+  const [messages, setMessages] = useState<{ from: string; text: string }[]>([]);
+  const replyInputRef = useRef<HTMLInputElement>(null);
+  const sender = STU.find(s => s.name === senderName);
+  const DECLINE_REASONS = ["Already found a group", "Schedules do not overlap enough", "Looking for different skills"];
+
+  if (!sender) return null;
+  return (
+    <div className="p-6">
+      <div className="py-4 px-5 bg-accent border border-border rounded-xl mb-5">
+        <div className="text-[11px] font-bold text-primary uppercase tracking-wide mb-2">Group Request</div>
+        <div className="text-[13px] font-semibold mb-2">From {senderName}</div>
+        <div className="text-[12px] text-gray-700 mb-1">
+          <span className="font-semibold">Why work together?</span>
+          <p className="mt-0.5">I think our skills complement each other well — I cover frontend and you have backend.</p>
+        </div>
+        <div className="text-[12px] text-gray-700">
+          <span className="font-semibold">Their question:</span>
+          <p className="mt-0.5">What’s your preferred working style — async or sync collaboration?</p>
+        </div>
+      </div>
+      <div className="flex gap-3 items-center mb-5 pb-5 border-b border-gray-100">
+        <Avatar className="size-10"><AvatarFallback className="bg-gray-200 text-gray-500 text-sm font-bold">{sender.init}</AvatarFallback></Avatar>
+        <div>
+          <div className="text-sm font-semibold">{sender.name}</div>
+          <div className="text-xs text-gray-500">Section {sender.sec} · {sender.overlap} overlap</div>
+        </div>
+      </div>
+      {!replyOpen && !declineOpen && (
+        <div className="flex gap-2">
+          <Button className="flex-1 bg-success hover:bg-success/90" onClick={() => { onAccept?.(); onClose(); }}>Accept</Button>
+          <Button variant="outline" className="flex-1" onClick={() => { onReply?.(); }}>Reply</Button>
+          <Button variant="outline" className="flex-1 text-danger border-danger hover:bg-danger-bg" onClick={() => setDeclineOpen(true)}>Decline</Button>
+        </div>
+      )}
+      {replyOpen && (
+        <div className="border border-gray-200 rounded-xl overflow-hidden">
+          <div className="p-3 max-h-[200px] overflow-y-auto flex flex-col gap-2">
+            {messages.length === 0 ? (
+              <p className="text-[11px] text-gray-400 text-center py-3">Start a conversation to help decide.</p>
+            ) : messages.map((m, i) => (
+              <div key={i} className={cn("text-[12px] py-1.5 px-3 rounded-lg max-w-[85%]", m.from === "me" ? "bg-primary text-primary-foreground ml-auto" : "bg-gray-100 text-gray-700")}>{m.text}</div>
+            ))}
+          </div>
+          <div className="flex gap-2 p-2 border-t border-gray-100">
+            <Input ref={replyInputRef} className="flex-1 text-[12px] h-8" placeholder="Type a message..." />
+            <Button size="sm" className="h-8 px-3 text-xs" onClick={() => {
+              if (replyInputRef.current?.value) { setMessages(m => [...m, { from: "me", text: replyInputRef.current!.value }]); replyInputRef.current!.value = ""; }
+            }}>Send</Button>
+          </div>
+          <div className="flex gap-2 p-2 border-t border-gray-100">
+            <Button size="sm" className="flex-1 text-xs bg-success hover:bg-success/90" onClick={() => { onAccept?.(); onClose(); }}>Accept</Button>
+            <Button size="sm" variant="outline" className="flex-1 text-xs text-danger" onClick={() => { setReplyOpen(false); setDeclineOpen(true); }}>Decline</Button>
+          </div>
+        </div>
+      )}
+      {declineOpen && (
+        <div className="border border-gray-200 rounded-xl p-4">
+          <div className="text-[13px] font-semibold mb-3">Select a reason</div>
+          <div className="space-y-2 mb-3">
+            {DECLINE_REASONS.map(r => (
+              <label key={r} className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="decline-reason" value={r} checked={declineReason === r} onChange={() => setDeclineReason(r)} className="accent-primary" />
+                <span className="text-[12px] text-gray-700">{r}</span>
+              </label>
+            ))}
+          </div>
+          <Textarea placeholder="Optional note (one line)..." className="text-[12px] mb-3 h-16 resize-none" />
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => setDeclineOpen(false)}>Back</Button>
+            <Button size="sm" className="flex-1 text-xs bg-danger hover:bg-danger/90 text-white" onClick={onClose}>Send Decline</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ProfilePanelContent (panel version of ProfilePage)
+interface ProfilePanelProps extends GoProps {
+  studentName: string;
+  onClose: () => void;
+  onContactStatusChange: (name: string, status: string) => void;
+  urgentMode?: boolean;
+  contactStatus?: string;
+}
+
+function ProfilePanelContent({ go, studentName, onClose, onContactStatusChange, urgentMode = false, contactStatus = "none" }: ProfilePanelProps) {
   const [ack, setAck] = useState(false);
-  const st = STU.find(s => s.name === studentName)!;
+  const [requestStep, setRequestStep] = useState<"view" | "form">("view");
+  const [requestWhy, setRequestWhy] = useState("");
+  const [requestQuestion, setRequestQuestion] = useState("");
+  const st = STU.find(s => s.name === studentName);
+
+  if (!st) return null;
+
+  if (st.status === "closed") {
+    return (
+      <div className="p-6">
+        <div className="flex gap-4 items-center mb-5">
+          <Avatar className="size-12"><AvatarFallback className="bg-gray-200 text-gray-500 text-base font-bold">{st.init}</AvatarFallback></Avatar>
+          <div className="flex-1">
+            <div className="text-[18px] font-bold">{st.name}</div>
+            <div className="text-sm text-gray-500">Section {st.sec}</div>
+          </div>
+          <span className="py-1 px-3 bg-gray-100 text-gray-500 text-xs font-semibold rounded-full">Grouped</span>
+        </div>
+        <div className="py-4 px-5 bg-gray-50 rounded-xl border border-gray-200">
+          <div className="text-[13px] font-semibold mb-1">{st.name.split(" ")[0]} is already in a confirmed group</div>
+          <div className="text-[12px] text-gray-600">They are no longer available for new group requests.</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (st.status === "open-group") {
+    return <FormingStudentPanel student={st} onViewGroup={onClose} />;
+  }
+
   const c = COMPAT[studentName];
   const sched = SCHEDULE_DATA[studentName];
   const workRows = WORK_STYLE_DATA[studentName];
-  const ds = ["Mon","Tue","Wed","Thu","Fri"], ts = ["9am–12pm","1–5pm","6–9pm"];
+
+  if (!c || !sched || !workRows) {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center min-h-[200px] text-gray-400">
+        <div className="text-[13px]">No compatibility data available.</div>
+      </div>
+    );
+  }
+
+  const ds = ["Mon", "Tue", "Wed", "Thu", "Fri"], ts = ["9am–12pm", "12–4pm", "4–8pm", "8–11pm"];
   const firstName = studentName.split(" ")[0];
   const tier: "good" | "normal" | "bad" = c.overall >= 80 ? "good" : c.overall >= 50 ? "normal" : "bad";
   const t = PROFILE_TIERS[tier];
@@ -1056,270 +2502,488 @@ function ProfilePage({ go, studentName }: ProfilePageProps) {
   const needsAck = tier === "bad" || tier === "normal";
   const sentKey = `sent-${firstName.toLowerCase()}`;
 
-  return <div className="bg-background min-h-screen pb-16">
-    <Nav go={go} />
-    <div className="max-w-[680px] mx-auto py-14 px-6">
-      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={()=>go("board")}>← Back to Board</Button>
-
-      {/* Header */}
-      <div className="flex gap-4 items-center mb-4">
-        <Avatar className="size-14"><AvatarFallback className="bg-gray-200 text-gray-500 text-lg font-bold">{st.init}</AvatarFallback></Avatar>
-        <div className="flex-1">
-          <div className="text-[22px] font-bold">{st.name}</div>
-          <div className="text-sm text-gray-500">Section {st.sec} · Looking for group</div>
-        </div>
-      </div>
-
-      {/* Compatibility Score Card */}
-      <Card className={cn("p-5 mb-5 gap-0 shadow-none", t.bg, t.border)}>
-        <div className="flex items-center gap-5 mb-3">
-          <div className={cn("text-[42px] font-extrabold", t.text)}>{c.overall}%</div>
-          <div>
-            <div className={cn("text-[15px] font-bold", t.text)}>{t.label}</div>
-            {t.subtitle && <div className={cn("text-[13px]", t.darkText)}>{t.subtitle}</div>}
-          </div>
-        </div>
-        {([["Schedule", c.scheduleScore],["Skills", c.skillScore],["Work Style", c.workStyleScore]] as const).map(([label, score]) => (
-          <div key={label} className="flex items-center gap-2 mb-1">
-            <span className={cn("text-[11px] w-16", t.darkText)}>{label}</span>
-            <div className={cn("flex-1 h-2 rounded-full overflow-hidden", t.trackBg)}>
-              <div className={cn("h-full rounded-full", score >= 70 ? "bg-success" : score >= 50 ? "bg-warning" : "bg-danger")} style={{ width: `${Math.max(score, 3)}%` }} />
+  return (
+    <div>
+      <div className="p-6 pb-2">
+        <div className="flex gap-4 items-center mb-4">
+          <Avatar className="size-14"><AvatarFallback className="bg-gray-200 text-gray-500 text-lg font-bold">{st.init}</AvatarFallback></Avatar>
+          <div className="flex-1">
+            <div className="text-[22px] font-bold">{st.name}</div>
+            <div className="flex items-center gap-2 mt-1">
+              <span className={cn(
+                "inline-flex items-center h-[26px] px-2.5 rounded-[12px] text-[12px] font-medium",
+                st.status === "solo" ? "bg-[#DCFCE7] text-[#166534]" :
+                st.status === "open-group" ? "bg-[#FEF3C7] text-[#92400E]" :
+                "bg-gray-100 text-gray-500"
+              )}>
+                {st.status === "solo" ? "Solo" : st.status === "open-group" ? "Open Group" : "Closed"}
+              </span>
+              <span className="text-[14px] text-[#6B7280]">Section {st.sec}</span>
             </div>
-            <span className={cn("text-[11px] font-semibold w-8 text-right", t.darkText)}>{score}%</span>
-          </div>
-        ))}
-      </Card>
-
-      {/* Banner */}
-      {!hasWarnings ? (
-        <div className="py-3.5 px-[18px] bg-success-bg rounded-[10px] border border-success-border mb-7">
-          <div className="text-[15px] font-bold text-success mb-1">Strong compatibility</div>
-          <div className="text-[13px] text-success leading-relaxed">No warnings — schedules, skills, and work styles align well.</div>
-        </div>
-      ) : (
-        <div className={cn("py-3.5 px-[18px] rounded-[10px] border mb-7", tier === "bad" ? "bg-caution-bg border-caution-border" : "bg-caution-bg border-caution-border")}>
-          <div className="text-[15px] font-bold text-caution mb-1">⚠ Compatibility warnings found</div>
-          <div className="text-[13px] text-caution-dark leading-relaxed">{c.warnings.join(". ")}.</div>
-        </div>
-      )}
-
-      {/* Schedule Overlap Grid */}
-      <div className="mb-7">
-        <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Schedule Overlap</Label>
-        <div className="grid grid-cols-[64px_repeat(5,1fr)] gap-1">
-          <div />{ds.map(d=><div key={d} className="text-center text-xs font-semibold text-gray-500 p-2">{d}</div>)}
-          {ts.map((t2,ti)=><Fragment key={ti}><div className="text-[11px] text-gray-500 flex items-center">{t2}</div>
-            {ds.map(d=>{const k=`${d}-${ti}`,m=sched.my.has(k),h=sched.theirs.has(k),b=m&&h;return (<div key={k} className={cn("py-3 px-1 text-center rounded-md text-[11px] font-medium", b?"bg-primary text-primary-foreground":m?"bg-schedule-self text-gray-500":h?"bg-schedule-other text-gray-400":"bg-gray-50 text-gray-300")}>{b?"✓":m?"You":h?st.init:""}</div>);})}</Fragment>)}
-        </div>
-        <div className="flex justify-between items-center mt-2.5">
-          <div className="text-xs text-gray-500">{sched.overlapHrs > 0 && "◼ Both · "}<span className="text-gray-400">◼ You</span> · <span className="text-gray-300">◼ {firstName}</span></div>
-          <div className={cn("py-1 px-3 rounded-md border", sched.overlapHrs > 0 ? "bg-success-bg border-success-border" : "bg-danger-bg border-danger-border")}>
-            <span className={cn("text-[13px] font-bold", sched.overlapHrs > 0 ? "text-success" : "text-danger")}>{sched.overlapHrs}h/wk overlap</span>
           </div>
         </div>
-      </div>
 
-      {/* Skills Comparison */}
-      <div className="mb-7">
-        <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skills Comparison</Label>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="p-4 bg-gray-50 rounded-[10px]"><div className="text-xs font-semibold mb-2">You</div><div className="text-sm mb-1">UI Design</div><div className="text-sm">User Research</div></div>
-          <div className="p-4 bg-gray-50 rounded-[10px]"><div className="text-xs font-semibold mb-2">{firstName}</div>{st.skills.map(sk=><div key={sk} className="text-sm mb-1">{sk}</div>)}</div>
-        </div>
-        <div className="py-2 px-3 bg-success-bg rounded-lg text-[13px] text-success mt-2.5">✓ Complementary skills</div>
-      </div>
-
-      {/* Skill Coverage Map */}
-      <div className="mb-7">
-        <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skill Coverage Map</Label>
-        <div className="grid grid-cols-4 gap-2">
-          {c.skillComplementarity.map(({ skill, coveredBy }) => (
-            <div key={skill} className={cn("p-2.5 rounded-lg text-center text-[12px] font-medium border",
-              coveredBy === "you" ? "bg-secondary border-border text-foreground" :
-              coveredBy === "them" ? "bg-success-bg border-success-border text-success" :
-              coveredBy === "both" ? "bg-primary text-primary-foreground border-primary" :
-              "bg-gray-50 border-dashed border-gray-300 text-gray-400"
-            )}>
-              <div className="text-[11px] mb-0.5">{skill}</div>
-              <div className="text-[10px] opacity-75">({coveredBy})</div>
+        <Card className={cn("p-5 mb-5 gap-0 shadow-none", t.bg, t.border)}>
+          <div className="flex items-center gap-5 mb-3">
+            <div className={cn("text-[42px] font-extrabold", t.text)}>{c.overall}%</div>
+            <div>
+              <div className={cn("text-[15px] font-bold", t.text)}>{t.label}</div>
+              {t.subtitle && <div className={cn("text-[13px]", t.darkText)}>{t.subtitle}</div>}
             </div>
-          ))}
-        </div>
-        <div className="flex gap-4 mt-2 text-[10px] text-gray-500">
-          <span>◼ You</span><span className="text-success">◼ {firstName}</span><span>◼ Both</span><span className="text-gray-400">◻ Gap</span>
-        </div>
-      </div>
-
-      {/* Work Style Table */}
-      <div className="mb-7">
-        <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Work Style</Label>
-        <Card className="p-0 gap-0 shadow-none overflow-hidden">
-          {workRows.map(([l,y,t2,ok],i)=>(
-            <div key={l} className={cn("flex justify-between items-center px-4 py-3", i<workRows.length-1 && "border-b border-gray-100", !ok && "bg-danger-bg")}>
-              <span className={cn("text-[13px]", ok ? "text-gray-500" : "text-danger font-semibold")}>{l}</span>
-              <div className="flex gap-3 items-center text-[13px]">
-                <span>{y}</span>
-                <span className="text-gray-400 text-[11px]">vs</span>
-                <span>{t2}</span>
-                <span className={cn("text-base", ok ? "text-success" : "text-danger")}>{ok?"✓":"✗"}</span>
+          </div>
+          {([["Schedule", c.scheduleScore], ["Skills", c.skillScore], ["Work Style", c.workStyleScore]] as const).map(([label, score]) => (
+            <div key={label} className="flex items-center gap-2 mb-1">
+              <span className={cn("text-[11px] w-16", t.darkText)}>{label}</span>
+              <div className={cn("flex-1 h-2 rounded-full overflow-hidden", t.trackBg)}>
+                <div className={cn("h-full rounded-full", score >= 80 ? "bg-success" : score >= 50 ? "bg-warning" : "bg-danger")} style={{ width: `${Math.max(score, 3)}%` }} />
               </div>
+              <span className={cn("text-[11px] font-semibold w-8 text-right", t.darkText)}>{score}%</span>
             </div>
           ))}
         </Card>
+
+        {!hasWarnings ? (
+          <div className="py-3.5 px-[18px] bg-success-bg rounded-[10px] border border-success-border mb-7">
+            <div className="text-[15px] font-bold text-success mb-1">Strong compatibility</div>
+            <div className="text-[13px] text-success leading-relaxed">No warnings — schedules, skills, and work styles align well.</div>
+          </div>
+        ) : (
+          <div className="py-3.5 px-[18px] rounded-[10px] border bg-caution-bg border-caution-border mb-7">
+            <div className="text-[15px] font-bold text-caution mb-1">⚠ Compatibility warnings found</div>
+            <div className="text-[13px] text-caution-dark leading-relaxed">{c.warnings.join(". ")}.</div>
+          </div>
+        )}
+
+
+        {/* Section B: All Skills */}
+        <div className="mb-5">
+          <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skills</Label>
+          <div className="flex flex-wrap gap-1">
+            {st.skills.map(sk => (
+              <span key={sk} className="inline-flex items-center h-6 px-2 rounded-[6px] text-[12px] font-medium bg-[#8e57b8]/10 text-[#8e57b8]">{sk}</span>
+            ))}
+          </div>
+        </div>
+
+        {/* Section D: Bio */}
+        <div className="mb-5">
+          <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">About</Label>
+          <p className="text-[13px] text-gray-600 leading-relaxed">{st.bio || "No bio yet."}</p>
+        </div>
+
+        <div className="mb-7">
+          <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Schedule Overlap</Label>
+          <div className="grid grid-cols-[64px_repeat(5,1fr)] gap-1">
+            <div />{ds.map(d => <div key={d} className="text-center text-xs font-semibold text-gray-500 p-2">{d}</div>)}
+            {ts.map((t2, ti) => <Fragment key={ti}><div className="text-[11px] text-gray-500 flex items-center">{t2}</div>
+              {ds.map(d => { const k = `${d}-${ti}`, m = sched.my.has(k), h = sched.theirs.has(k), b = m && h; return (<div key={k} className={cn("py-3 px-1 text-center rounded-md text-[11px] font-medium", b ? "bg-primary text-primary-foreground" : m ? "bg-schedule-self text-gray-500" : h ? "bg-schedule-other text-gray-400" : "bg-gray-50 text-gray-300")}>{b ? "✓" : m ? "You" : h ? st.init : ""}</div>); })}</Fragment>)}
+          </div>
+          <div className="flex justify-between items-center mt-2.5">
+            <div className="text-xs text-gray-500"><span className="text-gray-400">◼ You</span> · <span className="text-gray-300">◼ {firstName}</span></div>
+            <div className={cn("py-1 px-3 rounded-md border", sched.overlapHrs > 0 ? "bg-success-bg border-success-border" : "bg-danger-bg border-danger-border")}>
+              <span className={cn("text-[13px] font-bold", sched.overlapHrs > 0 ? "text-success" : "text-danger")}>{sched.overlapHrs}h/wk overlap</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-7">
+          <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skills Comparison</Label>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="p-4 bg-gray-50 rounded-[10px]"><div className="text-xs font-semibold mb-2">You</div><div className="text-sm mb-1">UI Design</div><div className="text-sm">User Research</div></div>
+            <div className="p-4 bg-gray-50 rounded-[10px]"><div className="text-xs font-semibold mb-2">{firstName}</div>{st.skills.map(sk => <div key={sk} className="text-sm mb-1">{sk}</div>)}</div>
+          </div>
+          <div className="py-2 px-3 bg-success-bg rounded-lg text-[13px] text-success mt-2.5">✓ Complementary skills</div>
+        </div>
+
+        <div className="mb-7">
+          <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skill Coverage Map</Label>
+          <div className="grid grid-cols-4 gap-2">
+            {c.skillComplementarity.map(({ skill, coveredBy }) => (
+              <div key={skill} className={cn("p-2.5 rounded-lg text-center text-[12px] font-medium border",
+                coveredBy === "you" ? "bg-secondary border-border text-foreground" :
+                  coveredBy === "them" ? "bg-success-bg border-success-border text-success" :
+                    coveredBy === "both" ? "bg-primary text-primary-foreground border-primary" :
+                      "bg-gray-50 border-dashed border-gray-300 text-gray-400"
+              )}>
+                <div className="text-[11px] mb-0.5">{skill}</div>
+                <div className="text-[10px] opacity-75">({coveredBy})</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mb-7">
+          <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Work Style</Label>
+          <Card className="p-0 gap-0 shadow-none overflow-hidden">
+            {workRows.map(([l, y, t2, ok], i) => (
+              <div key={l} className={cn("flex justify-between items-center px-4 py-3", i < workRows.length - 1 && "border-b border-gray-100", !ok && "bg-danger-bg")}>
+                <span className={cn("text-[13px]", ok ? "text-gray-500" : "text-danger font-semibold")}>{l}</span>
+                <div className="flex gap-3 items-center text-[13px]">
+                  <span>{y}</span><span className="text-gray-400 text-[11px]">vs</span><span>{t2}</span>
+                  <span className={cn("text-base", ok ? "text-success" : "text-danger")}>{ok ? "✓" : "✗"}</span>
+                </div>
+              </div>
+            ))}
+          </Card>
+        </div>
+
+        {needsAck && (
+          <label className="flex items-start gap-2.5 py-3.5 px-[18px] bg-gray-50 rounded-[10px] border border-gray-200 mb-5 cursor-pointer">
+            <Checkbox checked={ack} onCheckedChange={(v) => setAck(v === true)} className="mt-[3px]" />
+            <span className="text-[13px] text-gray-600 leading-relaxed">
+              {tier === "bad"
+                ? "I understand there are compatibility concerns and we'll need to coordinate carefully."
+                : "I understand there are some differences and we'll need to discuss them."}
+            </span>
+          </label>
+        )}
       </div>
 
-      {/* Acknowledgment checkbox (bad/normal only) */}
-      {needsAck && (
-        <label className="flex items-start gap-2.5 py-3.5 px-[18px] bg-gray-50 rounded-[10px] border border-gray-200 mb-5 cursor-pointer">
-          <Checkbox checked={ack} onCheckedChange={(v) => setAck(v === true)} className="mt-[3px]" id="ack-checkbox" />
-          <span className="text-[13px] text-gray-600 leading-relaxed">
-            {tier === "bad"
-              ? "I understand there are compatibility concerns and we'll need to coordinate carefully."
-              : "I understand there are some differences and we'll need to discuss them."}
-          </span>
-        </label>
+      {requestStep === "form" && (
+        <div className="fixed inset-0 bg-foreground/40 z-[300] flex items-end sm:items-center justify-center p-4">
+          <div className="bg-background rounded-2xl p-6 w-full max-w-[420px] shadow-xl">
+            <div className="text-[11px] font-bold text-primary uppercase tracking-wide mb-1">{urgentMode ? "Quick Request" : "Group Request"}</div>
+            <div className="text-lg font-bold mb-1">To {st.name}</div>
+            <p className="text-[13px] text-gray-500 mb-5">Introduce yourself and give them a reason to say yes.</p>
+            <div className="mb-4">
+              <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-[7px] block">Why work together?</Label>
+              <Textarea
+                value={requestWhy}
+                onChange={e => setRequestWhy(e.target.value)}
+                className="resize-none h-20 text-sm"
+                placeholder={`Explain why you and ${st.name.split(" ")[0]} would make a strong team...`}
+              />
+            </div>
+            {!urgentMode && (
+              <div className="mb-5">
+                <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-[7px] block">A question for them</Label>
+                <Input
+                  value={requestQuestion}
+                  onChange={e => setRequestQuestion(e.target.value)}
+                  placeholder="Ask something to start the conversation..."
+                />
+              </div>
+            )}
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setRequestStep("view")}>Back</Button>
+              <Button
+                className="flex-1"
+                disabled={urgentMode ? requestWhy.trim() === "" : (requestWhy.trim() === "" || requestQuestion.trim() === "")}
+                onClick={() => {
+                  onContactStatusChange(studentName, "request-sent");
+                  go(sentKey);
+                  onClose();
+                }}
+              >
+                Send Request to Join
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
 
-      {/* Action buttons */}
-      <div className="flex gap-3">
-        <Button variant="outline" className="flex-1 px-7 py-3 h-auto" onClick={()=>go("board")}>Back to Board</Button>
-        <Button disabled={needsAck && !ack} className="flex-1 px-7 py-3 h-auto" onClick={()=>go(sentKey)}>Send Group Request</Button>
+      <div className="sticky bottom-0 border-t border-border p-4 bg-background z-10">
+        {contactStatus === "request-sent" ? (
+          <div className="text-center">
+            <div className="text-[14px] text-[#6B7280] mb-2">Request Sent</div>
+            <button
+              onClick={() => { onContactStatusChange(studentName, "none"); }}
+              className="text-[13px] text-[#991B1B] hover:underline cursor-pointer"
+            >
+              Withdraw Request
+            </button>
+          </div>
+        ) : (
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={onClose}>Close</Button>
+            <Button disabled={needsAck && !ack} className="flex-1" onClick={() => setRequestStep("form")}>
+              Join Their Group
+            </Button>
+          </div>
+        )}
       </div>
     </div>
-  </div>;
+  );
 }
+
+
 
 // Request Sent
 function Sent({ go, targetName }: SentProps) {
-  return <div className="bg-background min-h-screen pb-16">
-    <Nav go={go} />
+  return <div className="bg-background min-h-screen pb-6">
     <div className="max-w-[500px] mx-auto pt-[100px] px-6 text-center">
       <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-success-bg flex items-center justify-center"><span className="text-3xl text-success">✓</span></div>
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px] text-center">Request Sent!</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed text-center">{targetName} will be notified by email. You'll hear back soon.</p>
       <div className="flex gap-3 justify-center">
-        <Button className="px-7 py-3 h-auto" onClick={()=>go("board")}>Back to Board</Button>
-        <Button variant="outline" className="px-7 py-3 h-auto" onClick={()=>go("inbox")}>Messages</Button>
+        <Button className="px-7 py-3 h-auto" onClick={() => go("board")}>Back to Board</Button>
+        <Button variant="outline" className="px-7 py-3 h-auto" onClick={() => go("mygroup")}>View My Group</Button>
       </div>
     </div>
   </div>;
 }
 
-// Chat
-function Chat({ go }: GoProps) {
-  const msgs = [
-    { from: "me", text: "Hey Jesse! I saw we have 8 hours of overlap and complementary skills. Want to team up for CSC318?", time: "2:14 PM" },
-    { from: "them", text: "Hey John! Yeah I checked your profile too — looks like a great fit. I'm down!", time: "2:18 PM" },
-    { from: "me", text: "Awesome! Should we look for 2-3 more members? I saw Aisha Khan has project management skills.", time: "2:20 PM" },
-    { from: "them", text: "Sounds good. Let's also check if anyone has backend experience.", time: "2:22 PM" },
-  ];
-  return <div className="bg-background min-h-screen flex flex-col">
-    <Nav go={go} right={<Button variant="outline" size="sm" className="px-4" onClick={()=>go("inbox")}>← Inbox</Button>} />
-    <div className="max-w-[680px] mx-auto w-full flex-1 flex flex-col px-6">
-      {/* Chat header */}
-      <div className="flex items-center gap-3.5 py-4 border-b border-gray-200">
-        <Avatar className="size-10"><AvatarFallback className="bg-gray-200 text-gray-500 text-sm font-bold">JN</AvatarFallback></Avatar>
-        <div className="flex-1">
-          <div className="text-base font-semibold">Jesse Nguyen</div>
-          <div className="text-xs text-gray-500">CSC318 · Section 202 · Last seen 2:22 PM</div>
+// ChatPanel (slide-out, replaces standalone Chat/Inbox)
+const MOCK_REPLIES = [
+  "That sounds great! When would you like to meet?",
+  "I'm interested! Let me check my schedule.",
+  "Thanks for reaching out! What part of the project excites you most?",
+  "Sure, I think we'd work well together. Let's discuss more!",
+];
+
+interface ChatPanelProps { open: boolean; onClose: () => void; targetName: string; requestType?: "request" | "application"; }
+
+function ChatPanel({ open, onClose, targetName, requestType = "request" }: ChatPanelProps) {
+  const [msgs, setMsgs] = useState<{ from: "me" | "them"; text: string; time: string }[]>([]);
+  const [input, setInput] = useState("");
+  const [stage, setStage] = useState<"replied" | "accepted" | "declined">("replied");
+  const sender = STU.find(s => s.name === targetName);
+  const sendMsg = () => {
+    if (!input.trim()) return;
+    const text = input.trim();
+    const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    setMsgs(m => [...m, { from: "me", text, time }]);
+    setInput("");
+    setTimeout(() => {
+      setMsgs(prev => [...prev, {
+        from: "them" as const,
+        text: MOCK_REPLIES[Math.floor(Math.random() * MOCK_REPLIES.length)],
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      }]);
+    }, 1500);
+  };
+  const ended = stage === "accepted" || stage === "declined";
+
+  return (
+    <>
+      {open && <div className="fixed inset-0 bg-foreground/20 z-[170]" onClick={onClose} />}
+      <div className={cn("fixed top-0 right-0 h-full w-[480px] max-w-[95vw] bg-background border-l border-border z-[180] flex flex-col transition-transform duration-300 ease-in-out", open ? "translate-x-0" : "translate-x-full")}>
+        <div className="flex items-center justify-between h-14 px-5 border-b border-border shrink-0">
+          <div className="flex items-center gap-2.5">
+            <span className="text-[15px] font-semibold">{targetName}</span>
+            {sender && <span className={cn("inline-flex items-center h-5 px-2 rounded-full text-[11px] font-medium", sender.status === "solo" ? "bg-success-bg text-success" : "bg-warning-bg text-warning")}>{sender.status === "solo" ? "Solo" : "Open Group"}</span>}
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 leading-none cursor-pointer"><Icon.x size={18} color="#9CA3AF" /></button>
+        </div>
+        <div className="p-4 border-b border-border bg-[#FAFAFA] shrink-0">
+          <div className="border border-[#E5E7EB] rounded-[10px] p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[13px] font-semibold text-[#8e57b8]">{requestType === "request" ? "Group Request" : "Group Application"}</span>
+              <span className="text-[11px] text-[#9CA3AF]">2 min ago</span>
+            </div>
+            {sender && <div className="flex items-center gap-2 mb-2 flex-wrap"><Avatar className="size-6"><AvatarFallback className="text-[10px] bg-gray-200">{sender.init}</AvatarFallback></Avatar><span className="text-[14px] font-semibold">{sender.name}</span><span className="text-[12px] text-[#6B7280]">Section {sender.sec}</span></div>}
+            <div className="text-[12px] text-[#6B7280] mb-1">Why they want to work together:</div>
+            <div className="text-[14px] text-[#111827]">I think our skills complement each other well.</div>
+          </div>
+        </div>
+        <div className="px-4 py-3 border-b border-border shrink-0">
+          <div className="flex items-center gap-2 text-[12px]">
+            <span className="text-[#8e57b8]">Request Sent</span><div className="w-6 h-px bg-[#8e57b8]" /><span className="font-semibold text-[#8e57b8]">Replied</span><div className="w-6 h-px border-t border-dashed border-[#D1D5DB]" /><span className="text-[#9CA3AF]">{stage === "accepted" ? "Accepted" : stage === "declined" ? "Declined" : "Pending"}</span>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto flex flex-col gap-2 p-4">
+          {msgs.length === 0 && !ended && <p className="text-[13px] text-[#9CA3AF] text-center py-6 italic">Start a conversation to help decide.</p>}
+          {msgs.map((m, i) => (
+            <div key={i} className={cn("flex flex-col", m.from === "me" ? "items-end" : "items-start")}>
+              <div className={cn("max-w-[70%] px-[14px] py-[10px] text-[14px]", m.from === "me" ? "bg-[#8e57b8] text-white rounded-[16px_16px_4px_16px]" : "bg-[#F3F4F6] text-[#111827] rounded-[16px_16px_16px_4px]")}>{m.text}</div>
+              <span className="text-[11px] text-[#9CA3AF] mt-1">{m.time}</span>
+            </div>
+          ))}
+          {stage === "accepted" && <p className="text-[13px] text-[#6B7280] italic text-center py-2">Request accepted.</p>}
+          {stage === "declined" && <p className="text-[13px] text-[#6B7280] italic text-center py-2">Request declined.</p>}
+        </div>
+        {ended ? (
+          <div className="h-14 border-t border-border bg-gray-50 flex items-center justify-center shrink-0"><span className="text-[13px] text-[#6B7280]">This conversation has ended.</span></div>
+        ) : (<>
+          <div className="flex gap-2 px-4 py-2.5 border-t border-border shrink-0">
+            <Button size="sm" className="flex-1 text-xs bg-[#16a34a] hover:bg-[#15803d] text-white" onClick={() => setStage("accepted")}>Accept</Button>
+            <Button size="sm" variant="outline" className="flex-1 text-xs text-[#991B1B] border-[#FCA5A5]" onClick={() => setStage("declined")}>Decline</Button>
+          </div>
+          <div className="flex items-center gap-2 h-14 px-4 border-t border-border shrink-0">
+            <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMsg()} placeholder="Type a message..." className="flex-1 h-9 rounded-[20px] border border-[#D1D5DB] px-4 text-[14px] outline-none focus:border-[#8e57b8] bg-white" />
+            <button onClick={sendMsg} disabled={!input.trim()} className={cn("w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors cursor-pointer", input.trim() ? "bg-[#8e57b8] text-white" : "bg-gray-200 text-gray-400")}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13V3M3 8l5-5 5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </button>
+          </div>
+        </>)}
+      </div>
+    </>
+  );
+}
+interface ApplicationCardProps {
+  applicant: {
+    name: string;
+    init: string;
+    sec: string;
+    skills: string[];
+    scheduleOverlap: string;
+    formAnswers: { q: string; a: string }[];
+    votes: { up: number; down: number };
+  };
+  isLeader: boolean;
+  onReply?: (name: string) => void;
+}
+
+function ApplicationCard({ applicant, isLeader, onReply }: ApplicationCardProps) {
+  const [myVote, setMyVote] = useState<"up" | "down" | null>(null);
+  return (
+    <Card className="p-5 mb-3.5 shadow-none gap-0">
+      <div className="flex items-center gap-3 mb-4">
+        <Avatar className="size-10"><AvatarFallback className="bg-gray-200 text-gray-500 text-sm font-bold">{applicant.init}</AvatarFallback></Avatar>
+        <div>
+          <div className="text-sm font-semibold">{applicant.name}</div>
+          <div className="text-xs text-gray-500">Section {applicant.sec} · {applicant.scheduleOverlap} overlap</div>
+        </div>
+        <div className="ml-auto flex gap-1 flex-wrap justify-end">
+          {applicant.skills.map(sk => <span key={sk} className="text-[11px] bg-gray-100 px-2 py-0.5 rounded-lg">{sk}</span>)}
         </div>
       </div>
-      {/* Quick action bar */}
-      <div className="flex gap-2 py-2.5 border-b border-gray-100">
-        <Button variant="outline" size="sm" className="text-xs px-4" onClick={()=>go("profile-view-good")}>Compatibility</Button>
-        <Button variant="outline" size="sm" className="text-xs px-4" onClick={()=>go("mygroup")}>Group</Button>
-        <Button variant="outline" size="sm" className="text-xs px-4">Share Contact</Button>
-      </div>
-      {/* Messages area */}
-      <div className="flex-1 overflow-y-auto py-5 flex flex-col gap-3">
-        {msgs.map((m,i)=>(
-          <div key={i} className={cn("flex", m.from==="me"?"justify-end":"justify-start")}>
-            <div className={cn("max-w-[70%] py-2.5 px-3.5 text-sm leading-relaxed", m.from==="me"?"bg-primary text-primary-foreground rounded-[12px_12px_2px_12px]":"bg-card text-foreground border border-gray-200 rounded-[12px_12px_12px_2px]")}>
-              {m.text}
-              <div className="text-[11px] mt-1 opacity-50 text-right">{m.time}</div>
-            </div>
+      <div className="space-y-2 mb-4">
+        {applicant.formAnswers.map((fa, j) => (
+          <div key={j} className="text-[12px]">
+            <span className="font-semibold text-gray-500">{fa.q}</span>
+            <p className="text-gray-700 mt-0.5">{fa.a}</p>
           </div>
         ))}
       </div>
-      {/* Fixed input bar */}
-      <div className="py-3.5 pb-[78px] border-t border-gray-200 flex gap-2.5">
-        <Input className="flex-1" placeholder="Type a message..." />
-        <Button size="sm" className="px-4">Send</Button>
-      </div>
-    </div>
-  </div>;
-}
-
-// Inbox
-function Inbox({ go }: GoProps) {
-  const convos = [
-    { name: "CSC318 Group", init: "G", last: "Aisha: I set up the shared doc", time: "3:01 PM", unread: true, isGroup: true },
-    { name: "Jesse Nguyen", init: "JN", last: "Sounds good. Let's also check if anyone has backend experience.", time: "2:22 PM", unread: false, isGroup: false },
-    { name: "Aisha Khan", init: "AK", last: "Hi! I'd love to join your group for CSC318.", time: "1:05 PM", unread: true, isGroup: false },
-  ];
-  return <div className="bg-background min-h-screen pb-16">
-    <Nav go={go} right={<div className="flex items-center gap-3"><Button variant="outline" size="sm" className="px-4" onClick={()=>go("dash")}>Dashboard</Button><Button variant="outline" size="sm" className="px-4" onClick={()=>go("board")}>Board</Button><Button variant="outline" size="sm" className="px-4" onClick={()=>go("mygroup")}>My Group</Button><Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-xs font-bold">JD</AvatarFallback></Avatar></div>} />
-    <div className="max-w-[680px] mx-auto py-14 px-6">
-      <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Messages</h1>
-
-      {/* Course tabs */}
-      <div className="flex gap-1 mb-6" role="tablist">
-        <button type="button" role="tab" aria-selected={true} className="py-[7px] px-4 rounded-lg text-[13px] font-semibold bg-primary text-primary-foreground cursor-pointer">CSC318</button>
-        <button type="button" role="tab" aria-selected={false} className="py-[7px] px-4 rounded-lg text-[13px] font-medium bg-gray-100 text-gray-500 cursor-pointer">CSC207</button>
-      </div>
-
-      {convos.map((cv,i)=>(
-        <Card key={i} className="p-5 mb-3.5 shadow-none cursor-pointer flex-row items-center gap-3.5 hover:border-gray-300 hover:shadow-sm transition-colors" onClick={()=>go("chat")}>
-          <Avatar className="size-11"><AvatarFallback className={cn("text-sm font-bold", cv.isGroup ? "bg-success-bg text-success" : "bg-gray-200 text-gray-500")}>{cv.init}</AvatarFallback></Avatar>
-          <div className="flex-1 min-w-0">
-            <div className="flex justify-between mb-0.5">
-              <span className={cn("text-sm", cv.unread?"font-bold":"font-medium")}>{cv.name}</span>
-              <span className="text-xs text-gray-400">{cv.time}</span>
-            </div>
-            <div className="text-[13px] text-gray-500 overflow-hidden text-ellipsis whitespace-nowrap">{cv.last}</div>
+      <div className="flex items-center gap-3 pt-3 border-t border-gray-100">
+        <span className="text-[11px] text-gray-500">Member votes:</span>
+        <button
+          onClick={() => setMyVote(v => v === "up" ? null : "up")}
+          className={cn("px-3 py-1 rounded-lg text-sm border flex items-center gap-1", myVote === "up" ? "bg-success-bg border-success text-success" : "border-gray-200 text-gray-400")}
+        >
+          <Icon.thumbUp size={14} /> {applicant.votes.up + (myVote === "up" ? 1 : 0)}
+        </button>
+        <button
+          onClick={() => setMyVote(v => v === "down" ? null : "down")}
+          className={cn("px-3 py-1 rounded-lg text-sm border flex items-center gap-1", myVote === "down" ? "bg-danger-bg border-danger text-danger" : "border-gray-200 text-gray-400")}
+        >
+          <Icon.thumbDown size={14} /> {applicant.votes.down + (myVote === "down" ? 1 : 0)}
+        </button>
+        {isLeader && (
+          <div className="ml-auto flex gap-2">
+            <Button size="sm" className="text-xs px-3 bg-success hover:bg-success/90 text-white">Accept</Button>
+            <Button size="sm" variant="outline" className="text-xs px-3" onClick={() => onReply?.(applicant.name)}>Reply</Button>
+            <Button size="sm" variant="outline" className="text-xs px-3 text-danger border-danger hover:bg-danger-bg">Decline</Button>
           </div>
-          {cv.unread&&<div className="w-2 h-2 rounded-full bg-secondary0 shrink-0"><span className="sr-only">Unread</span></div>}
-        </Card>
-      ))}
-    </div>
-  </div>;
+        )}
+      </div>
+    </Card>
+  );
 }
 
 // My Group
-function MyGroup({ go }: GoProps) {
+type ConfirmStage = "idle" | "pending" | "confirmed";
+
+interface MyGroupProps extends GoProps {
+  studentStatus?: "solo" | "open-group" | "closed";
+  onAcceptRequest?: () => void;
+  onLeaveGroup?: () => void;
+  onOpenChat?: (name: string) => void;
+}
+
+function MyGroup({ go, studentStatus = "open-group", onLeaveGroup, onOpenChat }: MyGroupProps) {
+  const [hasGroup, setHasGroup] = useState(true);
   const [confirmed, setConfirmed] = useState(false);
+  const [isLeader, setIsLeader] = useState(true);
+  const [showLeaveDialog, setShowLeaveDialog] = useState(false);
+  const [confirmStage, setConfirmStage] = useState<ConfirmStage>("idle");
   const membersPartial = [
-    { name: "John D.", init: "JD", skills: ["UI Design","User Research"], role: "You", platform: "Discord", handle: "john.d" },
-    { name: "Jesse Nguyen", init: "JN", skills: ["Frontend Dev","Prototyping"], role: "Member", platform: "Discord", handle: "jesse.dev" },
-    { name: "Aisha Khan", init: "AK", skills: ["Project Mgmt","UX Writing"], role: "Member", platform: "WhatsApp", handle: "+1 (647) 555-0123" },
+    { name: "John D.", init: "JD", skills: ["UI Design", "User Research"], role: "You", platform: "Discord", handle: "john.d" },
+    { name: "Jesse Nguyen", init: "JN", skills: ["Frontend Dev", "Prototyping"], role: "Member", platform: "Discord", handle: "jesse.dev" },
+    { name: "Aisha Khan", init: "AK", skills: ["Project Mgmt", "UX Writing"], role: "Member", platform: "WhatsApp", handle: "+1 (647) 555-0123" },
   ];
   const membersFull = [
     ...membersPartial,
-    { name: "David Park", init: "DP", skills: ["Backend","Data Analysis"], role: "Member", platform: "Discord", handle: "dpark.dev" },
+    { name: "David Park", init: "DP", skills: ["Backend", "Data Analysis"], role: "Member", platform: "Discord", handle: "dpark.dev" },
   ];
   const members = confirmed ? membersFull : membersPartial;
-  return <div className="bg-background min-h-screen pb-16">
-    <Nav go={go} right={<Button variant="outline" size="sm" className="px-4" onClick={()=>go("dash")}>Dashboard</Button>} />
+  const pendingApplicants = [
+    {
+      name: "Priya Sharma", init: "PS", sec: "201",
+      skills: ["Backend", "Data Analysis"],
+      scheduleOverlap: "6h/wk",
+      formAnswers: [
+        { q: "What skills can you contribute?", a: "Backend APIs and data pipelines." },
+        { q: "What role do you want?", a: "Backend lead." },
+        { q: "When are you free to work?", a: "Evenings and weekends." },
+      ],
+      votes: { up: 1, down: 0 },
+    },
+  ];
+  const minSize = 4, maxSize = 6;
+  const canConfirm = members.length >= minSize && members.length <= maxSize;
+  const markConfirmed = (_name: string) => setConfirmStage("confirmed");
+  if (studentStatus === "solo") {
+    return <div className="bg-background min-h-screen pb-6">
+      <div className="max-w-[680px] mx-auto py-14 px-6">
+        <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={() => go("board")}>← Dashboard</Button>
+        <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">My Group — CSC318</h1>
+        <Card className="py-[52px] px-6 gap-0 shadow-none text-center border-dashed border-gray-300">
+          <div className="text-4xl mb-4">👥</div>
+          <div className="text-[17px] font-semibold mb-2">You're not in a group yet</div>
+          <p className="text-[13px] text-gray-500 mb-6 leading-relaxed">Find teammates on the Discovery board and send a group request to get started.</p>
+          <Button onClick={() => go("board")}>Browse Discovery →</Button>
+        </Card>
+      </div>
+    </div>;
+  }
+
+  if (!hasGroup) {
+    return <div className="bg-background min-h-screen pb-6">
+      <div className="max-w-[680px] mx-auto py-14 px-6">
+        <div className="flex flex-col items-center justify-center min-h-[400px]">
+          <p className="text-[18px] font-medium text-[#6B7280] mb-3">You are not in a group yet.</p>
+          <button onClick={() => go("board")} className="text-[#8e57b8] hover:underline text-[14px] cursor-pointer">Find teammates on Discovery →</button>
+        </div>
+      </div>
+    </div>;
+  }
+
+  return <div className="bg-background min-h-screen pb-6">
+
     <div className="max-w-[680px] mx-auto py-14 px-6">
-      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={()=>go("dash")}>← Dashboard</Button>
-      <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">My Group — CSC318</h1>
+      <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">
+        Your Group — CSC318
+        {confirmStage === "confirmed" && <span className="inline-flex items-center h-[26px] px-3 rounded-full text-[12px] font-medium bg-[#DCFCE7] text-[#166534] ml-2 align-middle">✓ Confirmed</span>}
+      </h1>
+      {confirmStage !== "confirmed" && (
+        <div className="flex items-center gap-2 mb-1">
+          <span className="inline-flex items-center h-[22px] px-2 rounded-[12px] text-[11px] font-medium bg-[#FEF3C7] text-[#92400E]">Formed</span>
+          <span className="text-[14px] text-[#6B7280]">{members.length}/{maxSize} members</span>
+        </div>
+      )}
 
       {/* Toggle for demo */}
       <div className="mb-5">
         <div className="text-[9px] font-bold text-muted-foreground uppercase tracking-[1px] mb-1.5">Demo Controls</div>
-        <div className="flex gap-2 p-2 border-2 border-dashed border-border rounded-lg bg-secondary">
-          <Button size="sm" variant={!confirmed?"default":"outline"} className="text-xs px-4" onClick={()=>setConfirmed(false)}>Before confirm (3/4)</Button>
-          <Button size="sm" variant={confirmed?"default":"outline"} className="text-xs px-4" onClick={()=>setConfirmed(true)}>After confirm (4/4)</Button>
+        <div className="flex gap-2 p-2 border-2 border-dashed border-border rounded-lg bg-secondary flex-wrap">
+          <Button size="sm" variant={hasGroup ? "default" : "outline"} className="text-xs px-4" onClick={() => setHasGroup(h => !h)}>{hasGroup ? "Has Group" : "No Group"}</Button>
+          <Button size="sm" variant={!confirmed ? "default" : "outline"} className="text-xs px-4" onClick={() => { setConfirmed(false); setConfirmStage("idle"); }}>Before confirm (3/4)</Button>
+          <Button size="sm" variant={confirmed ? "default" : "outline"} className="text-xs px-4" onClick={() => { setConfirmed(true); setConfirmStage("idle"); }}>After confirm (4/4)</Button>
+          <Button size="sm" variant={isLeader ? "default" : "outline"} className="text-xs px-4" onClick={() => setIsLeader(l => !l)}>{isLeader ? "Leader view" : "Member view"}</Button>
         </div>
       </div>
+
+      {pendingApplicants.length > 0 && (
+        <section className="mb-8">
+          <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-3 block">
+            Pending Applications ({pendingApplicants.length})
+          </Label>
+          {pendingApplicants.map((ap, i) => (
+            <ApplicationCard key={i} applicant={ap} isLeader={isLeader} onReply={onOpenChat} />
+          ))}
+        </section>
+      )}
 
       {!confirmed ? (
         <>
           <p className="text-base text-gray-600 mb-9 leading-relaxed">3/4–6 members — need 1+ more.</p>
           <div className="flex justify-between items-center px-4 py-3 bg-warning-bg rounded-[10px] mb-5 border border-warning-border">
             <span className="text-[13px] text-warning font-semibold">Group not yet confirmed</span>
-            <Button size="sm" variant="secondary" className="text-xs px-4" onClick={()=>go("board")}>Find more members</Button>
+            <Button size="sm" variant="secondary" className="text-xs px-4" onClick={() => go("board")}>Find more members</Button>
           </div>
+          <button className="text-[13px] text-primary hover:underline mb-5" onClick={() => window.alert("Group listed for recruiting — students can now apply from the Groups view.")}>+ List Group for Recruiting</button>
         </>
       ) : (
         <>
@@ -1331,7 +2995,7 @@ function MyGroup({ go }: GoProps) {
         </>
       )}
 
-      {members.map((m,i)=>(
+      {members.map((m, i) => (
         <Card key={i} className="p-5 mb-3.5 shadow-none flex-row items-center gap-3.5">
           <Avatar className="size-11"><AvatarFallback className="bg-gray-200 text-gray-500 text-sm font-bold">{m.init}</AvatarFallback></Avatar>
           <div className="flex-1">
@@ -1339,10 +3003,59 @@ function MyGroup({ go }: GoProps) {
               <span className="text-sm font-semibold">{m.name}</span>
               <span className="text-xs text-gray-500">{m.role}</span>
             </div>
-            <div className="flex gap-1 mt-1">{m.skills.map(sk=><span key={sk} className="py-0.5 px-2 bg-gray-100 rounded-lg text-[11px] text-gray-600">{sk}</span>)}</div>
+            <div className="flex gap-1 mt-1">{m.skills.map(sk => <span key={sk} className="py-0.5 px-2 bg-gray-100 rounded-lg text-[11px] text-gray-600">{sk}</span>)}</div>
           </div>
         </Card>
       ))}
+
+      {/* Skills composition — always visible in forming state */}
+      {!confirmed && (
+        <div className="mb-6 mt-2">
+          <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-3 block">Group Skills</Label>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="text-[10px] font-bold text-gray-400 uppercase mb-2">Has</div>
+              <div className="flex flex-wrap gap-1">
+                {Array.from(new Set(membersPartial.flatMap(m => m.skills))).map(sk => (
+                  <span key={sk} className="text-[11px] bg-success-bg text-success px-2 py-0.5 rounded-lg border border-success-border">{sk}</span>
+                ))}
+              </div>
+            </div>
+            <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="text-[10px] font-bold text-gray-400 uppercase mb-2">Still Needed</div>
+              <div className="flex flex-wrap gap-1">
+                {["Backend", "Data Analysis"].filter(sk => !membersPartial.flatMap(m => m.skills).includes(sk)).map(sk => (
+                  <span key={sk} className="text-[11px] bg-accent text-accent-foreground px-2 py-0.5 rounded-lg border border-border">{sk}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Group schedule grid — forming state */}
+      {!confirmed && (
+        <Card className="p-5 mb-3.5 gap-0 shadow-none">
+          <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-3 block">Group Schedule</Label>
+          <div className="grid grid-cols-[64px_repeat(5,1fr)] gap-[3px]">
+            <div />{["Mon", "Tue", "Wed", "Thu", "Fri"].map(d => <div key={d} className="text-center text-xs font-semibold text-gray-500 p-1.5">{d}</div>)}
+            {["9am–12pm", "12–4pm", "4–8pm", "8–11pm"].map((t, ti) => <Fragment key={ti}>
+              <div className="text-[11px] text-gray-500 flex items-center">{t}</div>
+              {["Mon", "Tue", "Wed", "Thu", "Fri"].map(d => {
+                const counts: Record<string, number> = { "Mon-0": 2, "Mon-1": 3, "Tue-1": 2, "Wed-0": 1, "Wed-1": 3, "Thu-2": 1, "Fri-1": 2 };
+                const c = counts[`${d}-${ti}`] || 0;
+                return <div key={d} className={cn("py-2.5 px-1 text-center rounded-md text-[10px] font-medium",
+                  c >= 3 ? "bg-primary text-primary-foreground" :
+                    c >= 2 ? "bg-success-bg text-success" :
+                      c >= 1 ? "bg-gray-100 text-gray-500" :
+                        "bg-gray-50 text-gray-300"
+                )}>{c > 0 ? `${c}/3` : ""}</div>;
+              })}
+            </Fragment>)}
+          </div>
+          <div className="text-[11px] text-gray-500 mt-2">Darker = more members available</div>
+        </Card>
+      )}
 
       {/* Workspace cards (confirmed only) */}
       {confirmed && <>
@@ -1388,18 +3101,18 @@ function MyGroup({ go }: GoProps) {
         <Card className="p-5 mb-3.5 gap-0 shadow-none">
           <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-3 block">Group Availability</Label>
           <div className="grid grid-cols-[64px_repeat(5,1fr)] gap-[3px]">
-            <div />{["Mon","Tue","Wed","Thu","Fri"].map(d=><div key={d} className="text-center text-xs font-semibold text-gray-500 p-1.5">{d}</div>)}
-            {["9am–12pm","1–5pm","6–9pm"].map((t,ti)=><Fragment key={ti}>
+            <div />{["Mon", "Tue", "Wed", "Thu", "Fri"].map(d => <div key={d} className="text-center text-xs font-semibold text-gray-500 p-1.5">{d}</div>)}
+            {["9am–12pm", "12–4pm", "4–8pm", "8–11pm"].map((t, ti) => <Fragment key={ti}>
               <div className="text-[11px] text-gray-500 flex items-center">{t}</div>
-              {["Mon","Tue","Wed","Thu","Fri"].map(d=>{
-                const counts: Record<string, number> = {"Mon-0":2,"Mon-1":4,"Tue-1":2,"Tue-2":1,"Wed-0":2,"Wed-1":3,"Thu-2":1,"Fri-1":3};
+              {["Mon", "Tue", "Wed", "Thu", "Fri"].map(d => {
+                const counts: Record<string, number> = { "Mon-0": 2, "Mon-1": 4, "Tue-1": 2, "Tue-2": 1, "Wed-0": 2, "Wed-1": 3, "Thu-2": 1, "Fri-1": 3 };
                 const c = counts[`${d}-${ti}`] || 0;
                 return <div key={d} className={cn("py-2.5 px-1 text-center rounded-md text-[10px] font-medium",
                   c >= 4 ? "bg-primary text-primary-foreground" :
-                  c >= 3 ? "bg-success text-white" :
-                  c >= 2 ? "bg-success-bg text-success" :
-                  c >= 1 ? "bg-gray-100 text-gray-500" :
-                  "bg-gray-50 text-gray-300"
+                    c >= 3 ? "bg-success text-white" :
+                      c >= 2 ? "bg-success-bg text-success" :
+                        c >= 1 ? "bg-gray-100 text-gray-500" :
+                          "bg-gray-50 text-gray-300"
                 )}>{c > 0 ? `${c}/4` : ""}</div>;
               })}
             </Fragment>)}
@@ -1408,14 +3121,60 @@ function MyGroup({ go }: GoProps) {
         </Card>
       </>}
 
+      {/* Confirm stage banners */}
+      {confirmStage === "pending" && (
+        <div className="py-4 px-5 bg-warning-bg border border-warning-border rounded-xl mb-5">
+          <div className="text-[13px] font-bold text-warning mb-1">
+            Waiting for all members to confirm (24h window)
+          </div>
+          <div className="text-[12px] text-warning mb-3">
+            Each member must confirm below. Members who don't respond will be removed.
+          </div>
+          {members.map((m, i) => (
+            <div key={i} className="flex items-center justify-between py-1.5">
+              <span className="text-[12px]">{m.name}</span>
+              {m.role === "You"
+                ? <Button size="sm" className="text-xs px-3 h-7" onClick={() => markConfirmed(m.name)}>Confirm</Button>
+                : <span className="text-[11px] text-gray-400">Waiting...</span>
+              }
+            </div>
+          ))}
+        </div>
+      )}
+
+      {confirmStage === "confirmed" && (
+        <div className="py-3 px-5 bg-success-bg border border-success-border rounded-xl mb-5">
+          <div className="text-[13px] font-bold text-success">✓ Group confirmed — submitted to instructor</div>
+        </div>
+      )}
+
       <div className="flex gap-3 mt-6">
-        <Button className="flex-1 px-7 py-3 h-auto" onClick={()=>go("inbox")}>Messages</Button>
-        {!confirmed ? (
-          <Button variant="outline" disabled className="flex-1 px-7 py-3 h-auto">Confirm Group (need 4+)</Button>
-        ) : (
-          <Button variant="outline" className="flex-1 px-7 py-3 h-auto" onClick={()=>go("board")}>Find more members</Button>
-        )}
+        <Button className="flex-1 px-7 py-3 h-auto" onClick={() => go("board")}>Discovery</Button>
+        <Button
+          disabled={!canConfirm || confirmStage !== "idle"}
+          className="flex-1 px-7 py-3 h-auto"
+          onClick={() => setConfirmStage("pending")}
+        >
+          {canConfirm ? "Confirm Group" : `Confirm Group (need ${minSize - members.length} more)`}
+        </Button>
       </div>
+      <div className="text-center mt-2">
+        <button className="text-[13px] text-[#8e57b8] hover:underline cursor-pointer">List Group for Recruiting</button>
+      </div>
+      <div className="text-center mt-2">
+        <button onClick={() => setShowLeaveDialog(true)} className="text-[13px] text-[#991B1B] hover:underline cursor-pointer">
+          Leave Group
+        </button>
+      </div>
+
+      <ConfirmDialog
+        open={showLeaveDialog}
+        title="Leave this group?"
+        body="The remaining members will be notified. You'll return to searching status."
+        confirmLabel="Leave Group"
+        onConfirm={() => { setShowLeaveDialog(false); onLeaveGroup?.(); go("board"); }}
+        onCancel={() => setShowLeaveDialog(false)}
+      />
     </div>
   </div>;
 }
@@ -1428,20 +3187,19 @@ function Urgent({ go }: GoProps) {
   const elapsed = DEADLINE_CONFIG.totalDays - daysLeft;
   const pct = Math.round((elapsed / DEADLINE_CONFIG.totalDays) * 100);
   const recs = [
-    { name: "David Park", init: "DP", skills: ["Backend","Data Analysis"], compat: "76%", overlap: "6h/wk", route: "profile-view-normal" },
-    { name: "Lisa Wang", init: "LW", skills: ["Frontend Dev","UX Writing"], compat: "68%", overlap: "4h/wk", route: "profile-view-normal" },
-    { name: "Omar Ali", init: "OA", skills: ["Project Mgmt"], compat: "52%", overlap: "2h/wk", route: "profile-view-bad" },
+    { name: "David Park", init: "DP", skills: ["Backend", "Data Analysis"], compat: "76%", overlap: "6h/wk" },
+    { name: "Lisa Wang", init: "LW", skills: ["Frontend Dev", "UX Writing"], compat: "68%", overlap: "4h/wk" },
+    { name: "Omar Ali", init: "OA", skills: ["Project Mgmt"], compat: "52%", overlap: "2h/wk" },
   ];
   const provisionalMembers = [
-    { name: "You (John D.)", init: "JD", skills: ["UI Design","User Research"] },
+    { name: "You (John D.)", init: "JD", skills: ["UI Design", "User Research"] },
     { name: "Omar Ali", init: "OA", skills: ["Project Mgmt"] },
-    { name: "Wei Zhang", init: "WZ", skills: ["Frontend Dev","Backend"] },
-    { name: "Elena Popov", init: "EP", skills: ["Data Analysis","UX Writing"] },
+    { name: "Wei Zhang", init: "WZ", skills: ["Frontend Dev", "Backend"] },
+    { name: "Elena Popov", init: "EP", skills: ["Data Analysis", "UX Writing"] },
   ];
-  return <div className="bg-background min-h-screen pb-16">
-    <Nav go={go} />
+  return <div className="bg-background min-h-screen pb-6">
     <div className="max-w-[680px] mx-auto py-14 px-6">
-      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={()=>go("board")}>← Back to Board</Button>
+      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={() => go("board")}>← Back to Board</Button>
 
       {/* Deadline progress bar */}
       <Card className="p-5 mb-5 gap-0 shadow-none">
@@ -1462,8 +3220,8 @@ function Urgent({ go }: GoProps) {
       {/* Tier-aware banner */}
       <div className={cn("py-3.5 px-[18px] rounded-[10px] mb-6 border",
         tier.color === "danger" ? "bg-danger-bg border-danger-border" :
-        tier.color === "caution" ? "bg-caution-bg border-caution-border" :
-        "bg-warning-bg border-warning-border"
+          tier.color === "caution" ? "bg-caution-bg border-caution-border" :
+            "bg-warning-bg border-warning-border"
       )}>
         <div className={cn("text-[15px] font-bold flex items-center gap-1",
           tier.color === "danger" ? "text-danger" : tier.color === "caution" ? "text-caution" : "text-warning"
@@ -1474,12 +3232,12 @@ function Urgent({ go }: GoProps) {
       </div>
 
       <h1 className="text-[28px] font-bold text-foreground mb-5 -tracking-[0.5px]">Suggested Matches</h1>
-      {recs.map((r,i)=>(
-        <Card key={i} className="p-5 mb-3.5 shadow-none cursor-pointer flex-row items-center gap-3.5 hover:border-gray-300 hover:shadow-sm transition-colors" onClick={()=>go(r.route)}>
+      {recs.map((r, i) => (
+        <Card key={i} className="p-5 mb-3.5 shadow-none flex-row items-center gap-3.5">
           <Avatar className="size-[46px]"><AvatarFallback className="bg-gray-200 text-gray-500 text-[15px] font-bold">{r.init}</AvatarFallback></Avatar>
           <div className="flex-1">
             <div className="text-[15px] font-semibold">{r.name}</div>
-            <div className="flex gap-1 mt-1">{r.skills.map(sk=><span key={sk} className="py-0.5 px-2 bg-gray-100 rounded-lg text-[11px] text-gray-600">{sk}</span>)}</div>
+            <div className="flex gap-1 mt-1">{r.skills.map(sk => <span key={sk} className="py-0.5 px-2 bg-gray-100 rounded-lg text-[11px] text-gray-600">{sk}</span>)}</div>
           </div>
           <div className="text-right">
             <div className="text-lg font-bold">{r.compat}</div>
@@ -1495,9 +3253,9 @@ function Urgent({ go }: GoProps) {
         <div className="text-[13px] text-caution-dark leading-relaxed mb-4">Auto-forms at deadline if no action taken.</div>
         {provisionalMembers.map((m, i) => (
           <div key={i} className="flex items-center gap-3 py-2 border-b border-caution-border last:border-0">
-            <Avatar className="size-8"><AvatarFallback className="bg-white text-caution text-xs font-bold">{m.init}</AvatarFallback></Avatar>
+            <Avatar className="size-8"><AvatarFallback className="bg-caution-bg text-caution text-xs font-bold">{m.init}</AvatarFallback></Avatar>
             <span className="text-sm font-medium flex-1">{m.name}</span>
-            <div className="flex gap-1">{m.skills.map(sk => <span key={sk} className="py-0.5 px-2 bg-white rounded-lg text-[10px] text-caution-dark">{sk}</span>)}</div>
+            <div className="flex gap-1">{m.skills.map(sk => <span key={sk} className="py-0.5 px-2 bg-caution-bg rounded-lg text-[10px] text-caution-dark">{sk}</span>)}</div>
           </div>
         ))}
         <div className="flex gap-3 mt-4">
@@ -1511,7 +3269,7 @@ function Urgent({ go }: GoProps) {
           <span className="text-[13px] font-semibold text-success">✓ Your TA has been notified and will follow up by email.</span>
         </div>
       ) : (
-        <Button variant="outline" className="w-full px-7 py-3 h-auto" onClick={()=>setTaSent(true)}>Ask TA for help</Button>
+        <Button variant="outline" className="w-full px-7 py-3 h-auto" onClick={() => setTaSent(true)}>Ask TA for help</Button>
       )}
     </div>
   </div>;
@@ -1519,10 +3277,9 @@ function Urgent({ go }: GoProps) {
 
 // Email Notification Mockup
 function EmailMock({ go }: GoProps) {
-  return <div className="bg-background min-h-screen pb-16">
-    <Nav go={go} />
+  return <div className="bg-background min-h-screen pb-6">
     <div className="max-w-[680px] mx-auto py-14 px-6">
-      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={()=>go("dash")}>← Back</Button>
+      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={() => go("dash")}>← Back</Button>
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Email Notification Preview</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed">This is what students receive when someone messages them.</p>
       <div className="border border-gray-200 rounded-xl overflow-hidden bg-card">
@@ -1553,18 +3310,663 @@ function EmailMock({ go }: GoProps) {
 
 // Login Page (Fix #2)
 function Login({ go }: GoProps) {
-  return <div className="bg-background min-h-screen pb-16">
+  return <div className="bg-background min-h-screen pb-6">
     <Nav go={go} />
     <div className="max-w-[500px] mx-auto py-14 px-6">
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Welcome back</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed">Log in with your university email.</p>
       <F l="University Email" id="login-email"><Input id="login-email" placeholder="you@mail.utoronto.ca" /></F>
       <F l="Password" id="login-password"><Input id="login-password" type="password" placeholder="Your password" /></F>
-      <Button className="w-full px-7 py-3 h-auto" onClick={()=>go("dash")}>Log In</Button>
+      <Button className="w-full px-7 py-3 h-auto" onClick={() => go("dash")}>Log In</Button>
       <div className="mt-3.5 text-center"><Button variant="link" className="text-foreground">Forgot password?</Button></div>
-      <div className="mt-5 text-center text-sm text-gray-500">Don't have an account? <Button variant="link" className="text-foreground p-0 h-auto" onClick={()=>go("signup-role")}>Sign up</Button></div>
+      <div className="mt-5 text-center text-sm text-gray-500">Don't have an account? <Button variant="link" className="text-foreground p-0 h-auto" onClick={() => go("signup-role")}>Sign up</Button></div>
     </div>
   </div>;
+}
+
+// Profile Edit
+function ProfileEdit({ go: _go }: GoProps) {
+  const ALL_SKILLS = ["Frontend Dev", "Backend", "UI Design", "User Research", "Prototyping", "Data Analysis", "UX Writing", "Project Mgmt"];
+  const PROFICIENCY = ["Beginner", "Intermediate", "Proficient", "Expert"];
+  const [bio, setBio] = useState("UX designer focused on accessible, user-centered products.");
+  const [selectedSkills, setSelectedSkills] = useState<string[]>(["UI Design", "User Research"]);
+  const [skillRatings, setSkillRatings] = useState<Record<string, string>>({ "UI Design": "Proficient", "User Research": "Expert" });
+  const [meetFreq, setMeetFreq] = useState("2x/wk");
+  const [meetStyle, setMeetStyle] = useState("In-person");
+  const [commTool, setCommTool] = useState("Discord");
+  const [schedule, setSchedule] = useState(new Set(["Mon-1", "Wed-1", "Fri-1"]));
+  const [saved, setSaved] = useState(false);
+
+  const toggleSkill = (sk: string) => {
+    if (selectedSkills.includes(sk)) {
+      setSelectedSkills(prev => prev.filter(s => s !== sk));
+      setSkillRatings(prev => { const n = { ...prev }; delete n[sk]; return n; });
+    } else {
+      setSelectedSkills(prev => [...prev, sk]);
+      setSkillRatings(prev => ({ ...prev, [sk]: "Intermediate" }));
+    }
+  };
+
+  const handleSave = () => {
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <div className="bg-background min-h-screen pb-6">
+      <div className="max-w-[680px] mx-auto py-10 px-6">
+        <div className="flex items-center gap-4 mb-8">
+          <Avatar className="size-16"><AvatarFallback className="bg-gray-200 text-gray-500 text-xl font-bold">JD</AvatarFallback></Avatar>
+          <div>
+            <h1 className="text-[24px] font-bold text-foreground -tracking-[0.5px]">John Doe</h1>
+            <div className="text-[13px] text-gray-500">Section 201 · CSC318</div>
+          </div>
+        </div>
+
+        <F l="Bio">
+          <Textarea
+            value={bio}
+            onChange={e => setBio(e.target.value)}
+            className="resize-none h-20 text-sm"
+            placeholder="Tell teammates about yourself..."
+          />
+        </F>
+
+        <div className="mb-[18px]">
+          <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skills</Label>
+          <div className="flex flex-wrap gap-2 mb-3">
+            {ALL_SKILLS.map(sk => (
+              <button
+                key={sk}
+                type="button"
+                onClick={() => toggleSkill(sk)}
+                className={cn(
+                  "py-1.5 px-3.5 rounded-full text-[13px] font-medium border transition-colors",
+                  selectedSkills.includes(sk)
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-background text-gray-500 border-gray-200 hover:border-gray-400"
+                )}
+              >
+                {sk}
+              </button>
+            ))}
+          </div>
+          {selectedSkills.length > 0 && (
+            <div className="space-y-2">
+              {selectedSkills.map(sk => (
+                <div key={sk} className="flex items-center gap-3">
+                  <span className="text-[13px] text-gray-700 w-32 shrink-0">{sk}</span>
+                  <Select value={skillRatings[sk] ?? "Intermediate"} onValueChange={v => setSkillRatings(prev => ({ ...prev, [sk]: v }))}>
+                    <SelectTrigger className="h-8 text-xs w-36"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {PROFICIENCY.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="mb-[18px]">
+          <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Work Style</Label>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <div className="text-[11px] text-gray-500 mb-1">Meeting frequency</div>
+              <Select value={meetFreq} onValueChange={setMeetFreq}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {["1x/wk", "2x/wk", "3x/wk", "As needed"].map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <div className="text-[11px] text-gray-500 mb-1">Meeting style</div>
+              <Select value={meetStyle} onValueChange={setMeetStyle}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {["In-person", "Online", "Hybrid"].map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <div className="text-[11px] text-gray-500 mb-1">Communication</div>
+              <Select value={commTool} onValueChange={setCommTool}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {["Discord", "Slack", "Email", "iMessage"].map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        <TGrid sel={schedule} set={setSchedule} label="Weekly Availability" />
+
+        <Button className="w-full" onClick={handleSave}>
+          {saved ? "Saved!" : "Save Changes"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ==================== CHATS PAGE ====================
+interface ChatsPageProps extends GoProps {
+  conversations: Conversation[];
+  contactStatuses: Record<string, string>;
+  onContactStatusChange: (name: string, status: string) => void;
+  onAccept?: (name: string) => void;
+}
+
+function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, onAccept }: ChatsPageProps) {
+  const [selectedConv, setSelectedConv] = useState<string | null>(conversations.length > 0 ? conversations[0].targetName : null);
+  const [convTab, setConvTab] = useState<"all" | "sent" | "received">("all");
+  const [msgs, setMsgs] = useState<Record<string, { from: string; text: string; time: string }[]>>({
+    "CSC318 Group": [
+      { from: "Jesse Nguyen", text: "Hey everyone! Excited to work together.", time: "Mar 22, 10:00 AM" },
+      { from: "Aisha Khan", text: "Same here! I set up the shared doc.", time: "Mar 22, 10:05 AM" },
+      { from: "me", text: "Great, let's set up a meeting time.", time: "Mar 22, 10:12 AM" },
+      { from: "David Park", text: "I'm free Tuesday and Thursday afternoons.", time: "Mar 22, 10:15 AM" },
+    ],
+    "David Park": [
+      { from: "them", text: "Hey! I saw we have great schedule overlap. Want to form a group?", time: "Mar 22, 2:14 PM" },
+      { from: "me", text: "Sounds great! When are you free this week?", time: "Mar 22, 2:18 PM" },
+    ],
+    "Priya Sharma": [
+      { from: "them", text: "I'd love to join your group. I have strong backend skills.", time: "Mar 23, 3:30 PM" },
+    ],
+    "Jesse Nguyen": [
+      { from: "them", text: "I think our skills complement each other well.", time: "Mar 21, 10:05 AM" },
+      { from: "me", text: "Agreed! Let's do it.", time: "Mar 21, 10:12 AM" },
+      { from: "them", text: "Welcome to the team!", time: "Mar 21, 10:15 AM" },
+    ],
+  });
+  const [input, setInput] = useState("");
+  const [showDeclineMenu, setShowDeclineMenu] = useState(false);
+  const [declineReason, setDeclineReason] = useState("");
+  const [declineNote, setDeclineNote] = useState("");
+  const [requestExpanded, setRequestExpanded] = useState(true);
+
+  const groupConv = conversations.find(c => c.isGroup);
+  const individualConvs = conversations.filter(c => !c.isGroup);
+  const filteredConvs = individualConvs.filter(c => {
+    if (convTab === "sent") return c.type === "request-sent" || c.type === "application-sent";
+    if (convTab === "received") return c.type === "request-received" || c.type === "application-received";
+    return true;
+  });
+
+  const conv = conversations.find(c => c.targetName === selectedConv);
+  const isGroupChat = conv?.isGroup === true;
+  const student = selectedConv && !isGroupChat ? STU.find(s => s.name === selectedConv) : null;
+  const currentMsgs = selectedConv ? (msgs[selectedConv] || []) : [];
+  const isEnded = conv?.status === "accepted" || conv?.status === "declined";
+
+  const sendMsg = () => {
+    if (!input.trim() || !selectedConv) return;
+    setMsgs(prev => ({
+      ...prev,
+      [selectedConv]: [...(prev[selectedConv] || []), { from: "me", text: input.trim(), time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }],
+    }));
+    setInput("");
+  };
+
+  const handleDecline = () => {
+    if (!selectedConv) return;
+    onContactStatusChange(selectedConv, "declined");
+    setMsgs(prev => ({
+      ...prev,
+      [selectedConv]: [...(prev[selectedConv] || []), { from: "me", text: `Declined: ${declineReason}${declineNote ? ` — ${declineNote}` : ""}`, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }],
+    }));
+    setShowDeclineMenu(false);
+    setDeclineReason("");
+    setDeclineNote("");
+  };
+
+  const STATUS_PILL: Record<string, { label: string; cls: string }> = {
+    pending: { label: "Pending", cls: "bg-[#FEF3C7] text-[#92400E]" },
+    replied: { label: "Replied", cls: "bg-[#8e57b8]/15 text-[#8e57b8]" },
+    accepted: { label: "Accepted", cls: "bg-[#DCFCE7] text-[#166534]" },
+    declined: { label: "Declined", cls: "bg-[#FEE2E2] text-[#991B1B]" },
+    active: { label: "Active", cls: "bg-[#DCFCE7] text-[#166534]" },
+  };
+
+  const DECLINE_REASONS = ["Already found a group", "Schedules do not overlap enough", "Looking for different skills"];
+
+  const stages = conv?.type.includes("application")
+    ? ["Applied", "Replied", conv?.status === "accepted" ? "Accepted" : conv?.status === "declined" ? "Declined" : "Pending"]
+    : ["Request Sent", "Replied", conv?.status === "accepted" ? "Accepted" : conv?.status === "declined" ? "Declined" : "Pending"];
+  const currentStageIdx = conv?.status === "accepted" || conv?.status === "declined" ? 2 : conv?.status === "replied" ? 1 : 0;
+
+  void contactStatuses;
+
+  return (
+    <div className="flex justify-center h-full bg-background">
+      <div className="flex w-full max-w-[1400px] h-full">
+
+        {/* LEFT PANEL: Conversation List */}
+        <div className="w-[280px] shrink-0 border-r border-[#E5E7EB] bg-white flex flex-col">
+          {/* Header + tabs */}
+          <div className="px-4 pt-4 pb-2 border-b border-[#E5E7EB] shrink-0">
+            <div className="text-[16px] font-semibold mb-3">Messages</div>
+            <div className="flex h-8 items-end gap-5">
+              {(["all", "sent", "received"] as const).map(t => (
+                <button key={t} onClick={() => setConvTab(t)}
+                  className={cn(
+                    "pb-[6px] text-[13px] border-b-2 capitalize transition-colors cursor-pointer",
+                    convTab === t
+                      ? "font-semibold text-[#111827] border-[#8e57b8]"
+                      : "font-normal text-[#9CA3AF] border-transparent hover:border-[#8e57b8]/40"
+                  )}>
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Conversation list */}
+          <div className="flex-1 overflow-y-auto">
+            {/* Pinned group chat */}
+            {groupConv && (
+              <button
+                onClick={() => { setSelectedConv(groupConv.targetName); setShowDeclineMenu(false); }}
+                className={cn(
+                  "w-full flex items-center gap-2.5 px-4 py-3 text-left transition-colors border-b-2 border-[#E5E7EB] cursor-pointer",
+                  selectedConv === groupConv.targetName
+                    ? "bg-[#F3F4F6] border-l-[3px] border-l-[#8e57b8]"
+                    : "hover:bg-[#FAFAFA] border-l-[3px] border-l-transparent bg-[#FAFAFA]"
+                )}
+              >
+                {groupConv.unread && <div className="w-1.5 h-1.5 rounded-full bg-[#8e57b8] shrink-0" />}
+                {!groupConv.unread && <div className="w-1.5 shrink-0" />}
+                <div className="size-9 shrink-0 rounded-full bg-[#8e57b8]/15 flex items-center justify-center">
+                  <Icon.chat size={16} color="#8e57b8" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className={cn("text-[13px] truncate", groupConv.unread ? "font-semibold text-[#111827]" : "font-medium text-[#374151]")}>{groupConv.targetName}</span>
+                    <span className="text-[10px] text-[#9CA3AF] shrink-0">{groupConv.timestamp}</span>
+                  </div>
+                  <div className="text-[12px] text-[#6B7280] truncate">{groupConv.lastMessage}</div>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <span className="text-[10px] text-[#8e57b8] font-medium">{groupConv.groupMembers?.length ?? 0} members</span>
+                    <span className="inline-flex items-center h-[16px] px-1 rounded text-[9px] font-medium bg-[#8e57b8]/10 text-[#8e57b8]">Group</span>
+                  </div>
+                </div>
+              </button>
+            )}
+
+            {/* Individual conversations */}
+            {filteredConvs.length === 0 ? (
+              <div className="py-10 text-center text-[13px] text-[#9CA3AF]">No conversations</div>
+            ) : (
+              filteredConvs.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => { setSelectedConv(c.targetName); setShowDeclineMenu(false); }}
+                  className={cn(
+                    "w-full flex items-start gap-2.5 px-4 py-3 text-left transition-colors border-b border-[#F3F4F6] cursor-pointer",
+                    selectedConv === c.targetName
+                      ? "bg-[#F3F4F6] border-l-[3px] border-l-[#8e57b8]"
+                      : "hover:bg-[#FAFAFA] border-l-[3px] border-l-transparent"
+                  )}
+                >
+                  {/* Unread dot */}
+                  <div className="w-2 shrink-0 pt-3">
+                    {c.unread && <div className="w-1.5 h-1.5 rounded-full bg-[#8e57b8]" />}
+                  </div>
+                  <Avatar className="size-9 shrink-0 mt-0.5">
+                    <AvatarFallback className="bg-gray-200 text-gray-500 text-[11px] font-bold">{c.targetInit}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className={cn("text-[13px] truncate", c.unread ? "font-semibold text-[#111827]" : "font-medium text-[#374151]")}>{c.targetName}</span>
+                      <span className="text-[10px] text-[#9CA3AF] shrink-0">{c.timestamp}</span>
+                    </div>
+                    <div className="text-[12px] text-[#6B7280] truncate mb-1">{c.lastMessage}</div>
+                    <span className={cn("inline-flex items-center h-[18px] px-1.5 rounded-full text-[10px] font-medium", STATUS_PILL[c.status]?.cls)}>
+                      {STATUS_PILL[c.status]?.label}
+                    </span>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* CENTER PANEL: Chat Area */}
+        <div className="flex-1 flex flex-col min-w-0 border-r border-[#E5E7EB] bg-white">
+          {selectedConv && conv && (isGroupChat || student) ? (
+            <>
+              {/* Top bar */}
+              <div className="flex items-center gap-3 h-14 px-5 border-b border-[#E5E7EB] shrink-0">
+                {isGroupChat ? (
+                  <>
+                    <div className="size-8 rounded-full bg-[#8e57b8]/15 flex items-center justify-center shrink-0">
+                      <Icon.chat size={14} color="#8e57b8" />
+                    </div>
+                    <span className="text-[15px] font-semibold">{conv.targetName}</span>
+                    <span className="text-[12px] text-[#6B7280]">{conv.groupMembers?.length ?? 0} members</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-[15px] font-semibold">{conv.targetName}</span>
+                    <span className={cn("inline-flex items-center h-5 px-2 rounded-full text-[10px] font-medium", STATUS_PILL[conv.status]?.cls)}>
+                      {STATUS_PILL[conv.status]?.label}
+                    </span>
+                  </>
+                )}
+              </div>
+
+              {/* Scrollable chat content */}
+              <div className="flex-1 overflow-y-auto">
+                {/* Chat messages */}
+                <div className="flex flex-col gap-2.5 p-5">
+                  {/* System card — only for 1:1 conversations */}
+                  {!isGroupChat && student && (() => {
+                    const iSent = conv.type === "request-sent" || conv.type === "application-sent";
+                    return (
+                      <div className={cn("flex flex-col", iSent ? "items-end" : "items-start")}>
+                        <div className={cn("max-w-[85%] rounded-[12px] border border-[#E5E7EB] overflow-hidden", iSent ? "rounded-br-[4px]" : "rounded-bl-[4px]")}>
+                          {/* Compact header — always visible */}
+                          <div className="flex items-center gap-2.5 px-4 py-3 bg-[#FAFAFA]">
+                            <Avatar className="size-7"><AvatarFallback className="bg-gray-200 text-gray-500 text-[10px] font-bold">{student.init}</AvatarFallback></Avatar>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[13px] font-semibold text-[#8e57b8]">
+                                  {conv.type.includes("request") ? "Group Request" : "Group Application"}
+                                </span>
+                                <span className="text-[11px] text-[#9CA3AF]">{conv.timestamp}</span>
+                              </div>
+                              <div className="text-[12px] text-[#6B7280]">
+                                {iSent ? `You sent to ${student.name}` : `From ${student.name} · Section ${student.sec}`}
+                              </div>
+                            </div>
+                            <button onClick={() => setRequestExpanded(v => !v)} className="text-[12px] text-[#8e57b8] font-medium hover:underline cursor-pointer shrink-0">
+                              {requestExpanded ? "Hide" : "Details"}
+                            </button>
+                          </div>
+
+                          {/* Expanded details */}
+                          {requestExpanded && (
+                            <div className="px-4 py-3 border-t border-[#F3F4F6] bg-white">
+                              {/* Profile + skills */}
+                              <div className="flex items-center gap-2 mb-3 flex-wrap">
+                                {student.skills.slice(0, 3).map(sk => (
+                                  <span key={sk} className="inline-flex items-center h-5 px-1.5 rounded text-[10px] font-medium bg-[#8e57b8]/10 text-[#8e57b8]">{sk}</span>
+                                ))}
+                                <span className="text-[11px] text-[#6B7280] ml-1">Overlap: <strong className="text-[#8e57b8]">{student.overlap}</strong></span>
+                              </div>
+                              {/* Form answers */}
+                              <div className="space-y-2 mb-3">
+                                <div>
+                                  <div className="text-[11px] text-[#6B7280]">Why work together:</div>
+                                  <div className="text-[13px] text-[#111827] mt-0.5">I think our skills complement each other well — I cover frontend and you have design + research skills.</div>
+                                </div>
+                                <div>
+                                  <div className="text-[11px] text-[#6B7280]">Their question:</div>
+                                  <div className="text-[13px] text-[#111827] mt-0.5">What's your preferred working style — async or sync collaboration?</div>
+                                </div>
+                              </div>
+                              {/* Action buttons */}
+                              {!isEnded && (
+                                <div className="flex gap-2 pt-3 border-t border-[#F3F4F6]">
+                                  <button onClick={() => { onContactStatusChange(conv.targetName, "accepted"); if (onAccept) onAccept(conv.targetName); }}
+                                    className="flex-1 h-8 rounded-[8px] bg-[#8e57b8] text-white text-[13px] font-medium hover:bg-[#7a4a9e] cursor-pointer transition-colors">Accept</button>
+                                  <button className="flex-1 h-8 rounded-[8px] border border-[#D1D5DB] text-[#374151] text-[13px] font-medium hover:bg-[#F9FAFB] cursor-pointer transition-colors">Reply</button>
+                                  <button onClick={() => setShowDeclineMenu(v => !v)}
+                                    className="flex-1 h-8 rounded-[8px] border border-[#D1D5DB] text-[#991B1B] text-[13px] font-medium hover:bg-[#FEE2E2]/30 cursor-pointer transition-colors">Decline</button>
+                                </div>
+                              )}
+                              {/* Decline dropdown */}
+                              {showDeclineMenu && !isEnded && (
+                                <div className="mt-3 p-3 border border-[#E5E7EB] rounded-[8px] bg-[#F9FAFB]">
+                                  <div className="text-[13px] font-medium mb-2">Select a reason:</div>
+                                  <div className="space-y-1.5 mb-3">
+                                    {DECLINE_REASONS.map(r => (
+                                      <label key={r} className="flex items-center gap-2 cursor-pointer">
+                                        <input type="radio" name="decline" value={r} checked={declineReason === r} onChange={() => setDeclineReason(r)} className="accent-[#8e57b8]" />
+                                        <span className="text-[13px] text-[#374151]">{r}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                  <input value={declineNote} onChange={e => setDeclineNote(e.target.value)} placeholder="Optional note..."
+                                    className="w-full h-8 rounded-[6px] border border-[#D1D5DB] px-3 text-[13px] mb-3 outline-none focus:border-[#8e57b8]" />
+                                  <div className="flex gap-2">
+                                    <button onClick={() => setShowDeclineMenu(false)} className="flex-1 h-8 rounded-[6px] border border-[#D1D5DB] text-[13px] text-[#374151] cursor-pointer hover:bg-gray-50">Cancel</button>
+                                    <button onClick={handleDecline} disabled={!declineReason} className={cn("flex-1 h-8 rounded-[6px] text-[13px] font-medium cursor-pointer transition-colors", declineReason ? "bg-[#DC2626] text-white hover:bg-[#B91C1C]" : "bg-gray-200 text-gray-400")}>Confirm Decline</button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        <span className="text-[11px] text-[#9CA3AF] mt-1">{conv.timestamp}</span>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Chat messages */}
+                  {currentMsgs.map((m, i) => (
+                    <div key={i} className={cn("flex flex-col", m.from === "me" ? "items-end" : "items-start")}>
+                      {/* Sender name for group chat */}
+                      {isGroupChat && m.from !== "me" && (
+                        <span className="text-[11px] font-medium text-[#8e57b8] mb-0.5 ml-1">{m.from}</span>
+                      )}
+                      <div className={cn(
+                        "max-w-[70%] px-[14px] py-[10px] text-[14px] leading-relaxed",
+                        m.from === "me"
+                          ? "bg-[#8e57b8] text-white rounded-[16px_16px_4px_16px]"
+                          : "bg-[#F3F4F6] text-[#111827] rounded-[16px_16px_16px_4px]"
+                      )}>{m.text}</div>
+                      <span className="text-[11px] text-[#9CA3AF] mt-1">{m.time}</span>
+                    </div>
+                  ))}
+                  {conv.status === "accepted" && (
+                    <p className="text-[13px] text-[#6B7280] italic text-center py-3">
+                      Request accepted — you're forming a group!
+                    </p>
+                  )}
+                  {conv.status === "declined" && (
+                    <p className="text-[13px] text-[#991B1B] italic text-center py-3">
+                      Request declined.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Input area */}
+              {!isEnded ? (
+                <div className="flex items-center gap-2 h-14 px-5 border-t border-[#E5E7EB] shrink-0 bg-white">
+                  <input
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && sendMsg()}
+                    placeholder="Type a message..."
+                    className="flex-1 h-9 rounded-[20px] border border-[#D1D5DB] px-4 text-[14px] outline-none focus:border-[#8e57b8] bg-white"
+                  />
+                  <button onClick={sendMsg} disabled={!input.trim()}
+                    className={cn("w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors cursor-pointer",
+                      input.trim() ? "bg-[#8e57b8] text-white" : "bg-gray-200 text-gray-400"
+                    )}>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13V3M3 8l5-5 5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  </button>
+                </div>
+              ) : (
+                <div className="h-14 border-t border-[#E5E7EB] bg-[#F9FAFB] flex items-center justify-center gap-3 shrink-0">
+                  <span className="text-[13px] text-[#6B7280]">This conversation has ended.</span>
+                  {conv.status === "accepted" && (
+                    <button onClick={() => go("mygroup")} className="text-[13px] text-[#8e57b8] font-medium hover:underline cursor-pointer">Go to My Group &rarr;</button>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-[#9CA3AF] text-[14px]">
+              Select a conversation to start chatting
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT PANEL: Profile + Timeline */}
+        <div className="w-[320px] shrink-0 bg-white overflow-y-auto">
+          {/* Group chat: show member list */}
+          {isGroupChat && conv ? (
+            <div className="p-5">
+              <div className="text-[16px] font-semibold mb-1">Group Chat</div>
+              <div className="text-[13px] text-[#6B7280] mb-5">CSC318 · Section 201</div>
+
+              <div className="mb-5">
+                <div className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide mb-3">Members ({(conv.groupMembers?.length ?? 0) + 1})</div>
+                {/* Current user */}
+                <div className="flex items-center gap-2.5 py-2 border-b border-[#F3F4F6]">
+                  <Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-[11px] font-bold">JD</AvatarFallback></Avatar>
+                  <div className="flex-1">
+                    <div className="text-[13px] font-medium">John Doe (You)</div>
+                    <div className="text-[11px] text-[#6B7280]">UI Design, User Research</div>
+                  </div>
+                </div>
+                {conv.groupMembers?.map(m => {
+                  const s = STU.find(st => st.name === m.name);
+                  return (
+                    <div key={m.name} className="flex items-center gap-2.5 py-2 border-b border-[#F3F4F6]">
+                      <Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-[11px] font-bold">{m.init}</AvatarFallback></Avatar>
+                      <div className="flex-1">
+                        <div className="text-[13px] font-medium">{m.name}</div>
+                        <div className="text-[11px] text-[#6B7280]">{s?.skills.join(", ") ?? ""}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mb-5">
+                <div className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide mb-2">Group Skills</div>
+                <div className="flex flex-wrap gap-1">
+                  {Array.from(new Set(["UI Design", "User Research", ...(conv.groupMembers?.flatMap(m => STU.find(s => s.name === m.name)?.skills ?? []) ?? [])])).map(sk => (
+                    <span key={sk} className="inline-flex items-center h-6 px-2 rounded-[6px] text-[12px] font-medium bg-[#8e57b8]/10 text-[#8e57b8]">{sk}</span>
+                  ))}
+                </div>
+              </div>
+
+              <button onClick={() => go("mygroup")} className="w-full h-10 rounded-[8px] border border-[#D1D5DB] text-[#374151] text-[13px] font-medium hover:bg-[#F9FAFB] cursor-pointer transition-colors">
+                Go to My Group
+              </button>
+            </div>
+          ) : student && conv ? (
+            <div className="p-5">
+              {/* Profile header */}
+              <div className="flex flex-col items-center text-center mb-5 pb-5 border-b border-[#E5E7EB]">
+                <Avatar className="size-16 mb-3">
+                  <AvatarFallback className="bg-gray-200 text-gray-500 text-xl font-bold">{student.init}</AvatarFallback>
+                </Avatar>
+                <div className="text-[18px] font-bold">{student.name}</div>
+                <div className="flex items-center gap-2 mt-1.5">
+                  <span className={cn(
+                    "inline-flex items-center h-[22px] px-2 rounded-[12px] text-[11px] font-medium",
+                    student.status === "solo" ? "bg-[#DCFCE7] text-[#166534]" :
+                    student.status === "open-group" ? "bg-[#FEF3C7] text-[#92400E]" :
+                    "bg-gray-100 text-gray-500"
+                  )}>
+                    {student.status === "solo" ? "Solo" : student.status === "open-group" ? "Open Group" : "Closed"}
+                  </span>
+                  <span className="text-[13px] text-[#6B7280]">Section {student.sec}</span>
+                </div>
+              </div>
+
+              {/* Vertical timeline */}
+              <div className="mb-5">
+                <div className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide mb-3">Progress</div>
+                <div className="flex flex-col gap-0">
+                  {stages.map((label, i) => {
+                    const isComplete = i <= currentStageIdx;
+                    const isCurrent = i === currentStageIdx;
+                    const isLast = i === stages.length - 1;
+                    const timestamps = ["Mar 22, 2:14 PM", "Mar 22, 2:18 PM", ""];
+                    return (
+                      <div key={label} className="flex gap-3">
+                        {/* Circle + line */}
+                        <div className="flex flex-col items-center">
+                          <div className={cn(
+                            "w-2.5 h-2.5 rounded-full shrink-0 mt-1",
+                            isComplete ? "bg-[#8e57b8]" : "border-2 border-[#D1D5DB] bg-white",
+                            isCurrent && "ring-2 ring-[#8e57b8]/30"
+                          )} />
+                          {!isLast && <div className={cn("w-px flex-1 min-h-[28px]", isComplete && i < currentStageIdx ? "bg-[#8e57b8]" : "bg-[#E5E7EB]")} />}
+                        </div>
+                        {/* Label + time */}
+                        <div className="pb-4">
+                          <div className={cn(
+                            "text-[13px]",
+                            isCurrent ? "font-semibold text-[#8e57b8]" :
+                            isComplete ? "font-medium text-[#8e57b8]" :
+                            "text-[#9CA3AF]"
+                          )}>{label}</div>
+                          {isComplete && timestamps[i] && (
+                            <div className="text-[11px] text-[#9CA3AF] mt-0.5">{timestamps[i]}</div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Bio */}
+              {student.bio && (
+                <div className="mb-5">
+                  <div className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide mb-2">About</div>
+                  <p className="text-[13px] text-[#374151] leading-relaxed">{student.bio}</p>
+                </div>
+              )}
+
+              {/* Skills */}
+              <div className="mb-5">
+                <div className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide mb-2">Skills</div>
+                <div className="flex flex-wrap gap-1">
+                  {student.skills.map(sk => (
+                    <span key={sk} className="inline-flex items-center h-6 px-2 rounded-[6px] text-[12px] font-medium bg-[#8e57b8]/10 text-[#8e57b8]">{sk}</span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Schedule overlap */}
+              <div className="mb-5">
+                <div className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide mb-2">Schedule Overlap</div>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-2 rounded-full bg-[#E5E7EB] overflow-hidden">
+                    <div className="h-full rounded-full bg-[#8e57b8]" style={{ width: `${Math.min(100, (student.scheduleOverlapHrs / 10) * 100)}%` }} />
+                  </div>
+                  <span className="text-[13px] font-semibold text-[#8e57b8] shrink-0">{student.overlap}</span>
+                </div>
+              </div>
+
+              {/* Skill ratings */}
+              {Object.keys(student.rat).length > 0 && (
+                <div className="mb-5">
+                  <div className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide mb-2">Skill Ratings</div>
+                  {Object.entries(student.rat).map(([skill, level]) => (
+                    <div key={skill} className="flex items-center justify-between py-1.5 border-b border-[#F3F4F6] last:border-0">
+                      <span className="text-[13px] text-[#374151]">{skill}</span>
+                      <span className="text-[12px] text-[#6B7280]">{level}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Last active */}
+              <div className="text-[12px] text-[#9CA3AF]">Last active: {student.lastActive}</div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-full text-[#9CA3AF] text-[13px] p-5">
+              Select a conversation to see profile
+            </div>
+          )}
+        </div>
+
+      </div>
+    </div>
+  );
 }
 
 // ==================== APP ====================
@@ -1572,47 +3974,155 @@ export default function Unitor() {
   const [pg, setPg] = useState("landing");
   const [role, setRole] = useState("s");
   const [sentTarget, setSentTarget] = useState("Jesse");
+  const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
+  const [isUrgent, setIsUrgent] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [appliedGroups, setAppliedGroups] = useState<Record<string, string>>({});
+  const [studentStatus, setStudentStatus] = useState<"searching" | "forming" | "grouped">("searching");
+  const [notifications, setNotifications] = useState<AppNotification[]>(DEMO_NOTIFICATIONS);
+  const [panelMode, setPanelMode] = useState<"view" | "received-request">("view");
+  const [chatTarget, setChatTarget] = useState<string | null>(null);
+  const [contactStatuses, setContactStatuses] = useState<Record<string, string>>(
+    () => Object.fromEntries(STU.map(s => [s.name, s.contactStatus]))
+  );
+
+  const updateContactStatus = (name: string, status: string) =>
+    setContactStatuses(prev => ({ ...prev, [name]: status }));
+
   const go = (p: string) => {
-    if(p==="signup-s"){setRole("s");setPg("signup")}
-    else if(p==="signup-t"){setRole("t");setPg("signup")}
-    else if(p==="sent-jesse"){setSentTarget("Jesse");setPg("sent")}
-    else if(p==="sent-david"){setSentTarget("David");setPg("sent")}
-    else if(p==="sent-priya"){setSentTarget("Priya");setPg("sent")}
-    else if(p==="sent"){setPg("sent")}
+    if (p === "signup-s") { setRole("s"); setPg("signup") }
+    else if (p === "signup-t") { setRole("t"); setPg("signup") }
+    else if (p === "sent-jesse") { setSentTarget("Jesse"); setPg("sent"); setStudentStatus("open-group") }
+    else if (p === "sent-david") { setSentTarget("David"); setPg("sent"); setStudentStatus("open-group") }
+    else if (p === "sent-priya") { setSentTarget("Priya"); setPg("sent"); setStudentStatus("open-group") }
+    else if (p === "sent") { setPg("sent") }
     else setPg(p);
     window.scrollTo(0, 0);
   };
 
+
+
+  const handleNotificationClick = (n: AppNotification) => {
+    setNotifications(prev => prev.map(item => item.id === n.id ? { ...item, read: true } : item));
+    if (!n.actionTarget) return;
+    if (n.type === "group-request-received") {
+      setSelectedStudent(n.actionTarget);
+      setPanelMode("received-request");
+      setPg("board");
+    } else if (n.type === "request-accepted" || n.type === "request-declined") {
+      go("chats");
+    } else if (n.type === "group-application-received") {
+      go("mygroup");
+    } else {
+      go(n.actionTarget);
+    }
+  };
+
+  const handleMarkAllRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  };
   const P: Record<string, ReactNode> = {
-    landing:<Landing go={go}/>, "signup-role":<SignupRole go={go}/>, signup:<SignupForm role={role} go={go}/>, verify:<Verify role={role} go={go}/>,
-    login:<Login go={go}/>,
-    dash:<Dash go={go}/>, join:<Join go={go}/>,
-    "prof-0":<Prof0 go={go}/>, "prof-1":<Prof1 go={go}/>, "prof-2":<Prof2 go={go}/>, "prof-3":<Prof3 go={go}/>, "prof-done":<ProfDone go={go}/>,
-    "ta-dash":<TADash go={go}/>, "ta-create":<TACreate go={go}/>,
-    board:<Board go={go}/>,
-    "profile-view-good":<ProfilePage go={go} studentName="Jesse Nguyen" />,
-    "profile-view-normal":<ProfilePage go={go} studentName="David Park" />,
-    "profile-view-bad":<ProfilePage go={go} studentName="Priya Sharma" />,
-    sent:<Sent go={go} targetName={sentTarget}/>,
-    chat:<Chat go={go}/>, inbox:<Inbox go={go}/>, mygroup:<MyGroup go={go}/>,
-    urgent:<Urgent go={go}/>, email:<EmailMock go={go}/>,
+    landing: <Landing go={go} />, "signup-role": <SignupRole go={go} />, signup: <SignupForm role={role} go={go} />, verify: <Verify role={role} go={go} />,
+    login: <Login go={go} />,
+    dash: <Dash go={go} />, join: <Join go={go} />,
+    "prof-0": <Prof0 go={go} />, "prof-1": <Prof1 go={go} />, "prof-2": <Prof2 go={go} />, "prof-3": <Prof3 go={go} />, "prof-done": <ProfDone go={go} />,
+    "ta-dash": <TADash go={go} />, "ta-create": <TACreate go={go} />,
+    board: <Discovery go={go} onSelectStudent={(name) => {
+      const cs = contactStatuses[name];
+      if (cs === "replied") { go("chats"); return; }
+      setSelectedStudent(name); setPanelMode("view");
+    }} urgentMode={isUrgent} onSelectGroup={setSelectedGroup} appliedGroups={appliedGroups} contactStatuses={contactStatuses} onContactStatusChange={updateContactStatus} onOpenChat={(name) => { void name; go("chats"); }} />,
+    chats: <ChatsPage go={go} conversations={DEMO_CONVERSATIONS} contactStatuses={contactStatuses} onContactStatusChange={updateContactStatus} onAccept={(name) => { updateContactStatus(name, "accepted"); setStudentStatus("open-group"); }} />,
+    sent: <Sent go={go} targetName={sentTarget} />,
+    mygroup: <MyGroup go={go} studentStatus={studentStatus} onAcceptRequest={() => setStudentStatus("open-group")} onLeaveGroup={() => setStudentStatus("solo")} onOpenChat={(name) => setChatTarget(name)} />,
+    urgent: <Urgent go={go} />, email: <EmailMock go={go} />,
+    "profile-edit": <ProfileEdit go={go} />,
   };
 
   const nav = [
-    { g: "Onboard", p: ["landing","login","signup-role","signup","verify"] },
-    { g: "Student", p: ["dash","join","prof-0","prof-1","prof-2","prof-3","prof-done"] },
-    { g: "Board", p: ["board","profile-view-good","profile-view-normal","profile-view-bad","sent"] },
-    { g: "Social", p: ["chat","inbox","mygroup","urgent","email"] },
-    { g: "TA", p: ["ta-dash","ta-create"] },
+    { g: "Onboard", p: ["landing", "login", "signup-role", "signup", "verify"] },
+    { g: "Student", p: ["dash", "join", "prof-0", "prof-1", "prof-2", "prof-3", "prof-done"] },
+    { g: "Board", p: ["board", "sent", "profile-edit"] },
+    { g: "Social", p: ["mygroup", "urgent", "email", "chats"] },
+    { g: "TA", p: ["ta-dash", "ta-create"] },
   ];
 
-  return <div>
+  // demo status switcher
+  const statusCycle: ("solo" | "open-group" | "closed")[] = ["solo", "open-group", "closed"];
+
+  return <div className="flex flex-col h-screen">
+    {APP_PAGES.has(pg) && (
+      <Nav go={go} activePage={pg} studentStatus={studentStatus} notifications={notifications} onNotificationClick={handleNotificationClick} onMarkAllRead={handleMarkAllRead} />
+    )}
+    <div className="flex-1 overflow-y-auto">
     {P[pg]}
-    <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border py-2 px-4 flex gap-4 items-center z-[999] flex-wrap">
-      {nav.map(n=><div key={n.g} className="flex items-center gap-[3px]">
+    </div>
+
+    <SlidePanel
+      open={selectedGroup !== null}
+      onClose={() => setSelectedGroup(null)}
+      title="Group Details"
+    >
+      {selectedGroup && (
+        <GroupDetailPanel
+          key={selectedGroup}
+          go={go}
+          groupId={selectedGroup}
+          onClose={() => setSelectedGroup(null)}
+          onApplied={(id) => {
+            setAppliedGroups(prev => ({ ...prev, [id]: "applied" }));
+          }}
+        />
+      )}
+    </SlidePanel>
+
+    <SlidePanel
+      open={selectedStudent !== null && (panelMode === "view" || panelMode === "received-request")}
+      onClose={() => setSelectedStudent(null)}
+      title={panelMode === "received-request" ? "Group Request" : "Student Profile"}
+    >
+      {selectedStudent && panelMode === "view" && (
+        <ProfilePanelContent studentName={selectedStudent} go={go} onClose={() => setSelectedStudent(null)} onContactStatusChange={updateContactStatus} urgentMode={isUrgent} contactStatus={contactStatuses[selectedStudent] ?? "none"} />
+      )}
+      {selectedStudent && panelMode === "received-request" && (
+        <ReceivedRequestPanel
+          senderName={selectedStudent}
+          onClose={() => setSelectedStudent(null)}
+          onAccept={() => {
+            updateContactStatus(selectedStudent, "accepted");
+            setStudentStatus("open-group");
+            go("mygroup");
+            setSelectedStudent(null);
+          }}
+          onReply={() => {
+            if (selectedStudent) updateContactStatus(selectedStudent, "replied");
+            setSelectedStudent(null);
+            go("chats");
+          }}
+        />
+      )}
+    </SlidePanel>
+
+    <ChatPanel open={chatTarget !== null} onClose={() => setChatTarget(null)} targetName={chatTarget ?? ""} />
+
+    {/* Demo controls */}
+    <div className="shrink-0 bg-card border-t border-border py-2 px-4 flex gap-4 items-center overflow-x-auto">
+      {/* Status demo toggle */}
+      <div className="flex items-center gap-[3px] border-r border-gray-200 pr-3 mr-1">
+        <span className="text-[9px] text-gray-400 font-bold uppercase mr-[3px]">Status</span>
+        {statusCycle.map(s => (
+          <button key={s} onClick={() => setStudentStatus(s)} className={cn("py-[3px] px-[7px] text-[10px] rounded-[3px] cursor-pointer font-mono border", studentStatus === s ? "border-[1.5px] border-primary bg-primary text-primary-foreground" : "border-gray-200 bg-card text-gray-500")}>{s}</button>
+        ))}
+      </div>
+      {nav.map(n => <div key={n.g} className="flex items-center gap-[3px]">
         <span className="text-[9px] text-gray-400 font-bold uppercase mr-[3px]">{n.g}</span>
-        {n.p.map(p=><button key={p} onClick={()=>setPg(p)} className={cn("py-[3px] px-[7px] text-[10px] rounded-[3px] cursor-pointer font-mono border", pg===p ? "border-[1.5px] border-primary bg-primary text-primary-foreground" : "border-gray-200 bg-card text-gray-500")}>{p}</button>)}
+        {n.p.map(p => <button key={p} onClick={() => setPg(p)} className={cn("py-[3px] px-[7px] text-[10px] rounded-[3px] cursor-pointer font-mono border", pg === p ? "border-[1.5px] border-primary bg-primary text-primary-foreground" : "border-gray-200 bg-card text-gray-500")}>{p}</button>)}
       </div>)}
+      <div className="flex items-center gap-[3px] ml-2">
+        <span className="text-[9px] text-gray-400 font-bold uppercase mr-[3px]">Demo</span>
+        <button onClick={() => setIsUrgent(v => !v)} className={cn("py-[3px] px-[7px] text-[10px] rounded-[3px] cursor-pointer font-mono border", isUrgent ? "border-[1.5px] border-danger bg-danger text-white" : "border-gray-200 bg-card text-gray-500")}>urgent</button>
+        <button onClick={() => updateContactStatus("Jesse Nguyen", "no-response")} className="py-[3px] px-[7px] text-[10px] rounded-[3px] cursor-pointer font-mono border border-gray-200 bg-card text-gray-500">no-resp</button>
+      </div>
     </div>
   </div>;
 }
