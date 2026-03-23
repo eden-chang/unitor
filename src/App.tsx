@@ -2034,7 +2034,7 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
       </div>
 
       {/* Layer 2: Filter Bar */}
-      <div className="flex items-center gap-2.5 py-3 border-b border-border overflow-x-auto flex-nowrap">
+      <div className="flex items-center gap-2.5 py-3 border-b border-border flex-wrap">
         {view === "people" ? (<>
           {[
             { label: "Solo", active: filterSolo, toggle: () => setFilterSolo(v => !v) },
