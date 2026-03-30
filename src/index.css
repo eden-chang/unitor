@@ -121,7 +121,7 @@
     --toastify-color-progress-bgo: .2;
 
     /* ── Swiper ── */
-    --swiper-theme-color: #8e57b8;
+    --swiper-theme-color: #9652ca;
 
     /* ── Color palette (raw) ── */
     --color-background-primary-raw: #ffffff;
@@ -142,7 +142,7 @@
     --color-brand-100-raw: #d9c6e7;
     --color-brand-200-raw: #c0a1d7;
     --color-brand-300-raw: #a77cc7;
-    --color-brand-400-raw: #8e57b8;
+    --color-brand-400-raw: #9652ca;
     --color-brand-500-raw: #7532a8;
     --color-brand-600-raw: #5a188d;
     --color-brand-700-raw: #4f137d;
@@ -186,7 +186,7 @@
     --card-foreground: #18181b;
     --popover: #ffffff;
     --popover-foreground: #18181b;
-    --primary: #8e57b8;
+    --primary: #9652ca;
     --primary-foreground: #ffffff;
     --secondary: #f4f4f5;
     --secondary-foreground: #18181b;
@@ -198,7 +198,7 @@
     --destructive-foreground: #ffffff;
     --border: #e4e4e7;
     --input: #e4e4e7;
-    --ring: #8e57b8;
+    --ring: #9652ca;
     --chart-1: #f97316;
     --chart-2: #3dca8f;
     --chart-3: #048ddb;
@@ -206,12 +206,12 @@
     --chart-5: #da4ff2;
     --sidebar: #fafafa;
     --sidebar-foreground: #18181b;
-    --sidebar-primary: #8e57b8;
+    --sidebar-primary: #9652ca;
     --sidebar-primary-foreground: #ffffff;
     --sidebar-accent: #f1eaf6;
     --sidebar-accent-foreground: #4f137d;
     --sidebar-border: #e4e4e7;
-    --sidebar-ring: #8e57b8;
+    --sidebar-ring: #9652ca;
 
     /* ── Semantic colors ── */
     /* Green */
@@ -319,6 +319,11 @@
     --icon-default: #fafafa;
     --schedule-self: #390362;
     --schedule-other: #27272a;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @layer base {

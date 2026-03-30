@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Fragment, type ReactNode, type ReactElement } from "react";
+import { useState, useEffect, useRef, useCallback, Fragment, type ReactNode, type ReactElement, type Dispatch, type SetStateAction } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -11,6 +11,50 @@ import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
+
+// ==================== TOAST SYSTEM ====================
+type Toast = { id: number; message: string };
+let toastId = 0;
+
+function ToastContainer({ toasts, onRemove }: { toasts: Toast[]; onRemove: (id: number) => void }) {
+  return (
+    <div className="fixed bottom-4 right-4 z-[500] flex flex-col gap-2">
+      {toasts.map(t => (
+        <div key={t.id} className="bg-foreground text-background px-5 py-3 rounded-xl shadow-lg text-[14px] font-medium animate-[fadeIn_0.3s_ease] cursor-pointer"
+          onClick={() => onRemove(t.id)}>
+          {t.message}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ==================== LOCAL STORAGE HOOK ====================
+const LS_PREFIX = "unitor_";
+
+function useLocalStorage<T>(key: string, defaultValue: T | (() => T)): [T, Dispatch<SetStateAction<T>>] {
+  const fullKey = LS_PREFIX + key;
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const stored = localStorage.getItem(fullKey);
+      if (stored !== null) return JSON.parse(stored) as T;
+    } catch { /* ignore corrupt data */ }
+    return typeof defaultValue === "function" ? (defaultValue as () => T)() : defaultValue;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(fullKey, JSON.stringify(value));
+    } catch { /* storage full — ignore */ }
+  }, [fullKey, value]);
+
+  return [value, setValue];
+}
+
+function clearAllLocalStorage() {
+  const keys = Object.keys(localStorage).filter(k => k.startsWith(LS_PREFIX));
+  keys.forEach(k => localStorage.removeItem(k));
+}
 
 // ==================== TYPES ====================
 interface GoProps {
@@ -155,15 +199,15 @@ function NotificationBell({ notifications, onNotificationClick, onMarkAllRead }:
   const [open, setOpen] = useState(false);
   const unreadCount = notifications.filter(n => !n.read).length;
   const TYPE_ICONS: Record<NotificationType, ReactElement> = {
-    "group-request-received":     <Icon.wave size={16} color="#8e57b8" />,
-    "group-application-received": <Icon.document size={16} color="#8e57b8" />,
-    "request-accepted":           <Icon.checkCircle size={16} color="#16a34a" />,
-    "request-declined":           <Icon.xCircle size={16} color="#DC2626" />,
-    "application-accepted":       <Icon.checkCircle size={16} color="#16a34a" />,
-    "application-declined":       <Icon.xCircle size={16} color="#DC2626" />,
-    "member-left":                <Icon.userIcon size={16} color="#6B7280" />,
-    "confirm-requested":          <Icon.bellIcon size={16} color="#8e57b8" />,
-    "urgent-mode":                <Icon.warning size={16} color="#DC2626" />,
+    "group-request-received": <Icon.wave size={16} color="#9652ca" />,
+    "group-application-received": <Icon.document size={16} color="#9652ca" />,
+    "request-accepted": <Icon.checkCircle size={16} color="#16a34a" />,
+    "request-declined": <Icon.xCircle size={16} color="#DC2626" />,
+    "application-accepted": <Icon.checkCircle size={16} color="#16a34a" />,
+    "application-declined": <Icon.xCircle size={16} color="#DC2626" />,
+    "member-left": <Icon.userIcon size={16} color="#6B7280" />,
+    "confirm-requested": <Icon.bellIcon size={16} color="#9652ca" />,
+    "urgent-mode": <Icon.warning size={16} color="#DC2626" />,
   };
   return (
     <div className="relative">
@@ -172,13 +216,12 @@ function NotificationBell({ notifications, onNotificationClick, onMarkAllRead }:
         className="relative p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"
         aria-label="Notifications"
       >
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-          <path d="M12 22a2 2 0 0 0 2-2H10a2 2 0 0 0 2 2Zm6-6V11a6 6 0 0 0-5-5.92V4a1 1 0 0 0-2 0v1.08A6 6 0 0 0 6 11v5l-2 2v1h16v-1l-2-2Z" fill="currentColor" />
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6" />
+          <path d="M9 17v1a3 3 0 0 0 6 0v-1" />
         </svg>
         {unreadCount > 0 && (
-          <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-[#DC2626] rounded-full">
-            {unreadCount > 9 ? "9+" : unreadCount}
-          </span>
+          <span className="absolute top-1 right-1 w-2 h-2 bg-[#DC2626] rounded-full" />
         )}
       </button>
       {open && (
@@ -214,9 +257,9 @@ function NotificationBell({ notifications, onNotificationClick, onMarkAllRead }:
   );
 }
 
-const APP_PAGES = new Set(["board", "sent", "mygroup", "urgent", "email", "profile-edit", "chats"]);
+const APP_PAGES = new Set(["board", "sent", "mygroup", "urgent", "profile-edit", "chats"]);
 const PAGE_TO_TAB: Record<string, string> = {
-  "board": "board", "sent": "board", "urgent": "board", "email": "board",
+  "board": "board", "sent": "board", "urgent": "board",
   "mygroup": "mygroup", "profile-edit": "profile-edit", "chats": "chats",
 };
 
@@ -252,17 +295,17 @@ function Nav({ go, activePage = "", studentStatus = "solo", notifications = [], 
             aria-selected={activeTab === t.id}
             onClick={() => go(t.id)}
             className={cn(
-              "px-4 pb-[14px] text-[14px] border-b-2 transition-colors cursor-pointer",
+              "px-4 pb-[11px] text-[16px] border-b-[4px] transition-colors cursor-pointer",
               activeTab === t.id
-                ? "font-semibold text-[#111827] border-[#8e57b8]"
-                : "font-normal text-[#6B7280] border-transparent hover:border-[#8e57b8]/40"
+                ? "font-bold text-[#111827] border-[#9652ca]"
+                : "font-medium text-[#6B7280] border-transparent hover:text-[#111827] hover:border-[#9652ca]/40"
             )}
           >
             {t.label}
           </button>
         ))}
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-4">
         <NotificationBell
           notifications={notifications}
           onNotificationClick={onNotificationClick}
@@ -296,12 +339,13 @@ function F({ l, id, children }: FProps) {
 
 function TGrid({ sel, set, label, disabled = false }: TGridProps) {
   const ds = ["Mon", "Tue", "Wed", "Thu", "Fri"], ts = ["9am–12pm", "12–4pm", "4–8pm", "8–11pm"];
-  const [dragging, setDragging] = useState(false);
+  const dragging = useRef(false);
+  const didDragMultiple = useRef(false);
   const [dragMode, setDragMode] = useState<"add" | "remove">("add");
-  const tog = (k: string) => { if (disabled) return; const n = new Set(sel); n.has(k) ? n.delete(k) : n.add(k); set(n); };
   const startDrag = (k: string) => {
     if (disabled) return;
-    setDragging(true);
+    dragging.current = true;
+    didDragMultiple.current = false;
     const mode = sel.has(k) ? "remove" : "add";
     setDragMode(mode);
     const n = new Set(sel);
@@ -309,12 +353,13 @@ function TGrid({ sel, set, label, disabled = false }: TGridProps) {
     set(n);
   };
   const enterDrag = (k: string) => {
-    if (!dragging || disabled) return;
+    if (!dragging.current || disabled) return;
+    didDragMultiple.current = true;
     const n = new Set(sel);
     dragMode === "add" ? n.add(k) : n.delete(k);
     set(n);
   };
-  const stopDrag = () => setDragging(false);
+  const stopDrag = () => { dragging.current = false; };
   return (
     <div className={cn("mb-7", disabled && "opacity-40")} onMouseUp={stopDrag} onMouseLeave={stopDrag}>
       <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">{label}</Label>
@@ -326,8 +371,7 @@ function TGrid({ sel, set, label, disabled = false }: TGridProps) {
             const k = `${d}-${ti}`; return <button key={k} type="button" role="checkbox" aria-checked={sel.has(k)} aria-label={`${d} ${t}`}
               onMouseDown={(e) => { e.preventDefault(); startDrag(k); }}
               onMouseEnter={() => enterDrag(k)}
-              onClick={() => { if (!dragging) tog(k); }}
-              className={cn("py-2.5 px-1 text-center rounded-md text-xs font-medium transition-colors", disabled ? "pointer-events-none cursor-default" : "cursor-pointer", sel.has(k) ? "bg-primary text-primary-foreground" : "bg-gray-50 text-gray-400 hover:bg-gray-100")} />;
+              className={cn("py-2.5 px-1 text-center rounded-md text-xs font-medium transition-colors border", disabled ? "pointer-events-none cursor-default" : "cursor-pointer", sel.has(k) ? "bg-primary text-primary-foreground border-primary" : "bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100 hover:border-gray-300")} />;
           })}
         </Fragment>)}
       </div>
@@ -384,87 +428,117 @@ const Icon: Record<string, (props: IconProps) => ReactElement> = {
   ),
   star: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
     </svg>
   ),
-  starFilled: ({ size = 24, color = "#8e57b8" }: IconProps) => (
+  starFilled: ({ size = 24, color = "#9652ca" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={color} stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
     </svg>
   ),
   eyeOpen: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
     </svg>
   ),
   eyeOff: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" /><line x1="1" y1="1" x2="23" y2="23" />
+    </svg>
+  ),
+  pencil: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" /><path d="M13.5 6.5l4 4" />
+    </svg>
+  ),
+  reactCheck: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 3m0 2a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z" /><path d="M9 12l2 2l4 -4" />
+    </svg>
+  ),
+  reactThumbUp: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 11v8a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1v-7a1 1 0 0 1 1 -1h3a4 4 0 0 0 4 -4v-1a2 2 0 0 1 4 0v5h3a2 2 0 0 1 2 2l-1 5a2 3 0 0 1 -2 2h-7a3 3 0 0 1 -3 -3" />
+    </svg>
+  ),
+  reactHeart: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19.5 12.572l-7.5 7.428l-7.5 -7.428a5 5 0 1 1 7.5 -6.566a5 5 0 1 1 7.5 6.572" />
+    </svg>
+  ),
+  reactSad: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 10l.01 0" /><path d="M15 10l.01 0" /><path d="M9.5 15.25a3.5 3.5 0 0 1 5 0" /><path d="M17.566 17.606a2 2 0 1 0 2.897 .03l-1.463 -1.636l-1.434 1.606z" /><path d="M20.865 13.517a8.937 8.937 0 0 0 .135 -1.517a9 9 0 1 0 -9 9c.69 0 1.36 -.076 2 -.222" />
+    </svg>
+  ),
+  mailSend: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 7a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-10z" /><path d="M3 7l9 6l9 -6" />
     </svg>
   ),
   wave: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M18 11V6a2 2 0 0 0-4 0v1M14 10V4a2 2 0 0 0-4 0v6M10 10V6a2 2 0 0 0-4 0v8c0 4.42 3.58 8 8 8h1a7 7 0 0 0 7-7v-3a2 2 0 0 0-4 0"/>
+      <path d="M18 11V6a2 2 0 0 0-4 0v1M14 10V4a2 2 0 0 0-4 0v6M10 10V6a2 2 0 0 0-4 0v8c0 4.42 3.58 8 8 8h1a7 7 0 0 0 7-7v-3a2 2 0 0 0-4 0" />
     </svg>
   ),
   document: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" />
     </svg>
   ),
   checkCircle: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
     </svg>
   ),
   xCircle: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+      <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
     </svg>
   ),
   userIcon: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
     </svg>
   ),
   bellIcon: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+      <path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6" /><path d="M9 17v1a3 3 0 0 0 6 0v-1" />
     </svg>
   ),
   thumbUp: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+      <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z" /><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
     </svg>
   ),
   thumbDown: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z"/><path d="M17 2h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"/>
+      <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z" /><path d="M17 2h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3" />
     </svg>
   ),
   warning: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
     </svg>
   ),
   messageCircle: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
     </svg>
   ),
   chevronLeft: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="15 18 9 12 15 6"/>
+      <polyline points="15 18 9 12 15 6" />
     </svg>
   ),
   chevronRight: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="9 18 15 12 9 6"/>
+      <polyline points="9 18 15 12 9 6" />
     </svg>
   ),
   x: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
     </svg>
   ),
 };
@@ -524,23 +598,29 @@ function SignupRole({ go }: GoProps) {
 }
 
 // Signup Form
-function SignupForm({ role, go }: RoleGoProps) {
+interface SignupFormProps extends RoleGoProps {
+  onSetName: (name: string) => void;
+  onSetEmail: (email: string) => void;
+}
+
+function SignupForm({ role, go, onSetName, onSetEmail }: SignupFormProps) {
   const [showError, setShowError] = useState(false);
   const [emailError, setEmailError] = useState(false);
+  const [fullName, setFullName] = useState("");
+  const [university, setUniversity] = useState("");
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
+  const canSubmit = fullName.trim().length > 0 && university.length > 0 && email.trim().length > 0 && pw.length >= 8 && pw === pw2;
   const handleSubmit = () => {
+    if (!canSubmit) return;
     if (email === "unknown@mail.utoronto.ca") {
       setEmailError(true);
       return;
     }
     setEmailError(false);
-    if (pw !== pw2 && pw2.length > 0) {
-      setShowError(true);
-      return;
-    }
-    setShowError(false);
+    onSetName(fullName);
+    onSetEmail(email);
     go("verify");
   };
   return <div className="bg-background min-h-screen pb-6">
@@ -550,9 +630,9 @@ function SignupForm({ role, go }: RoleGoProps) {
       <Progress value={(1 / 2) * 100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Create your account</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed">Verification link will be sent to your email.</p>
-      <F l="Full Name" id="signup-name"><Input id="signup-name" placeholder="e.g. John Doe" /></F>
+      <F l="Full Name" id="signup-name"><Input id="signup-name" placeholder="e.g. John Doe" value={fullName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFullName(e.target.value)} /></F>
       <F l="University">
-        <Select>
+        <Select value={university} onValueChange={setUniversity}>
           <SelectTrigger className="w-full"><SelectValue placeholder="Select your university..." /></SelectTrigger>
           <SelectContent>
             <SelectItem value="utoronto">University of Toronto</SelectItem>
@@ -570,15 +650,19 @@ function SignupForm({ role, go }: RoleGoProps) {
         <F l="Password" id="signup-pw"><Input id="signup-pw" type="password" placeholder="Min 8 characters" value={pw} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setPw(e.target.value); setShowError(false); }} /></F>
         <F l="Confirm Password" id="signup-pw2"><Input id="signup-pw2" type="password" placeholder="Re-enter" className={showError ? "border-danger" : ""} value={pw2} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setPw2(e.target.value); setShowError(false); }} /></F>
       </div>
-      {showError && <div className="text-[13px] text-danger mb-4">Passwords don't match.</div>}
-      {!showError && <div className="mb-5" />}
-      <Button className="w-full px-7 py-3 h-auto" onClick={handleSubmit}>Send Verification Email</Button>
+      {pw2.length > 0 && pw !== pw2 && <div className="text-[13px] text-danger mb-4">Passwords don't match.</div>}
+      {(pw2.length === 0 || pw === pw2) && <div className="mb-5" />}
+      <Button className="w-full px-7 py-3 h-auto" disabled={!canSubmit} onClick={handleSubmit}>Send Verification Email</Button>
     </div>
   </div>;
 }
 
+interface VerifyProps extends RoleGoProps {
+  userEmail?: string;
+}
+
 // Email Verify
-function Verify({ role, go }: RoleGoProps) {
+function Verify({ role, go, userEmail }: VerifyProps) {
   return <div className="bg-background min-h-screen pb-6">
     <Nav go={go} />
     <div className="max-w-[500px] mx-auto pt-20 px-6 text-center">
@@ -586,17 +670,17 @@ function Verify({ role, go }: RoleGoProps) {
       <Progress value={(2 / 2) * 100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
       <div className="mb-5 flex justify-center"><Icon.email size={48} /></div>
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px] text-center">Check your inbox</h1>
-      <p className="text-base text-gray-600 mb-9 leading-relaxed text-center">We sent a link to <strong>j.doe@mail.utoronto.ca</strong></p>
-      <Button className="w-full px-7 py-3 h-auto" onClick={() => go(role === "t" ? "ta-dash" : "dash")}>I've Verified My Email</Button>
+      <p className="text-base text-gray-600 mb-9 leading-relaxed text-center">We sent a link to <strong>{userEmail || "j.doe@mail.utoronto.ca"}</strong></p>
+      <Button className="w-full px-7 py-3 h-auto" onClick={() => go(role === "t" ? "ta-dash-empty" : "dash-empty")}>I've Verified My Email</Button>
       <div className="mt-3.5"><Button variant="link" className="text-foreground">Resend email</Button></div>
     </div>
   </div>;
 }
 
-// Student Dashboard
-function Dash({ go }: GoProps) {
+// Student Dashboard — Empty
+function DashEmpty({ go }: GoProps) {
   return <div className="bg-background min-h-screen pb-6">
-    <Nav go={go} right={<div className="flex items-center gap-4"><Button variant="outline" size="sm" className="px-4" onClick={() => go("mygroup")}>My Group</Button><span className="text-sm text-gray-600">John</span><Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-[13px] font-bold">JD</AvatarFallback></Avatar></div>} />
+    <Nav go={go} />
     <div className="max-w-[680px] mx-auto py-14 px-6">
       <div className="flex justify-between items-center mb-7">
         <div><div className="text-sm text-gray-500 mb-0.5">Welcome back,</div><h1 className="text-[28px] font-bold text-foreground -tracking-[0.5px]">My Courses</h1></div>
@@ -607,7 +691,23 @@ function Dash({ go }: GoProps) {
         <p className="text-[15px] text-gray-500 mb-4">No courses yet.</p>
         <Button variant="outline" size="sm" className="px-4 mx-auto" onClick={() => go("join")}>Join your first course</Button>
       </Card>
-      <div className="mt-2.5" />
+    </div>
+  </div>;
+}
+
+interface DashProps extends GoProps {
+  userName?: string;
+}
+
+// Student Dashboard — With CSC318
+function Dash({ go, userName }: DashProps) {
+  return <div className="bg-background min-h-screen pb-6">
+    <Nav go={go} right={<div className="flex items-center gap-4"><Button variant="outline" size="sm" className="px-4" onClick={() => go("mygroup")}>My Group</Button><span className="text-sm text-gray-600">{userName || "John"}</span><Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-[13px] font-bold">JD</AvatarFallback></Avatar></div>} />
+    <div className="max-w-[680px] mx-auto py-14 px-6">
+      <div className="flex justify-between items-center mb-7">
+        <div><div className="text-sm text-gray-500 mb-0.5">Welcome back,</div><h1 className="text-[28px] font-bold text-foreground -tracking-[0.5px]">My Courses</h1></div>
+        <Button size="sm" className="px-4" onClick={() => go("join")}>+ Join a Course</Button>
+      </div>
       <Card className="p-5 mb-3.5 gap-0 shadow-none cursor-pointer hover:border-gray-300 hover:shadow-sm transition-colors" onClick={() => go("board")}>
         <div className="flex justify-between items-start">
           <div><div className="text-lg font-semibold">CSC318</div><div className="text-sm text-gray-500">The Design of Interactive Computational Media</div><div className="text-[13px] text-gray-400 mt-1">Winter 2026 · Section 201</div></div>
@@ -623,6 +723,7 @@ function Dash({ go }: GoProps) {
 // Join Course
 function Join({ go }: GoProps) {
   const [step, setStep] = useState(0);
+  const [code, setCode] = useState("");
   return <div className="bg-background min-h-screen pb-6">
     <Nav go={go} />
     <div className="max-w-[500px] mx-auto py-14 px-6">
@@ -630,8 +731,8 @@ function Join({ go }: GoProps) {
       {step === 0 ? <>
         <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Join a Course</h1>
         <p className="text-base text-gray-600 mb-9 leading-relaxed">Enter course code from your TA.</p>
-        <F l="Course Code"><Input className="text-[22px] font-bold tracking-[6px] text-center py-[18px] h-auto" placeholder="ABC123" /></F>
-        <Button className="w-full px-7 py-3 h-auto" onClick={() => setStep(1)}>Look Up</Button>
+        <F l="Course Code"><Input className="text-[22px] font-bold tracking-[6px] text-center py-[18px] h-auto" placeholder="ABC123" value={code} onChange={e => setCode(e.target.value.toUpperCase())} /></F>
+        <Button className="w-full px-7 py-3 h-auto" disabled={!code.trim()} onClick={() => setStep(1)}>Look Up</Button>
       </> :
         <>
           <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Confirm Course</h1>
@@ -656,7 +757,13 @@ function Join({ go }: GoProps) {
 }
 
 // Profile 0 - Name & Photo
-function Prof0({ go }: GoProps) {
+interface Prof0Props extends GoProps {
+  initialName?: string;
+  onSaveName?: (name: string) => void;
+}
+
+function Prof0({ go, initialName, onSaveName }: Prof0Props) {
+  const [name, setName] = useState(initialName ?? "");
   return <div className="bg-background min-h-screen pb-6">
     <Nav go={go} right={<span className="text-[13px] text-gray-500 leading-relaxed">CSC318 · Profile</span>} />
     <div className="max-w-[680px] mx-auto py-14 px-6">
@@ -671,8 +778,8 @@ function Prof0({ go }: GoProps) {
         </Avatar>
         <Button variant="outline" size="sm" className="px-4">Upload Photo</Button>
       </div>
-      <F l="Display Name"><Input placeholder="e.g. John D." /></F>
-      <Button className="w-full px-7 py-3 h-auto" onClick={() => go("prof-1")}>Next</Button>
+      <F l="Display Name"><Input placeholder="e.g. John D." value={name} onChange={e => setName(e.target.value)} /></F>
+      <Button className="w-full px-7 py-3 h-auto" disabled={!name.trim()} onClick={() => { onSaveName?.(name); go("prof-1"); }}>Next</Button>
     </div>
   </div>;
 }
@@ -680,8 +787,8 @@ function Prof0({ go }: GoProps) {
 // Profile 1 - Skills
 function Prof1({ go }: GoProps) {
   const pre = ["UI Design", "Frontend Dev", "Backend", "User Research", "Prototyping", "Data Analysis", "UX Writing", "Project Mgmt"];
-  const [sel, setSel] = useState<string[]>(["UI Design", "User Research"]);
-  const [rat, setRat] = useState<Record<string, string>>({ "UI Design": "Expert", "User Research": "Proficient" });
+  const [sel, setSel] = useState<string[]>([]);
+  const [rat, setRat] = useState<Record<string, string>>({});
   const lvl = ["Beginner", "Intermediate", "Proficient", "Expert"];
   const tog = (sk: string) => { if (sel.includes(sk)) { setSel(sel.filter(x => x !== sk)); const r = { ...rat }; delete r[sk]; setRat(r); } else { setSel([...sel, sk]); setRat({ ...rat, [sk]: "Intermediate" }); } };
   return <div className="bg-background min-h-screen pb-6">
@@ -691,7 +798,7 @@ function Prof1({ go }: GoProps) {
       <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 2 of 4</div>
       <Progress value={(2 / 4) * 100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Your Skills</h1>
-      <p className="text-base text-gray-600 mb-9 leading-relaxed">Select or add skills.</p>
+      <p className="text-base text-gray-600 mb-9 leading-relaxed">Select at least 2 skills.</p>
       <div className="mb-5">
         {pre.map(sk => <button key={sk} type="button" aria-pressed={sel.includes(sk)} className={cn("inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium cursor-pointer mr-1.5 mb-2 border-[1.5px] transition-colors", sel.includes(sk) ? "bg-primary text-primary-foreground border-primary" : "bg-gray-100 text-gray-600 border-gray-200 hover:border-gray-300")} onClick={() => tog(sk)}>{sk}</button>)}
         <button type="button" className="inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium cursor-pointer mr-1.5 mb-2 border-[1.5px] bg-gray-100 text-gray-600 border-gray-200 border-dashed">+ Custom</button>
@@ -702,7 +809,8 @@ function Prof1({ go }: GoProps) {
           <div className="flex gap-1">{lvl.map(l => <button key={l} type="button" aria-pressed={rat[sk] === l} className={cn("py-1 px-2.5 rounded-md text-xs font-medium cursor-pointer transition-colors", rat[sk] === l ? "bg-primary text-primary-foreground" : "bg-gray-100 text-gray-500 hover:bg-gray-200")} onClick={() => setRat({ ...rat, [sk]: l })}>{l}</button>)}</div>
         </div>)}
       </Card>}
-      <Button className="w-full px-7 py-3 h-auto" onClick={() => go("prof-2")}>Next</Button>
+      {sel.length < 2 && sel.length > 0 && <p className="text-[13px] text-danger mb-3">Select at least one more skill.</p>}
+      <Button className="w-full px-7 py-3 h-auto" disabled={sel.length < 2} onClick={() => go("prof-2")}>Next</Button>
     </div>
   </div>;
 }
@@ -741,6 +849,7 @@ function Prof2({ go }: GoProps) {
 function Prof3({ go }: GoProps) {
   const plats = ["Discord", "WhatsApp", "Email", "Instagram DM", "iMessage", "KakaoTalk"];
   const [sp, setSp] = useState<string[]>(["Discord"]);
+  const [bio, setBio] = useState("");
   const tp = (p: string) => setSp(sp.includes(p) ? sp.filter(x => x !== p) : [...sp, p]);
   return <div className="bg-background min-h-screen pb-6">
     <Nav go={go} right={<span className="text-[13px] text-gray-500 leading-relaxed">CSC318 · Profile</span>} />
@@ -757,27 +866,28 @@ function Prof3({ go }: GoProps) {
         {sp.map(p => <F key={p} l={`${p} handle`}><Input placeholder={`Your ${p} username`} /></F>)}
       </div>}
       <Separator className="my-6 bg-gray-100" />
-      <F l="About You"><Textarea className="min-h-[100px] resize-y" placeholder="About you and your ideal group" /><div className="text-[13px] text-gray-500 leading-relaxed text-right mt-1">0/300</div></F>
+      <F l="About You"><Textarea className="min-h-[100px] resize-y" placeholder="About you and your ideal group" value={bio} onChange={e => setBio(e.target.value.slice(0, 300))} /><div className={cn("text-[13px] leading-relaxed text-right mt-1", bio.length >= 300 ? "text-danger" : "text-gray-500")}>{bio.length}/300</div></F>
       <div className="mb-7">
         <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Links (optional)</Label>
+        <p className="text-[13px] text-gray-500 mb-2">Add portfolio, GitHub, LinkedIn, or any relevant links.</p>
         <div className="grid grid-cols-[1fr_2fr_auto] gap-2 items-end">
           <Input placeholder="Label" /><Input placeholder="https://..." /><Button variant="outline" size="sm" className="px-4">Add</Button>
         </div>
       </div>
-      <Button className="w-full px-7 py-3 h-auto" onClick={() => go("prof-done")}>Complete Profile</Button>
+      <Button className="w-full px-7 py-3 h-auto" disabled={!bio.trim()} onClick={() => go("prof-done")}>Complete Profile</Button>
     </div>
   </div>;
 }
 
 // Profile Complete Confirmation
-function ProfDone({ go }: GoProps) {
+function ProfDone({ go, onJoinCourse }: GoProps & { onJoinCourse: () => void }) {
   return <div className="bg-background min-h-screen pb-6">
     <Nav go={go} />
     <div className="max-w-[500px] mx-auto pt-[100px] px-6 text-center">
-      <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-success-bg flex items-center justify-center"><span className="text-3xl text-success">✓</span></div>
+      <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-[#9652ca]/15 flex items-center justify-center"><span className="text-3xl text-[#9652ca]">✓</span></div>
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Profile Complete!</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed">You're ready to find teammates.</p>
-      <Button className="px-9 py-3.5 text-base h-auto" onClick={() => go("board")}>Go to Matching Board</Button>
+      <Button className="px-9 py-3.5 text-base h-auto" onClick={() => { onJoinCourse(); go("board"); }}>Go to Matching Board</Button>
     </div>
   </div>;
 }
@@ -822,8 +932,46 @@ const POST_DEADLINE_GROUPS = [
   { id: "G4", members: ["Wei Zhang", "Aisha Khan"], autoAssigned: true },
 ];
 
-// TA Dashboard
+// TA Dashboard — Empty
+function TADashEmpty({ go }: GoProps) {
+  return <div className="bg-background min-h-screen pb-6">
+    <Nav go={go} right={<div className="flex items-center gap-2.5"><span className="text-sm text-gray-600">Prof. Truong</span><Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-xs font-bold">KT</AvatarFallback></Avatar></div>} />
+    <div className="max-w-[680px] mx-auto py-14 px-6">
+      <div className="flex justify-between items-center mb-7">
+        <div><div className="text-sm text-gray-500 mb-0.5">Welcome back,</div><h1 className="text-[28px] font-bold text-foreground -tracking-[0.5px]">My Courses</h1></div>
+        <Button size="sm" className="px-4" onClick={() => go("ta-create")}>+ Create Course</Button>
+      </div>
+      <Card className="py-[52px] px-6 mb-3.5 gap-0 shadow-none text-center border-dashed border-gray-300">
+        <div className="mb-3 flex justify-center"><Icon.books size={36} /></div>
+        <p className="text-[15px] text-gray-500 mb-4">No courses yet.</p>
+        <Button variant="outline" size="sm" className="px-4 mx-auto" onClick={() => go("ta-create")}>Create your first course</Button>
+      </Card>
+    </div>
+  </div>;
+}
+
+// TA Dashboard — With CSC318
 function TADash({ go }: GoProps) {
+  return <div className="bg-background min-h-screen pb-6">
+    <Nav go={go} right={<div className="flex items-center gap-2.5"><span className="text-sm text-gray-600">Prof. Truong</span><Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-xs font-bold">KT</AvatarFallback></Avatar></div>} />
+    <div className="max-w-[680px] mx-auto py-14 px-6">
+      <div className="flex justify-between items-center mb-7">
+        <div><div className="text-sm text-gray-500 mb-0.5">Welcome back,</div><h1 className="text-[28px] font-bold text-foreground -tracking-[0.5px]">My Courses</h1></div>
+        <Button size="sm" className="px-4" onClick={() => go("ta-create")}>+ Create Course</Button>
+      </div>
+      <Card className="p-5 mb-3.5 gap-0 shadow-none cursor-pointer hover:border-gray-300 hover:shadow-sm transition-colors" onClick={() => go("ta-course-dash")}>
+        <div className="flex justify-between items-start">
+          <div><div className="text-lg font-semibold">CSC318</div><div className="text-sm text-gray-500">The Design of Interactive Computational Media</div><div className="text-[13px] text-gray-400 mt-1">Winter 2026 · 42 students</div></div>
+          <Badge variant="success">Active</Badge>
+        </div>
+        <Separator className="my-3.5 bg-gray-100" />
+        <div className="flex justify-between"><span className="text-[13px] text-gray-500">Group formation</span><span className="text-[13px] font-semibold">14 ungrouped →</span></div>
+      </Card>
+    </div>
+  </div>;
+}
+
+function TACourseDash({ go, showToast }: GoProps & { showToast?: (msg: string) => void }) {
   const [copied, setCopied] = useState(false);
   const [tab, setTab] = useState<"overview" | "students" | "alerts">("overview");
   const [studentFilter, setStudentFilter] = useState("all");
@@ -835,16 +983,16 @@ function TADash({ go }: GoProps) {
     });
   };
   const filteredAdminStudents = STU.filter(s => {
-    if (studentFilter === "ungrouped") return s.status !== "grouped";
+    if (studentFilter === "ungrouped") return s.status === "solo" || s.status === "open-group";
     if (studentFilter === "atrisk") return ADMIN_DATA.atRisk.some(r => r.name === s.name);
     return true;
   });
   return <div className="bg-background min-h-screen pb-6">
     <Nav go={go} right={<div className="flex items-center gap-2.5"><span className="text-sm text-gray-600">Prof. Truong</span><Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-xs font-bold">KT</AvatarFallback></Avatar></div>} />
     <div className="max-w-[780px] mx-auto py-14 px-6">
+      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={() => go("ta-dash")}>← Back to Courses</Button>
       <div className="flex justify-between items-center mb-7">
         <div><div className="text-sm text-gray-500 mb-0.5">TA Dashboard</div><h1 className="text-[28px] font-bold text-foreground -tracking-[0.5px]">CSC318</h1></div>
-        <Button size="sm" className="px-4" onClick={() => go("ta-create")}>+ Create Course</Button>
       </div>
 
       {/* Tab bar */}
@@ -1031,7 +1179,7 @@ function TADash({ go }: GoProps) {
         </div>
         {filteredAdminStudents.map((st, i) => {
           const ss = SS[st.status] ?? { l: st.status, variant: "secondary" as const };
-          return <Card key={i} className="p-4 mb-2.5 gap-0 shadow-none flex-row items-center gap-3">
+          return <Card key={i} className="p-4 mb-2.5 shadow-none flex-row items-center gap-3">
             <Avatar className="size-9"><AvatarFallback className="bg-gray-200 text-gray-500 text-xs font-bold">{st.init}</AvatarFallback></Avatar>
             <div className="flex-1">
               <div className="flex justify-between">
@@ -1051,9 +1199,9 @@ function TADash({ go }: GoProps) {
           <div className="text-[15px] font-bold text-caution mb-1">Deadline Approaching</div>
           <div className="text-[13px] text-caution-dark leading-relaxed mb-3">14 students ungrouped — provisional groups form in 3 days.</div>
           <div className="flex gap-2">
-            <Button size="sm" className="text-xs px-4">Review provisional groups</Button>
-            <Button variant="outline" size="sm" className="text-xs px-4">Extend deadline</Button>
-            <Button variant="outline" size="sm" className="text-xs px-4">Email all ungrouped</Button>
+            <Button size="sm" className="text-xs px-4" onClick={() => showToast?.("Provisional groups generated")}>Review provisional groups</Button>
+            <Button variant="outline" size="sm" className="text-xs px-4" onClick={() => showToast?.("Deadline extended by 3 days")}>Extend deadline</Button>
+            <Button variant="outline" size="sm" className="text-xs px-4" onClick={() => showToast?.("Email sent to all ungrouped students")}>Email all ungrouped</Button>
           </div>
         </Card>
 
@@ -1075,21 +1223,21 @@ function TADash({ go }: GoProps) {
             </div>
             <div className="flex gap-1 mb-3">{st.skills.map(sk => <span key={sk} className="py-0.5 px-2.5 bg-gray-100 rounded-[10px] text-[11px] text-gray-600">{sk}</span>)}</div>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" className="text-xs px-4">Send reminder email</Button>
-              <Button size="sm" variant="outline" className="text-xs px-4">Suggest match</Button>
+              <Button size="sm" variant="outline" className="text-xs px-4" onClick={() => showToast?.("Reminder email sent to " + st.name)}>Send reminder email</Button>
+              <Button size="sm" variant="outline" className="text-xs px-4" onClick={() => showToast?.("Match suggestion sent to " + st.name)}>Suggest match</Button>
             </div>
           </Card>
         ))}
 
         <Separator className="my-5 bg-gray-100" />
-        <Button className="w-full px-7 py-3 h-auto">Send bulk reminder to all ungrouped</Button>
+        <Button className="w-full px-7 py-3 h-auto" onClick={() => showToast?.("Bulk reminder sent to all ungrouped students")}>Send bulk reminder to all ungrouped</Button>
       </>}
     </div>
   </div>;
 }
 
 // TA Create Course
-function TACreate({ go }: GoProps) {
+function TACreate({ go, onCreateCourse, showToast }: GoProps & { onCreateCourse: () => void; showToast?: (msg: string) => void }) {
   const [skills, setSkills] = useState<string[]>(["UI Design", "Frontend Dev", "Backend", "User Research", "Prototyping", "Data Analysis"]);
   const [secs, setSecs] = useState<string[]>(["201", "202", "203"]);
   const [newSec, setNewSec] = useState("");
@@ -1150,7 +1298,7 @@ function TACreate({ go }: GoProps) {
           </div>
         )}
       </div>
-      <Button className="w-full px-7 py-3 h-auto" onClick={() => go("ta-dash")}>Create Course</Button>
+      <Button className="w-full px-7 py-3 h-auto" onClick={() => { onCreateCourse(); showToast?.("Course created!"); go("ta-dash"); }}>Create Course</Button>
     </div>
   </div>;
 }
@@ -1380,11 +1528,13 @@ interface Conversation {
 }
 
 const DEMO_CONVERSATIONS: Conversation[] = [
-  { id: "conv-group", targetName: "CSC318 Group", targetInit: "G", type: "group-chat", status: "active", lastMessage: "Aisha: I set up the shared doc", timestamp: "10m ago", unread: true, isGroup: true, groupMembers: [
-    { name: "Jesse Nguyen", init: "JN" },
-    { name: "Aisha Khan", init: "AK" },
-    { name: "David Park", init: "DP" },
-  ] },
+  {
+    id: "conv-group", targetName: "CSC318 Group", targetInit: "G", type: "group-chat", status: "active", lastMessage: "Aisha: I set up the shared doc", timestamp: "10m ago", unread: true, isGroup: true, groupMembers: [
+      { name: "Jesse Nguyen", init: "JN" },
+      { name: "Aisha Khan", init: "AK" },
+      { name: "David Park", init: "DP" },
+    ]
+  },
   { id: "conv-1", targetName: "David Park", targetInit: "DP", type: "request-sent", status: "replied", lastMessage: "Sounds great! When are you free this week?", timestamp: "2h ago", unread: true },
   { id: "conv-2", targetName: "Priya Sharma", targetInit: "PS", type: "application-received", status: "pending", lastMessage: "I applied to your group.", timestamp: "15m ago", unread: true },
   { id: "conv-3", targetName: "Jesse Nguyen", targetInit: "JN", type: "request-received", status: "accepted", lastMessage: "Welcome to the team!", timestamp: "1d ago", unread: false },
@@ -1514,7 +1664,7 @@ function GroupCard({ group, appliedStatus, onClick }: GroupCardProps) {
       {/* Row 1: Group name + member count pill */}
       <div className="flex items-center justify-between mb-1">
         <span className="text-[15px] font-semibold text-[#111827]">{group.leaderName}'s Group</span>
-        <span className="inline-flex items-center h-[22px] px-2 rounded-[12px] text-[12px] bg-[#8e57b8]/10 text-[#8e57b8]">
+        <span className="inline-flex items-center justify-center h-[22px] px-2 rounded-[12px] leading-none text-[12px] bg-[#9652ca]/10 text-[#9652ca]">
           {group.members.length}/{group.maxSize}
         </span>
       </div>
@@ -1526,7 +1676,7 @@ function GroupCard({ group, appliedStatus, onClick }: GroupCardProps) {
       <div className="flex flex-wrap items-center gap-1 mb-2.5">
         <span className="text-[12px] text-[#6B7280] mr-0.5">Looking for:</span>
         {group.neededSkills.slice(0, 3).map(sk => (
-          <span key={sk} className="inline-flex items-center h-6 px-2 rounded-[6px] text-[12px] font-medium bg-[#8e57b8]/10 text-[#8e57b8]">
+          <span key={sk} className="inline-flex items-center h-6 px-2 rounded-[6px] text-[12px] font-medium bg-[#9652ca]/10 text-[#9652ca]">
             {sk}
           </span>
         ))}
@@ -1539,7 +1689,7 @@ function GroupCard({ group, appliedStatus, onClick }: GroupCardProps) {
       <div className="mb-2">
         <div className="flex justify-between items-center mb-1">
           <span className="text-[12px] text-[#6B7280]">Avg. overlap</span>
-          <span className="text-[13px] font-semibold text-[#8e57b8]">
+          <span className="text-[13px] font-semibold text-[#9652ca]">
             {Math.round(group.members.reduce((acc, m) => {
               const s = STU.find(s => s.name === m.name);
               return acc + (s?.scheduleOverlapHrs ?? 0);
@@ -1547,7 +1697,7 @@ function GroupCard({ group, appliedStatus, onClick }: GroupCardProps) {
           </span>
         </div>
         <div className="h-1 rounded-full bg-[#E5E7EB] overflow-hidden">
-          <div className="h-full rounded-full bg-[#8e57b8]" style={{
+          <div className="h-full rounded-full bg-[#9652ca]" style={{
             width: `${Math.min(100, (group.members.reduce((acc, m) => acc + (STU.find(s => s.name === m.name)?.scheduleOverlapHrs ?? 0), 0) / Math.max(group.members.length, 1) / 10) * 100)}%`
           }} />
         </div>
@@ -1556,7 +1706,7 @@ function GroupCard({ group, appliedStatus, onClick }: GroupCardProps) {
       {/* Row 5: Application status (conditional) */}
       {appliedStatus && appliedStatus !== "none" && STATUS_LABELS[appliedStatus] && (
         <div className="mt-2 pt-2 border-t border-[#F3F4F6]">
-          <span className={cn("inline-flex items-center h-[22px] px-2 rounded-[12px] text-[11px] font-medium border", STATUS_LABELS[appliedStatus].cls)}>
+          <span className={cn("inline-flex items-center justify-center h-[22px] px-2 rounded-[12px] leading-none text-[11px] font-medium border", STATUS_LABELS[appliedStatus].cls)}>
             {STATUS_LABELS[appliedStatus].l}
           </span>
         </div>
@@ -1612,11 +1762,13 @@ interface GroupDetailPanelProps extends GoProps {
   groupId: string;
   onClose: () => void;
   onApplied: (groupId: string) => void;
+  onOpenChat?: (name: string) => void;
 }
 
-function GroupDetailPanel({ groupId, onClose, onApplied }: GroupDetailPanelProps) {
+function GroupDetailPanel({ groupId, onClose, onApplied, onOpenChat }: GroupDetailPanelProps) {
   const group = FORMING_GROUPS.find(g => g.id === groupId)!;
   const [submitted, setSubmitted] = useState(false);
+  const [showForm, setShowForm] = useState(false);
   const [answers, setAnswers] = useState<string[]>(group.applicationQuestions.map(() => ""));
 
   if (submitted) {
@@ -1639,6 +1791,10 @@ function GroupDetailPanel({ groupId, onClose, onApplied }: GroupDetailPanelProps
           <div className="text-lg font-bold mb-1">{group.leaderName}'s Group</div>
           <div className="text-xs text-gray-500 mb-3">Section {group.section} · {group.members.length}/{group.maxSize} members</div>
           <p className="text-[13px] text-gray-700">{group.description}</p>
+          <Button className="w-full mt-3 gap-2 border-[#9652ca] text-[#9652ca] hover:bg-[#9652ca]/5" variant="outline" onClick={() => { if (onOpenChat) onOpenChat(group.leaderName); onClose(); }}>
+            <Icon.mailSend size={18} color="#9652ca" />
+            Message {group.leaderName.split(" ")[0]}
+          </Button>
         </div>
         <div className="mb-5">
           <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2 block">Members</Label>
@@ -1697,37 +1853,55 @@ function GroupDetailPanel({ groupId, onClose, onApplied }: GroupDetailPanelProps
           <div className="text-[10px] text-gray-400 mt-1.5">Darker = more members available</div>
         </div>
         <div className="border-t border-gray-100 pt-5">
-          <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-3 block">Application</Label>
-          {group.applicationQuestions.map((q, i) => (
-            <F key={i} l={q}>
-              <Textarea
-                value={answers[i]}
-                onChange={(e) => {
-                  const next = [...answers];
-                  next[i] = e.target.value;
-                  setAnswers(next);
-                }}
-                className="text-[12px] resize-none h-16"
-                placeholder="Your answer..."
-              />
-            </F>
-          ))}
+          <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-3 block">Application Questions</Label>
+          {!showForm ? (
+            group.applicationQuestions.map((q, i) => (
+              <div key={i} className="mb-3">
+                <div className="text-[13px] font-medium text-gray-700 mb-1">{i + 1}. {q}</div>
+              </div>
+            ))
+          ) : (
+            group.applicationQuestions.map((q, i) => (
+              <div key={i} className="mb-4">
+                <Label className="text-[11px] font-bold text-gray-600 mb-[6px] block uppercase tracking-[1px]">{i + 1}. {q}</Label>
+                <Textarea
+                  value={answers[i]}
+                  onChange={(e) => {
+                    if (e.target.value.length > 300) return;
+                    const next = [...answers];
+                    next[i] = e.target.value;
+                    setAnswers(next);
+                  }}
+                  className="text-[12px] resize-none h-16"
+                  placeholder="Your answer..."
+                />
+                <div className="text-[11px] text-gray-400 text-right mt-0.5">{answers[i].length}/300</div>
+              </div>
+            ))
+          )}
         </div>
       </div>
       <div className="border-t border-border p-4">
-        <div className="flex gap-3">
-          <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
-          <Button
-            className="flex-1"
-            disabled={answers.some(a => a.trim() === "")}
-            onClick={() => {
-              setSubmitted(true);
-              onApplied(group.id);
-            }}
-          >
-            Submit Application
-          </Button>
-        </div>
+        {!showForm ? (
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
+            <Button className="flex-1" onClick={() => setShowForm(true)}>Apply to Group</Button>
+          </div>
+        ) : (
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => setShowForm(false)}>Back</Button>
+            <Button
+              className="flex-1"
+              disabled={answers.some(a => a.trim() === "")}
+              onClick={() => {
+                setSubmitted(true);
+                onApplied(group.id);
+              }}
+            >
+              Send Application
+            </Button>
+          </div>
+        )}
       </div>
     </>
   );
@@ -1766,7 +1940,7 @@ function FilterDropdown({ label, active, open, onToggle, onClose, children }: Fi
         className={cn(
           "flex items-center gap-1.5 h-[34px] px-[14px] rounded-[20px] text-[13px] border transition-colors cursor-pointer whitespace-nowrap",
           active
-            ? "bg-[#8e57b8]/10 border-[#8e57b8] text-[#8e57b8]"
+            ? "bg-[#9652ca]/10 border-[#9652ca] text-[#9652ca]"
             : "bg-white border-[#D1D5DB] text-[#374151] hover:border-gray-400"
         )}>
         {label}
@@ -1781,105 +1955,7 @@ function FilterDropdown({ label, active, open, onToggle, onClose, children }: Fi
   );
 }
 
-interface ConversationSidebarProps {
-  conversations: Conversation[];
-  onSelect: (targetName: string) => void;
-  activeTarget?: string | null;
-}
 
-function ConversationSidebar({ conversations, onSelect, activeTarget }: ConversationSidebarProps) {
-  const [tab, setTab] = useState<"all" | "sent" | "received">("all");
-
-  const filtered = conversations.filter(c => {
-    if (tab === "sent") return c.type === "request-sent" || c.type === "application-sent";
-    if (tab === "received") return c.type === "request-received" || c.type === "application-received";
-    return true;
-  });
-
-  const unreadCount = conversations.filter(c => c.unread).length;
-
-  const STATUS_COLORS: Record<string, string> = {
-    pending: "bg-[#FEF3C7] text-[#92400E]",
-    replied: "bg-[#8e57b8]/15 text-[#8e57b8]",
-    accepted: "bg-[#DCFCE7] text-[#166534]",
-    declined: "bg-[#FEE2E2] text-[#991B1B]",
-  };
-
-  const TYPE_LABELS: Record<string, string> = {
-    "request-sent": "Request Sent",
-    "request-received": "Request Received",
-    "application-sent": "Applied",
-    "application-received": "Application",
-  };
-
-  return (
-    <div className="flex flex-col h-full">
-      <div className="px-4 py-3 border-b border-border shrink-0">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-[15px] font-semibold">Conversations</span>
-          {unreadCount > 0 && (
-            <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[#8e57b8] text-white text-[11px] font-bold">
-              {unreadCount}
-            </span>
-          )}
-        </div>
-        <div className="flex gap-1">
-          {(["all", "sent", "received"] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)}
-              className={cn(
-                "flex-1 py-1.5 text-[12px] font-medium rounded-md transition-colors capitalize cursor-pointer",
-                tab === t ? "bg-[#8e57b8]/10 text-[#8e57b8]" : "text-[#6B7280] hover:bg-gray-50"
-              )}>
-              {t}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto">
-        {filtered.length === 0 ? (
-          <div className="py-8 text-center text-[13px] text-[#9CA3AF]">No conversations</div>
-        ) : (
-          filtered.map(c => (
-            <button
-              key={c.id}
-              onClick={() => onSelect(c.targetName)}
-              className={cn(
-                "w-full flex items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50 border-b border-[#F3F4F6] cursor-pointer",
-                activeTarget === c.targetName && "bg-[#8e57b8]/5",
-                c.unread && "bg-[#8e57b8]/[0.03]"
-              )}
-            >
-              <div className="w-2 shrink-0 pt-2">
-                {c.unread && <div className="w-1.5 h-1.5 rounded-full bg-[#8e57b8]" />}
-              </div>
-
-              <Avatar className="size-9 shrink-0">
-                <AvatarFallback className="bg-gray-200 text-gray-500 text-[11px] font-bold">{c.targetInit}</AvatarFallback>
-              </Avatar>
-
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between mb-0.5">
-                  <span className={cn("text-[13px] truncate", c.unread ? "font-semibold text-[#111827]" : "font-medium text-[#374151]")}>
-                    {c.targetName}
-                  </span>
-                  <span className="text-[11px] text-[#9CA3AF] shrink-0 ml-2">{c.timestamp}</span>
-                </div>
-                <div className="text-[12px] text-[#6B7280] truncate mb-1">{c.lastMessage}</div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-[#9CA3AF]">{TYPE_LABELS[c.type]}</span>
-                  <span className={cn("inline-flex items-center h-[18px] px-1.5 rounded-full text-[10px] font-medium capitalize", STATUS_COLORS[c.status])}>
-                    {c.status}
-                  </span>
-                </div>
-              </div>
-            </button>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
 
 interface DiscoveryProps extends GoProps {
   onSelectStudent: (name: string) => void;
@@ -1896,15 +1972,13 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
   const [urgentDismissed, setUrgentDismissed] = useState(false);
   const [secFilter, setSecFilter] = useState("all");
   const [skillFilter, setSkillFilter] = useState("any");
-  const [overlapFilter, setOverlapFilter] = useState("any");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState("best");
   const [searchQuery, setSearchQuery] = useState("");
   const [hiddenStudents, setHiddenStudents] = useState<Set<string>>(() => {
-    try { const s = localStorage.getItem("easea-hidden"); return s ? new Set(JSON.parse(s)) : new Set(); } catch { return new Set(); }
+    try { const s = localStorage.getItem(LS_PREFIX + "hidden"); return s ? new Set(JSON.parse(s)) : new Set(); } catch { return new Set(); }
   });
   const [starredStudents, setStarredStudents] = useState<Set<string>>(() => {
-    try { const s = localStorage.getItem("easea-starred"); return s ? new Set(JSON.parse(s)) : new Set(); } catch { return new Set(); }
+    try { const s = localStorage.getItem(LS_PREFIX + "starred"); return s ? new Set(JSON.parse(s)) : new Set(); } catch { return new Set(); }
   });
   const [filterSolo, setFilterSolo] = useState(false);
   const [filterOpenGroup, setFilterOpenGroup] = useState(false);
@@ -1921,8 +1995,8 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
   const [activityFilter2, setActivityFilter2] = useState("all");
   const [spotsFilter, setSpotsFilter] = useState("any");
 
-  useEffect(() => { localStorage.setItem("easea-starred", JSON.stringify([...starredStudents])); }, [starredStudents]);
-  useEffect(() => { localStorage.setItem("easea-hidden", JSON.stringify([...hiddenStudents])); }, [hiddenStudents]);
+  useEffect(() => { localStorage.setItem(LS_PREFIX + "starred", JSON.stringify([...starredStudents])); }, [starredStudents]);
+  useEffect(() => { localStorage.setItem(LS_PREFIX + "hidden", JSON.stringify([...hiddenStudents])); }, [hiddenStudents]);
 
   useEffect(() => {
     if (urgentMode) {
@@ -1944,22 +2018,14 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
       const target = skillFilter === "frontend" ? "Frontend Dev" : skillFilter === "backend" ? "Backend" : skillFilter === "ui" ? "UI Design" : skillFilter === "research" ? "User Research" : skillFilter === "proto" ? "Prototyping" : skillFilter === "data" ? "Data Analysis" : skillFilter === "ux" ? "UX Writing" : "Project Mgmt";
       if (!st.skills.includes(target)) return false;
     }
-    if (overlapFilter !== "any" && st.scheduleOverlapHrs < parseInt(overlapFilter)) return false;
     if (minOverlapPct > 0 && (st.scheduleOverlapHrs / 10) * 100 < minOverlapPct) return false;
-    if (filterSolo && !filterOpenGroup && st.status !== "searching") return false;
-    if (filterOpenGroup && !filterSolo && st.status !== "forming") return false;
-    if (filterSolo && filterOpenGroup && st.status !== "searching" && st.status !== "forming") return false;
+    if (filterSolo && !filterOpenGroup && st.status !== "solo") return false;
+    if (filterOpenGroup && !filterSolo && st.status !== "open-group") return false;
+    if (filterSolo && filterOpenGroup && st.status !== "solo" && st.status !== "open-group") return false;
     if (filterFavorites && !starredStudents.has(st.name)) return false;
     if (activityFilter2 !== "all") {
       const cs = contactStatuses[st.name] || "none";
-      const labelMap: Record<string, string> = {
-        "none": "No contact yet",
-        "request-sent": "Request Sent",
-        "replied": "Replied",
-        "no-response": "No Response",
-        "declined": "Declined",
-      };
-      if (labelMap[cs] !== activityFilter2) return false;
+      if (cs !== activityFilter2) return false;
     }
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -1984,14 +2050,14 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
   });
 
   const clearFilters = () => {
-    setSecFilter("all"); setSkillFilter("any"); setOverlapFilter("any");
-    setStatusFilter("all"); setSearchQuery(""); setSortBy("best");
+    setSecFilter("all"); setSkillFilter("any"); setSearchQuery(""); setSortBy("best");
     setFilterSolo(false); setFilterOpenGroup(false); setFilterFavorites(false);
+    setMinOverlapPct(0); setActivityFilter2("all");
   };
 
   return <div className="bg-background min-h-screen pb-6">
     <div className="max-w-[1120px] mx-auto py-10 px-12">
-          <div className="flex justify-between items-end mb-4">
+      <div className="flex justify-between items-end mb-4">
         <div><div className="text-[13px] text-gray-500">CSC318 · Section 201</div><h1 className="text-[28px] font-bold text-foreground -tracking-[0.5px]">Find Teammates</h1></div>
         {view === "people"
           ? <span className="text-[13px] text-gray-500">{filteredStudents.length} student{filteredStudents.length !== 1 ? "s" : ""} found</span>
@@ -2006,7 +2072,7 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
             <div className="text-[13px] font-bold text-danger">Deadline in 3 days</div>
             <div className="text-[12px] text-danger">12 students still ungrouped. Respond quickly — No Response triggers after 24h.</div>
           </div>
-          <Button size="sm" variant="destructive" className="text-xs px-3" onClick={() => go("email")}>View Email</Button>
+          <Button size="sm" variant="destructive" className="text-xs px-3" onClick={() => go("urgent")}>View Details</Button>
           <button onClick={() => setUrgentDismissed(true)} className="text-[12px] text-[#6B7280] hover:underline cursor-pointer shrink-0">Dismiss</button>
         </div>
       )}
@@ -2019,18 +2085,13 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
               className={cn(
                 "pb-[14px] text-[14px] border-b-2 capitalize transition-colors cursor-pointer",
                 view === v
-                  ? "font-semibold text-[#111827] border-[#8e57b8]"
-                  : "font-normal text-[#9CA3AF] border-transparent hover:border-[#8e57b8]/40"
+                  ? "font-semibold text-[#111827] border-[#9652ca]"
+                  : "font-normal text-[#9CA3AF] border-transparent hover:border-[#9652ca]/40"
               )}>
               {v === "people" ? "People" : "Groups"}
             </button>
           ))}
         </div>
-        <span className="text-[13px] text-[#6B7280] pb-3">
-          {view === "people"
-            ? `${filteredStudents.length} student${filteredStudents.length !== 1 ? "s" : ""} available`
-            : `${FORMING_GROUPS.length} groups recruiting`}
-        </span>
       </div>
 
       {/* Layer 2: Filter Bar */}
@@ -2045,7 +2106,7 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
               className={cn(
                 "flex items-center gap-1.5 h-[34px] px-[14px] rounded-[20px] text-[13px] border shrink-0 transition-colors cursor-pointer whitespace-nowrap",
                 active
-                  ? "bg-[#8e57b8]/10 border-[#8e57b8] text-[#8e57b8]"
+                  ? "bg-[#9652ca]/10 border-[#9652ca] text-[#9652ca]"
                   : "bg-white border-[#D1D5DB] text-[#374151] hover:border-gray-400"
               )}>
               {active && <span className="text-[11px]">✓</span>}
@@ -2063,7 +2124,7 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
             <div className="py-1">
               {["all", "201", "202", "203"].map(s => (
                 <button key={s} onClick={() => { setSecFilter(s); setSectionPopover(false); }}
-                  className={cn("w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50", secFilter === s && "text-[#8e57b8] font-medium")}>
+                  className={cn("w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50", secFilter === s && "text-[#9652ca] font-medium")}>
                   {s === "all" ? "All Sections" : `Section ${s}`}
                 </button>
               ))}
@@ -2080,7 +2141,7 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
             <div className="py-1 min-w-[200px]">
               {["any", "frontend", "backend", "ui", "research", "proto", "data", "ux", "pm"].map(s => (
                 <button key={s} onClick={() => { setSkillFilter(s); setSkillsPopover(false); }}
-                  className={cn("w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50", skillFilter === s && "text-[#8e57b8] font-medium")}>
+                  className={cn("w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50", skillFilter === s && "text-[#9652ca] font-medium")}>
                   {s === "any" ? "Any skill" : s === "frontend" ? "Frontend Dev" : s === "backend" ? "Backend" : s === "ui" ? "UI Design" : s === "research" ? "User Research" : s === "proto" ? "Prototyping" : s === "data" ? "Data Analysis" : s === "ux" ? "UX Writing" : "Project Mgmt"}
                 </button>
               ))}
@@ -2100,15 +2161,15 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
               </div>
               <input type="range" min={0} max={100} step={10} value={minOverlapPct}
                 onChange={e => setMinOverlapPct(Number(e.target.value))}
-                className="w-full accent-[#8e57b8]" />
+                className="w-full accent-[#9652ca]" />
               {minOverlapPct > 0 && (
-                <button onClick={() => setMinOverlapPct(0)} className="mt-2 text-[12px] text-[#8e57b8] hover:underline">Clear</button>
+                <button onClick={() => setMinOverlapPct(0)} className="mt-2 text-[12px] text-[#9652ca] hover:underline">Clear</button>
               )}
             </div>
           </FilterDropdown>
 
           <FilterDropdown
-            label={activityFilter2 !== "all" ? activityFilter2 : "My Activity"}
+            label={activityFilter2 !== "all" ? ({ "none": "No contact yet", "request-sent": "Request Sent", "replied": "Replied", "no-response": "No Response", "declined": "Declined" }[activityFilter2] ?? activityFilter2) : "My Activity"}
             active={activityFilter2 !== "all"}
             open={activityPopover}
             onToggle={() => setActivityPopover(o => !o)}
@@ -2116,8 +2177,8 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
           >
             <div className="py-1">
               {[["all", "All"], ["none", "No contact yet"], ["request-sent", "Request Sent"], ["replied", "Replied"], ["no-response", "No Response"], ["declined", "Declined"]].map(([v, l]) => (
-                <button key={v} onClick={() => { setActivityFilter2(l); setActivityPopover(false); }}
-                  className={cn("w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50 whitespace-nowrap", activityFilter2 === l && "text-[#8e57b8] font-medium")}>
+                <button key={v} onClick={() => { setActivityFilter2(v); setActivityPopover(false); }}
+                  className={cn("w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50 whitespace-nowrap", activityFilter2 === v && "text-[#9652ca] font-medium")}>
                   {l}
                 </button>
               ))}
@@ -2138,7 +2199,7 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
                     <span className="text-[13px]">{name}</span>
                     <button onClick={() => {
                       setHiddenStudents(prev => { const n = new Set(prev); n.delete(name); return n; });
-                    }} className="text-[12px] text-[#8e57b8] hover:underline cursor-pointer">Restore</button>
+                    }} className="text-[12px] text-[#9652ca] hover:underline cursor-pointer">Restore</button>
                   </div>
                 ))}
                 <div className="border-t border-gray-100 mt-1 pt-1 px-3 pb-1">
@@ -2152,7 +2213,7 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
           <button onClick={() => setFilterRecruiting(v => !v)}
             className={cn(
               "flex items-center gap-1.5 h-[34px] px-[14px] rounded-[20px] text-[13px] border shrink-0 transition-colors cursor-pointer whitespace-nowrap",
-              filterRecruiting ? "bg-[#8e57b8]/10 border-[#8e57b8] text-[#8e57b8]" : "bg-white border-[#D1D5DB] text-[#374151] hover:border-gray-400"
+              filterRecruiting ? "bg-[#9652ca]/10 border-[#9652ca] text-[#9652ca]" : "bg-white border-[#D1D5DB] text-[#374151] hover:border-gray-400"
             )}>
             {filterRecruiting && <span className="text-[11px]">✓</span>}
             Recruiting
@@ -2168,7 +2229,7 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
             <div className="py-1">
               {["all", "201", "202", "203"].map(s => (
                 <button key={s} onClick={() => { setSecFilter(s); setSectionPopover(false); }}
-                  className={cn("w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50", secFilter === s && "text-[#8e57b8] font-medium")}>
+                  className={cn("w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50", secFilter === s && "text-[#9652ca] font-medium")}>
                   {s === "all" ? "All Sections" : `Section ${s}`}
                 </button>
               ))}
@@ -2185,7 +2246,7 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
             <div className="py-1">
               {[["any", "Any"], ["1+", "1+"], ["2+", "2+"], ["3+", "3+"]].map(([v, l]) => (
                 <button key={v} onClick={() => { setSpotsFilter(v); setSpotsPopover(false); }}
-                  className={cn("w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50", spotsFilter === v && "text-[#8e57b8] font-medium")}>
+                  className={cn("w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50", spotsFilter === v && "text-[#9652ca] font-medium")}>
                   {l}
                 </button>
               ))}
@@ -2235,10 +2296,12 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
         </div>
 
         {filteredStudents.length === 0 ? (
-          <Card className="py-[52px] px-6 gap-0 shadow-none text-center border-dashed border-gray-300">
-            <p className="text-[15px] text-gray-500 mb-4">No students match your filters.</p>
-            <Button variant="outline" size="sm" className="px-4 mx-auto" onClick={clearFilters}>Clear all filters</Button>
-          </Card>
+          <div className="py-16 text-center">
+            <div className="text-4xl mb-3">🔍</div>
+            <div className="text-[15px] font-semibold text-gray-500 mb-2">No students match your filters</div>
+            <p className="text-[13px] text-gray-400 mb-4">Try adjusting your criteria.</p>
+            <Button variant="outline" size="sm" onClick={clearFilters}>Clear all filters</Button>
+          </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {filteredStudents.map((st, i) => {
@@ -2259,7 +2322,7 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
                       <button onClick={(e) => { e.stopPropagation(); toggleStar(st.name); }}
                         className="p-0.5 rounded transition-colors cursor-pointer" aria-label="Toggle favorite">
                         {starredStudents.has(st.name)
-                          ? <Icon.starFilled size={14} color="#8e57b8" />
+                          ? <Icon.starFilled size={14} color="#9652ca" />
                           : <Icon.star size={14} color="#D1D5DB" />}
                       </button>
                       <button onClick={(e) => { e.stopPropagation(); setHideConfirmTarget(st.name); }}
@@ -2274,7 +2337,7 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
                   {/* Row 2: Status + Section */}
                   <div className="flex items-center gap-2 mb-2.5">
                     <span className={cn(
-                      "inline-flex items-center h-[22px] px-2 rounded-[12px] text-[11px] font-medium",
+                      "inline-flex items-center justify-center h-[22px] px-2 rounded-[12px] leading-none text-[11px] font-medium",
                       st.status === "solo" ? "bg-[#DCFCE7] text-[#166534]" : "bg-[#FEF3C7] text-[#92400E]"
                     )}>
                       {st.status === "solo" ? "Solo" : "Open Group"}
@@ -2286,7 +2349,7 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
                   {/* Row 3: Skills (max 3 + overflow) */}
                   <div className="flex flex-wrap gap-1 mb-2.5">
                     {st.skills.slice(0, 3).map(sk => (
-                      <span key={sk} className="inline-flex items-center h-6 px-2 rounded-[6px] text-[12px] font-medium bg-[#8e57b8]/10 text-[#8e57b8]">
+                      <span key={sk} className="inline-flex items-center h-6 px-2 rounded-[6px] text-[12px] font-medium bg-[#9652ca]/10 text-[#9652ca]">
                         {sk}
                       </span>
                     ))}
@@ -2300,7 +2363,7 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
                     <div className="flex justify-between items-center mb-1">
                       <span className="text-[12px] text-[#6B7280]">Overlap</span>
                       <span className={cn("text-[13px] font-semibold",
-                        st.scheduleOverlapHrs >= 6 ? "text-[#8e57b8]" : "text-[#9CA3AF]"
+                        st.scheduleOverlapHrs >= 6 ? "text-[#9652ca]" : "text-[#9CA3AF]"
                       )}>
                         {st.overlap}
                       </span>
@@ -2308,7 +2371,7 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
                     <div className="h-1 rounded-full bg-[#E5E7EB] overflow-hidden">
                       <div className="h-full rounded-full transition-all" style={{
                         width: `${Math.min(100, (st.scheduleOverlapHrs / 10) * 100)}%`,
-                        backgroundColor: st.scheduleOverlapHrs >= 7 ? "#22C55E" : st.scheduleOverlapHrs >= 4 ? "#8e57b8" : "#9CA3AF"
+                        backgroundColor: st.scheduleOverlapHrs >= 7 ? "#22C55E" : st.scheduleOverlapHrs >= 4 ? "#9652ca" : "#9CA3AF"
                       }} />
                     </div>
                   </div>
@@ -2316,7 +2379,7 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
                   {/* Row 5: Contact Status (conditional) */}
                   {cs && cs !== "none" && CONTACT_STATUS_LABELS[cs] && (
                     <div className="mt-2 pt-2 border-t border-[#F3F4F6]">
-                      <span className={cn("inline-flex items-center h-[22px] px-2 rounded-[12px] text-[11px] font-medium", CONTACT_STATUS_LABELS[cs].cls)}>
+                      <span className={cn("inline-flex items-center justify-center h-[22px] px-2 rounded-[12px] leading-none text-[11px] font-medium", CONTACT_STATUS_LABELS[cs].cls)}>
                         {CONTACT_STATUS_LABELS[cs].l}
                       </span>
                     </div>
@@ -2448,13 +2511,16 @@ interface ProfilePanelProps extends GoProps {
   onContactStatusChange: (name: string, status: string) => void;
   urgentMode?: boolean;
   contactStatus?: string;
+  onOpenChat?: (name: string) => void;
+  onSelectGroup?: (groupId: string) => void;
 }
 
-function ProfilePanelContent({ go, studentName, onClose, onContactStatusChange, urgentMode = false, contactStatus = "none" }: ProfilePanelProps) {
+function ProfilePanelContent({ go, studentName, onClose, onContactStatusChange, urgentMode = false, contactStatus = "none", onOpenChat, onSelectGroup }: ProfilePanelProps) {
   const [ack, setAck] = useState(false);
-  const [requestStep, setRequestStep] = useState<"view" | "form">("view");
+  const [requestStep, setRequestStep] = useState<"view" | "confirm" | "form">("view");
   const [requestWhy, setRequestWhy] = useState("");
   const [requestQuestion, setRequestQuestion] = useState("");
+  const [withdrawConfirm, setWithdrawConfirm] = useState(false);
   const st = STU.find(s => s.name === studentName);
 
   if (!st) return null;
@@ -2479,7 +2545,11 @@ function ProfilePanelContent({ go, studentName, onClose, onContactStatusChange, 
   }
 
   if (st.status === "open-group") {
-    return <FormingStudentPanel student={st} onViewGroup={onClose} />;
+    const studentGroup = FORMING_GROUPS.find(g => g.members.some(m => m.name === st.name) || g.leaderName === st.name);
+    return <FormingStudentPanel student={st} onViewGroup={() => {
+      onClose();
+      if (studentGroup && onSelectGroup) onSelectGroup(studentGroup.id);
+    }} />;
   }
 
   const c = COMPAT[studentName];
@@ -2511,10 +2581,10 @@ function ProfilePanelContent({ go, studentName, onClose, onContactStatusChange, 
             <div className="text-[22px] font-bold">{st.name}</div>
             <div className="flex items-center gap-2 mt-1">
               <span className={cn(
-                "inline-flex items-center h-[26px] px-2.5 rounded-[12px] text-[12px] font-medium",
+                "inline-flex items-center justify-center h-[26px] px-2.5 rounded-[12px] leading-none text-[12px] font-medium",
                 st.status === "solo" ? "bg-[#DCFCE7] text-[#166534]" :
-                st.status === "open-group" ? "bg-[#FEF3C7] text-[#92400E]" :
-                "bg-gray-100 text-gray-500"
+                  st.status === "open-group" ? "bg-[#FEF3C7] text-[#92400E]" :
+                    "bg-gray-100 text-gray-500"
               )}>
                 {st.status === "solo" ? "Solo" : st.status === "open-group" ? "Open Group" : "Closed"}
               </span>
@@ -2522,7 +2592,6 @@ function ProfilePanelContent({ go, studentName, onClose, onContactStatusChange, 
             </div>
           </div>
         </div>
-
         <Card className={cn("p-5 mb-5 gap-0 shadow-none", t.bg, t.border)}>
           <div className="flex items-center gap-5 mb-3">
             <div className={cn("text-[42px] font-extrabold", t.text)}>{c.overall}%</div>
@@ -2560,7 +2629,7 @@ function ProfilePanelContent({ go, studentName, onClose, onContactStatusChange, 
           <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skills</Label>
           <div className="flex flex-wrap gap-1">
             {st.skills.map(sk => (
-              <span key={sk} className="inline-flex items-center h-6 px-2 rounded-[6px] text-[12px] font-medium bg-[#8e57b8]/10 text-[#8e57b8]">{sk}</span>
+              <span key={sk} className="inline-flex items-center h-6 px-2 rounded-[6px] text-[12px] font-medium bg-[#9652ca]/10 text-[#9652ca]">{sk}</span>
             ))}
           </div>
         </div>
@@ -2627,17 +2696,25 @@ function ProfilePanelContent({ go, studentName, onClose, onContactStatusChange, 
           </Card>
         </div>
 
-        {needsAck && (
-          <label className="flex items-start gap-2.5 py-3.5 px-[18px] bg-gray-50 rounded-[10px] border border-gray-200 mb-5 cursor-pointer">
-            <Checkbox checked={ack} onCheckedChange={(v) => setAck(v === true)} className="mt-[3px]" />
-            <span className="text-[13px] text-gray-600 leading-relaxed">
-              {tier === "bad"
-                ? "I understand there are compatibility concerns and we'll need to coordinate carefully."
-                : "I understand there are some differences and we'll need to discuss them."}
-            </span>
-          </label>
-        )}
       </div>
+
+      {requestStep === "confirm" && (
+        <div className="fixed inset-0 bg-foreground/40 z-[300] flex items-end sm:items-center justify-center p-4">
+          <div className="bg-background rounded-2xl p-6 w-full max-w-[380px] shadow-xl text-center">
+            <div className="text-4xl mb-3">⚠️</div>
+            <div className="text-lg font-bold mb-2">Compatibility Warning</div>
+            <p className="text-[13px] text-gray-600 leading-relaxed mb-5">
+              {tier === "bad"
+                ? `Your compatibility with ${firstName} is low. There are significant differences in schedule, skills, or work style that may require extra coordination.`
+                : `You and ${firstName} have some differences in schedule or work style. You may need to discuss and align on expectations.`}
+            </p>
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setRequestStep("view")}>Cancel</Button>
+              <Button className="flex-1" onClick={() => setRequestStep("form")}>Send Anyway</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {requestStep === "form" && (
         <div className="fixed inset-0 bg-foreground/40 z-[300] flex items-end sm:items-center justify-center p-4">
@@ -2686,18 +2763,28 @@ function ProfilePanelContent({ go, studentName, onClose, onContactStatusChange, 
         {contactStatus === "request-sent" ? (
           <div className="text-center">
             <div className="text-[14px] text-[#6B7280] mb-2">Request Sent</div>
-            <button
-              onClick={() => { onContactStatusChange(studentName, "none"); }}
-              className="text-[13px] text-[#991B1B] hover:underline cursor-pointer"
-            >
-              Withdraw Request
-            </button>
+            {!withdrawConfirm ? (
+              <button onClick={() => setWithdrawConfirm(true)} className="text-[13px] text-[#991B1B] hover:underline cursor-pointer">
+                Withdraw Request
+              </button>
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                <span className="text-[13px] text-gray-600">Are you sure?</span>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" className="text-xs" onClick={() => setWithdrawConfirm(false)}>Cancel</Button>
+                  <Button size="sm" className="text-xs bg-danger hover:bg-danger/90 text-white" onClick={() => { onContactStatusChange(studentName, "none"); setWithdrawConfirm(false); }}>Yes, Withdraw</Button>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
-          <div className="flex gap-3">
+          <div className="flex gap-2">
             <Button variant="outline" className="flex-1" onClick={onClose}>Close</Button>
-            <Button disabled={needsAck && !ack} className="flex-1" onClick={() => setRequestStep("form")}>
-              Send Group Request
+            <Button variant="outline" className="flex-1 border-[#9652ca] text-[#9652ca] hover:bg-[#9652ca]/5 gap-1.5" onClick={() => { if (onOpenChat) onOpenChat(studentName); onClose(); }}>
+              <Icon.mailSend size={14} color="#9652ca" /> Chat
+            </Button>
+            <Button className="flex-1" onClick={() => needsAck ? setRequestStep("confirm") : setRequestStep("form")}>
+              Group Request
             </Button>
           </div>
         )}
@@ -2711,19 +2798,21 @@ function ProfilePanelContent({ go, studentName, onClose, onContactStatusChange, 
 // Request Sent
 function Sent({ go, targetName }: SentProps) {
   return <div className="bg-background min-h-screen pb-6">
-    <div className="max-w-[500px] mx-auto pt-[100px] px-6 text-center">
-      <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-success-bg flex items-center justify-center"><span className="text-3xl text-success">✓</span></div>
-      <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px] text-center">Request Sent!</h1>
-      <p className="text-base text-gray-600 mb-9 leading-relaxed text-center">{targetName} will be notified by email. You'll hear back soon.</p>
-      <div className="flex gap-3 justify-center">
-        <Button className="px-7 py-3 h-auto" onClick={() => go("board")}>Back to Board</Button>
-        <Button variant="outline" className="px-7 py-3 h-auto" onClick={() => go("mygroup")}>View My Group</Button>
+    <div className="max-w-[500px] mx-auto pt-10 px-6">
+      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={() => go("board")}>← Back to Board</Button>
+      <div className="text-center pt-12">
+        <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-success-bg flex items-center justify-center"><span className="text-3xl text-success">✓</span></div>
+        <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px] text-center">Request Sent!</h1>
+        <p className="text-base text-gray-600 mb-9 leading-relaxed text-center">{targetName} will be notified by email. You'll hear back soon.</p>
+        <div className="flex gap-3 justify-center">
+          <Button className="px-7 py-3 h-auto" onClick={() => go("board")}>Back to Board</Button>
+          <Button variant="outline" className="px-7 py-3 h-auto" onClick={() => go("mygroup")}>View My Group</Button>
+        </div>
       </div>
     </div>
   </div>;
 }
 
-// ChatPanel (slide-out, replaces standalone Chat/Inbox)
 const MOCK_REPLIES = [
   "That sounds great! When would you like to meet?",
   "I'm interested! Let me check my schedule.",
@@ -2731,85 +2820,6 @@ const MOCK_REPLIES = [
   "Sure, I think we'd work well together. Let's discuss more!",
 ];
 
-interface ChatPanelProps { open: boolean; onClose: () => void; targetName: string; requestType?: "request" | "application"; }
-
-function ChatPanel({ open, onClose, targetName, requestType = "request" }: ChatPanelProps) {
-  const [msgs, setMsgs] = useState<{ from: "me" | "them"; text: string; time: string }[]>([]);
-  const [input, setInput] = useState("");
-  const [stage, setStage] = useState<"replied" | "accepted" | "declined">("replied");
-  const sender = STU.find(s => s.name === targetName);
-  const sendMsg = () => {
-    if (!input.trim()) return;
-    const text = input.trim();
-    const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    setMsgs(m => [...m, { from: "me", text, time }]);
-    setInput("");
-    setTimeout(() => {
-      setMsgs(prev => [...prev, {
-        from: "them" as const,
-        text: MOCK_REPLIES[Math.floor(Math.random() * MOCK_REPLIES.length)],
-        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      }]);
-    }, 1500);
-  };
-  const ended = stage === "accepted" || stage === "declined";
-
-  return (
-    <>
-      {open && <div className="fixed inset-0 bg-foreground/20 z-[170]" onClick={onClose} />}
-      <div className={cn("fixed top-0 right-0 h-full w-[480px] max-w-[95vw] bg-background border-l border-border z-[180] flex flex-col transition-transform duration-300 ease-in-out", open ? "translate-x-0" : "translate-x-full")}>
-        <div className="flex items-center justify-between h-14 px-5 border-b border-border shrink-0">
-          <div className="flex items-center gap-2.5">
-            <span className="text-[15px] font-semibold">{targetName}</span>
-            {sender && <span className={cn("inline-flex items-center h-5 px-2 rounded-full text-[11px] font-medium", sender.status === "solo" ? "bg-success-bg text-success" : "bg-warning-bg text-warning")}>{sender.status === "solo" ? "Solo" : "Open Group"}</span>}
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 leading-none cursor-pointer"><Icon.x size={18} color="#9CA3AF" /></button>
-        </div>
-        <div className="p-4 border-b border-border bg-[#FAFAFA] shrink-0">
-          <div className="border border-[#E5E7EB] rounded-[10px] p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[13px] font-semibold text-[#8e57b8]">{requestType === "request" ? "Group Request" : "Group Application"}</span>
-              <span className="text-[11px] text-[#9CA3AF]">2 min ago</span>
-            </div>
-            {sender && <div className="flex items-center gap-2 mb-2 flex-wrap"><Avatar className="size-6"><AvatarFallback className="text-[10px] bg-gray-200">{sender.init}</AvatarFallback></Avatar><span className="text-[14px] font-semibold">{sender.name}</span><span className="text-[12px] text-[#6B7280]">Section {sender.sec}</span></div>}
-            <div className="text-[12px] text-[#6B7280] mb-1">Why they want to work together:</div>
-            <div className="text-[14px] text-[#111827]">I think our skills complement each other well.</div>
-          </div>
-        </div>
-        <div className="px-4 py-3 border-b border-border shrink-0">
-          <div className="flex items-center gap-2 text-[12px]">
-            <span className="text-[#8e57b8]">Request Sent</span><div className="w-6 h-px bg-[#8e57b8]" /><span className="font-semibold text-[#8e57b8]">Replied</span><div className="w-6 h-px border-t border-dashed border-[#D1D5DB]" /><span className="text-[#9CA3AF]">{stage === "accepted" ? "Accepted" : stage === "declined" ? "Declined" : "Pending"}</span>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto flex flex-col gap-2 p-4">
-          {msgs.length === 0 && !ended && <p className="text-[13px] text-[#9CA3AF] text-center py-6 italic">Start a conversation to help decide.</p>}
-          {msgs.map((m, i) => (
-            <div key={i} className={cn("flex flex-col", m.from === "me" ? "items-end" : "items-start")}>
-              <div className={cn("max-w-[70%] px-[14px] py-[10px] text-[14px]", m.from === "me" ? "bg-[#8e57b8] text-white rounded-[16px_16px_4px_16px]" : "bg-[#F3F4F6] text-[#111827] rounded-[16px_16px_16px_4px]")}>{m.text}</div>
-              <span className="text-[11px] text-[#9CA3AF] mt-1">{m.time}</span>
-            </div>
-          ))}
-          {stage === "accepted" && <p className="text-[13px] text-[#6B7280] italic text-center py-2">Request accepted.</p>}
-          {stage === "declined" && <p className="text-[13px] text-[#6B7280] italic text-center py-2">Request declined.</p>}
-        </div>
-        {ended ? (
-          <div className="h-14 border-t border-border bg-gray-50 flex items-center justify-center shrink-0"><span className="text-[13px] text-[#6B7280]">This conversation has ended.</span></div>
-        ) : (<>
-          <div className="flex gap-2 px-4 py-2.5 border-t border-border shrink-0">
-            <Button size="sm" className="flex-1 text-xs bg-[#16a34a] hover:bg-[#15803d] text-white" onClick={() => setStage("accepted")}>Accept</Button>
-            <Button size="sm" variant="outline" className="flex-1 text-xs text-[#991B1B] border-[#FCA5A5]" onClick={() => setStage("declined")}>Decline</Button>
-          </div>
-          <div className="flex items-center gap-2 h-14 px-4 border-t border-border shrink-0">
-            <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMsg()} placeholder="Type a message..." className="flex-1 h-9 rounded-[20px] border border-[#D1D5DB] px-4 text-[14px] outline-none focus:border-[#8e57b8] bg-white" />
-            <button onClick={sendMsg} disabled={!input.trim()} className={cn("w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors cursor-pointer", input.trim() ? "bg-[#8e57b8] text-white" : "bg-gray-200 text-gray-400")}>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13V3M3 8l5-5 5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            </button>
-          </div>
-        </>)}
-      </div>
-    </>
-  );
-}
 interface ApplicationCardProps {
   applicant: {
     name: string;
@@ -2822,9 +2832,10 @@ interface ApplicationCardProps {
   };
   isLeader: boolean;
   onReply?: (name: string) => void;
+  onAccept?: () => void;
 }
 
-function ApplicationCard({ applicant, isLeader, onReply }: ApplicationCardProps) {
+function ApplicationCard({ applicant, isLeader, onReply, onAccept }: ApplicationCardProps) {
   const [myVote, setMyVote] = useState<"up" | "down" | null>(null);
   return (
     <Card className="p-5 mb-3.5 shadow-none gap-0">
@@ -2862,7 +2873,7 @@ function ApplicationCard({ applicant, isLeader, onReply }: ApplicationCardProps)
         </button>
         {isLeader && (
           <div className="ml-auto flex gap-2">
-            <Button size="sm" className="text-xs px-3 bg-success hover:bg-success/90 text-white">Accept</Button>
+            <Button size="sm" className="text-xs px-3 bg-success hover:bg-success/90 text-white" onClick={onAccept}>Accept</Button>
             <Button size="sm" variant="outline" className="text-xs px-3" onClick={() => onReply?.(applicant.name)}>Reply</Button>
             <Button size="sm" variant="outline" className="text-xs px-3 text-danger border-danger hover:bg-danger-bg">Decline</Button>
           </div>
@@ -2882,12 +2893,11 @@ interface MyGroupProps extends GoProps {
   onOpenChat?: (name: string) => void;
 }
 
-function MyGroup({ go, studentStatus = "open-group", onLeaveGroup, onOpenChat }: MyGroupProps) {
-  const [hasGroup, setHasGroup] = useState(true);
-  const [confirmed, setConfirmed] = useState(false);
-  const [isLeader, setIsLeader] = useState(true);
+function MyGroup({ go, studentStatus = "open-group", onAcceptRequest, onLeaveGroup, onOpenChat }: MyGroupProps) {
+  const [accepted, setAccepted] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [confirmStage, setConfirmStage] = useState<ConfirmStage>("idle");
+  const [recruiting, setRecruiting] = useState(false);
   const membersPartial = [
     { name: "John D.", init: "JD", skills: ["UI Design", "User Research"], role: "You", platform: "Discord", handle: "john.d" },
     { name: "Jesse Nguyen", init: "JN", skills: ["Frontend Dev", "Prototyping"], role: "Member", platform: "Discord", handle: "jesse.dev" },
@@ -2895,10 +2905,10 @@ function MyGroup({ go, studentStatus = "open-group", onLeaveGroup, onOpenChat }:
   ];
   const membersFull = [
     ...membersPartial,
-    { name: "David Park", init: "DP", skills: ["Backend", "Data Analysis"], role: "Member", platform: "Discord", handle: "dpark.dev" },
+    { name: "Priya Sharma", init: "PS", skills: ["Backend", "Data Analysis"], role: "Member", platform: "Discord", handle: "priya.s" },
   ];
-  const members = confirmed ? membersFull : membersPartial;
-  const pendingApplicants = [
+  const members = accepted ? membersFull : membersPartial;
+  const pendingApplicants = accepted ? [] : [
     {
       name: "Priya Sharma", init: "PS", sec: "201",
       skills: ["Backend", "Data Analysis"],
@@ -2914,6 +2924,7 @@ function MyGroup({ go, studentStatus = "open-group", onLeaveGroup, onOpenChat }:
   const minSize = 4, maxSize = 6;
   const canConfirm = members.length >= minSize && members.length <= maxSize;
   const markConfirmed = (_name: string) => setConfirmStage("confirmed");
+
   if (studentStatus === "solo") {
     return <div className="bg-background min-h-screen pb-6">
       <div className="max-w-[680px] mx-auto py-14 px-6">
@@ -2929,41 +2940,64 @@ function MyGroup({ go, studentStatus = "open-group", onLeaveGroup, onOpenChat }:
     </div>;
   }
 
-  if (!hasGroup) {
-    return <div className="bg-background min-h-screen pb-6">
-      <div className="max-w-[680px] mx-auto py-14 px-6">
-        <div className="flex flex-col items-center justify-center min-h-[400px]">
-          <p className="text-[18px] font-medium text-[#6B7280] mb-3">You are not in a group yet.</p>
-          <button onClick={() => go("board")} className="text-[#8e57b8] hover:underline text-[14px] cursor-pointer">Find teammates on Discovery →</button>
-        </div>
-      </div>
-    </div>;
-  }
-
   return <div className="bg-background min-h-screen pb-6">
 
     <div className="max-w-[680px] mx-auto py-14 px-6">
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">
         Your Group — CSC318
-        {confirmStage === "confirmed" && <span className="inline-flex items-center h-[26px] px-3 rounded-full text-[12px] font-medium bg-[#DCFCE7] text-[#166534] ml-2 align-middle">✓ Confirmed</span>}
+        {confirmStage === "confirmed" && <span className="inline-flex items-center justify-center h-[26px] px-3 rounded-full leading-none text-[12px] font-medium bg-[#DCFCE7] text-[#166534] ml-2 align-middle">✓ Confirmed</span>}
       </h1>
       {confirmStage !== "confirmed" && (
         <div className="flex items-center gap-2 mb-1">
-          <span className="inline-flex items-center h-[22px] px-2 rounded-[12px] text-[11px] font-medium bg-[#FEF3C7] text-[#92400E]">Formed</span>
+          <span className="inline-flex items-center justify-center h-[22px] px-2 rounded-[12px] leading-none text-[11px] font-medium bg-[#FEF3C7] text-[#92400E]">Formed</span>
           <span className="text-[14px] text-[#6B7280]">{members.length}/{maxSize} members</span>
         </div>
       )}
 
-      {/* Toggle for demo */}
-      <div className="mb-5">
-        <div className="text-[9px] font-bold text-muted-foreground uppercase tracking-[1px] mb-1.5">Demo Controls</div>
-        <div className="flex gap-2 p-2 border-2 border-dashed border-border rounded-lg bg-secondary flex-wrap">
-          <Button size="sm" variant={hasGroup ? "default" : "outline"} className="text-xs px-4" onClick={() => setHasGroup(h => !h)}>{hasGroup ? "Has Group" : "No Group"}</Button>
-          <Button size="sm" variant={!confirmed ? "default" : "outline"} className="text-xs px-4" onClick={() => { setConfirmed(false); setConfirmStage("idle"); }}>Before confirm (3/4)</Button>
-          <Button size="sm" variant={confirmed ? "default" : "outline"} className="text-xs px-4" onClick={() => { setConfirmed(true); setConfirmStage("idle"); }}>After confirm (4/4)</Button>
-          <Button size="sm" variant={isLeader ? "default" : "outline"} className="text-xs px-4" onClick={() => setIsLeader(l => !l)}>{isLeader ? "Leader view" : "Member view"}</Button>
+      {/* Confirm Group button — prominent at top when group is full */}
+      {canConfirm && confirmStage === "idle" && (
+        <div className="flex justify-between items-center px-4 py-3 bg-success-bg rounded-[10px] mb-5 mt-3 border border-success-border">
+          <span className="text-[13px] text-success font-semibold">Group is full — ready to confirm!</span>
+          <Button size="sm" className="text-xs px-5 bg-success hover:bg-success/90 text-white" onClick={() => setConfirmStage("pending")}>Confirm Group</Button>
         </div>
-      </div>
+      )}
+
+      {/* Confirm stage banners */}
+      {confirmStage === "pending" && (
+        <div className="py-4 px-5 bg-warning-bg border border-warning-border rounded-xl mb-5 mt-3">
+          <div className="text-[13px] font-bold text-warning mb-1">
+            Waiting for all members to confirm (24h window)
+          </div>
+          <div className="text-[12px] text-warning mb-3">
+            Each member must confirm below. Members who don't respond will be removed.
+          </div>
+          {members.map((m, i) => (
+            <div key={i} className="flex items-center justify-between py-1.5">
+              <span className="text-[12px]">{m.name}</span>
+              {m.role === "You"
+                ? <Button size="sm" className="text-xs px-3 h-7" onClick={() => markConfirmed(m.name)}>Confirm</Button>
+                : <span className="text-[11px] text-gray-400">Waiting...</span>
+              }
+            </div>
+          ))}
+        </div>
+      )}
+
+      {confirmStage === "confirmed" && (
+        <div className="py-3 px-5 bg-success-bg border border-success-border rounded-xl mb-5 mt-3">
+          <div className="text-[13px] font-bold text-success">✓ Group confirmed — submitted to instructor</div>
+        </div>
+      )}
+
+      {!canConfirm && confirmStage === "idle" && (
+        <>
+          <p className="text-base text-gray-600 mb-5 mt-3 leading-relaxed">{members.length}/{minSize}–{maxSize} members — need {minSize - members.length} more.</p>
+          <div className="flex justify-between items-center px-4 py-3 bg-warning-bg rounded-[10px] mb-5 border border-warning-border">
+            <span className="text-[13px] text-warning font-semibold">Group not yet confirmed</span>
+            <Button size="sm" variant="outline" className="text-xs px-4 border-[#f59e0b] bg-[#fef3c7] text-[#92400e] hover:bg-[#fde68a]" onClick={() => go("board")}>Find more members</Button>
+          </div>
+        </>
+      )}
 
       {pendingApplicants.length > 0 && (
         <section className="mb-8">
@@ -2971,28 +3005,9 @@ function MyGroup({ go, studentStatus = "open-group", onLeaveGroup, onOpenChat }:
             Pending Applications ({pendingApplicants.length})
           </Label>
           {pendingApplicants.map((ap, i) => (
-            <ApplicationCard key={i} applicant={ap} isLeader={isLeader} onReply={onOpenChat} />
+            <ApplicationCard key={i} applicant={ap} isLeader onReply={onOpenChat} onAccept={() => { setAccepted(true); onAcceptRequest?.(); }} />
           ))}
         </section>
-      )}
-
-      {!confirmed ? (
-        <>
-          <p className="text-base text-gray-600 mb-9 leading-relaxed">3/4–6 members — need 1+ more.</p>
-          <div className="flex justify-between items-center px-4 py-3 bg-warning-bg rounded-[10px] mb-5 border border-warning-border">
-            <span className="text-[13px] text-warning font-semibold">Group not yet confirmed</span>
-            <Button size="sm" variant="secondary" className="text-xs px-4" onClick={() => go("board")}>Find more members</Button>
-          </div>
-          <button className="text-[13px] text-primary hover:underline mb-5" onClick={() => window.alert("Group listed for recruiting — students can now apply from the Groups view.")}>+ List Group for Recruiting</button>
-        </>
-      ) : (
-        <>
-          <p className="text-base text-gray-600 mb-9 leading-relaxed">4/4–6 — Confirmed!</p>
-          <div className="flex justify-between items-center px-4 py-3 bg-success-bg rounded-[10px] mb-5 border border-success-border">
-            <span className="text-[13px] text-success font-semibold">✓ Group confirmed</span>
-            <span className="text-xs text-success">Submitted to instructor</span>
-          </div>
-        </>
       )}
 
       {members.map((m, i) => (
@@ -3008,15 +3023,15 @@ function MyGroup({ go, studentStatus = "open-group", onLeaveGroup, onOpenChat }:
         </Card>
       ))}
 
-      {/* Skills composition — always visible in forming state */}
-      {!confirmed && (
+      {/* Skills composition */}
+      {confirmStage !== "confirmed" && (
         <div className="mb-6 mt-2">
           <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-3 block">Group Skills</Label>
           <div className="grid grid-cols-2 gap-3">
             <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
               <div className="text-[10px] font-bold text-gray-400 uppercase mb-2">Has</div>
               <div className="flex flex-wrap gap-1">
-                {Array.from(new Set(membersPartial.flatMap(m => m.skills))).map(sk => (
+                {Array.from(new Set(members.flatMap(m => m.skills))).map(sk => (
                   <span key={sk} className="text-[11px] bg-success-bg text-success px-2 py-0.5 rounded-lg border border-success-border">{sk}</span>
                 ))}
               </div>
@@ -3024,7 +3039,7 @@ function MyGroup({ go, studentStatus = "open-group", onLeaveGroup, onOpenChat }:
             <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
               <div className="text-[10px] font-bold text-gray-400 uppercase mb-2">Still Needed</div>
               <div className="flex flex-wrap gap-1">
-                {["Backend", "Data Analysis"].filter(sk => !membersPartial.flatMap(m => m.skills).includes(sk)).map(sk => (
+                {["Backend", "Data Analysis"].filter(sk => !members.flatMap(m => m.skills).includes(sk)).map(sk => (
                   <span key={sk} className="text-[11px] bg-accent text-accent-foreground px-2 py-0.5 rounded-lg border border-border">{sk}</span>
                 ))}
               </div>
@@ -3033,8 +3048,8 @@ function MyGroup({ go, studentStatus = "open-group", onLeaveGroup, onOpenChat }:
         </div>
       )}
 
-      {/* Group schedule grid — forming state */}
-      {!confirmed && (
+      {/* Group schedule grid */}
+      {confirmStage !== "confirmed" && (
         <Card className="p-5 mb-3.5 gap-0 shadow-none">
           <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-3 block">Group Schedule</Label>
           <div className="grid grid-cols-[64px_repeat(5,1fr)] gap-[3px]">
@@ -3042,14 +3057,17 @@ function MyGroup({ go, studentStatus = "open-group", onLeaveGroup, onOpenChat }:
             {["9am–12pm", "12–4pm", "4–8pm", "8–11pm"].map((t, ti) => <Fragment key={ti}>
               <div className="text-[11px] text-gray-500 flex items-center">{t}</div>
               {["Mon", "Tue", "Wed", "Thu", "Fri"].map(d => {
-                const counts: Record<string, number> = { "Mon-0": 2, "Mon-1": 3, "Tue-1": 2, "Wed-0": 1, "Wed-1": 3, "Thu-2": 1, "Fri-1": 2 };
-                const c = counts[`${d}-${ti}`] || 0;
+                const total = members.length;
+                const counts3: Record<string, number> = { "Mon-0": 2, "Mon-1": 3, "Tue-1": 2, "Wed-0": 1, "Wed-1": 3, "Thu-2": 1, "Fri-1": 2 };
+                const counts4: Record<string, number> = { "Mon-0": 2, "Mon-1": 4, "Tue-1": 2, "Tue-2": 1, "Wed-0": 2, "Wed-1": 3, "Thu-2": 1, "Fri-1": 3 };
+                const cmap = accepted ? counts4 : counts3;
+                const c = cmap[`${d}-${ti}`] || 0;
                 return <div key={d} className={cn("py-2.5 px-1 text-center rounded-md text-[10px] font-medium",
-                  c >= 3 ? "bg-primary text-primary-foreground" :
-                    c >= 2 ? "bg-success-bg text-success" :
+                  c >= total ? "bg-primary text-primary-foreground" :
+                    c >= total / 2 ? "bg-success-bg text-success" :
                       c >= 1 ? "bg-gray-100 text-gray-500" :
                         "bg-gray-50 text-gray-300"
-                )}>{c > 0 ? `${c}/3` : ""}</div>;
+                )}>{c > 0 ? `${c}/${total}` : ""}</div>;
               })}
             </Fragment>)}
           </div>
@@ -3058,7 +3076,7 @@ function MyGroup({ go, studentStatus = "open-group", onLeaveGroup, onOpenChat }:
       )}
 
       {/* Workspace cards (confirmed only) */}
-      {confirmed && <>
+      {confirmStage === "confirmed" && <>
         <Separator className="my-6 bg-gray-100" />
 
         {/* Contact Exchange */}
@@ -3121,47 +3139,15 @@ function MyGroup({ go, studentStatus = "open-group", onLeaveGroup, onOpenChat }:
         </Card>
       </>}
 
-      {/* Confirm stage banners */}
-      {confirmStage === "pending" && (
-        <div className="py-4 px-5 bg-warning-bg border border-warning-border rounded-xl mb-5">
-          <div className="text-[13px] font-bold text-warning mb-1">
-            Waiting for all members to confirm (24h window)
-          </div>
-          <div className="text-[12px] text-warning mb-3">
-            Each member must confirm below. Members who don't respond will be removed.
-          </div>
-          {members.map((m, i) => (
-            <div key={i} className="flex items-center justify-between py-1.5">
-              <span className="text-[12px]">{m.name}</span>
-              {m.role === "You"
-                ? <Button size="sm" className="text-xs px-3 h-7" onClick={() => markConfirmed(m.name)}>Confirm</Button>
-                : <span className="text-[11px] text-gray-400">Waiting...</span>
-              }
-            </div>
-          ))}
-        </div>
-      )}
-
-      {confirmStage === "confirmed" && (
-        <div className="py-3 px-5 bg-success-bg border border-success-border rounded-xl mb-5">
-          <div className="text-[13px] font-bold text-success">✓ Group confirmed — submitted to instructor</div>
-        </div>
-      )}
-
       <div className="flex gap-3 mt-6">
-        <Button className="flex-1 px-7 py-3 h-auto" onClick={() => go("board")}>Discovery</Button>
-        <Button
-          disabled={!canConfirm || confirmStage !== "idle"}
-          className="flex-1 px-7 py-3 h-auto"
-          onClick={() => setConfirmStage("pending")}
-        >
-          {canConfirm ? "Confirm Group" : `Confirm Group (need ${minSize - members.length} more)`}
-        </Button>
+        <Button variant="outline" className="flex-1 px-7 py-3 h-auto" onClick={() => go("board")}>Discover Members</Button>
+        {!recruiting ? (
+          <Button variant="outline" className="flex-1 px-7 py-3 h-auto border-[#9652ca] text-[#9652ca] hover:bg-[#9652ca]/5" onClick={() => setRecruiting(true)}>List Group for Recruiting</Button>
+        ) : (
+          <Button variant="outline" className="flex-1 px-7 py-3 h-auto border-[#f59e0b] text-[#92400e] bg-[#fef3c7] hover:bg-[#fde68a]" onClick={() => setRecruiting(false)}>Delist from Recruiting</Button>
+        )}
       </div>
-      <div className="text-center mt-2">
-        <button className="text-[13px] text-[#8e57b8] hover:underline cursor-pointer">List Group for Recruiting</button>
-      </div>
-      <div className="text-center mt-2">
+      <div className="text-center mt-3">
         <button onClick={() => setShowLeaveDialog(true)} className="text-[13px] text-[#991B1B] hover:underline cursor-pointer">
           Leave Group
         </button>
@@ -3276,66 +3262,51 @@ function Urgent({ go }: GoProps) {
 }
 
 // Email Notification Mockup
-function EmailMock({ go }: GoProps) {
-  return <div className="bg-background min-h-screen pb-6">
-    <div className="max-w-[680px] mx-auto py-14 px-6">
-      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={() => go("dash")}>← Back</Button>
-      <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Email Notification Preview</h1>
-      <p className="text-base text-gray-600 mb-9 leading-relaxed">This is what students receive when someone messages them.</p>
-      <div className="border border-gray-200 rounded-xl overflow-hidden bg-card">
-        <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-          <div className="text-xs text-gray-500 mb-1">From: <strong>unitor for CSC318</strong> &lt;notify@unitor.app&gt;</div>
-          <div className="text-xs text-gray-500 mb-1">To: jesse.nguyen@mail.utoronto.ca</div>
-          <div className="text-sm font-semibold">Subject: [CSC318] John D. sent you a message</div>
-        </div>
-        <div className="p-7">
-          <div className="text-center mb-5"><span className="text-xl font-extrabold">unitor</span></div>
-          <div className="text-[15px] mb-3">Hi Jesse,</div>
-          <div className="text-sm text-gray-600 leading-[1.7] mb-5">
-            <strong>John D.</strong> sent you a message in <strong>CSC318</strong>:
-          </div>
-          <div className="py-3.5 px-[18px] bg-gray-50 rounded-lg text-sm text-gray-700 leading-relaxed mb-6 border-l-[3px] border-l-primary">
-            "Hey Jesse! I saw we have 8 hours of overlap and complementary skills. Want to team up for CSC318?"
-          </div>
-          <div className="text-center mb-6">
-            <div className="inline-block py-3 px-8 bg-primary text-primary-foreground rounded-lg text-sm font-semibold">View on unitor →</div>
-          </div>
-          <Separator className="my-5 bg-gray-100" />
-          <div className="text-xs text-gray-400 text-center">You received this because you're enrolled in CSC318 on unitor.<br />University of Toronto · Winter 2026</div>
-        </div>
-      </div>
-    </div>
-  </div>;
+// Login Page
+interface LoginProps extends GoProps {
+  onLogin?: () => void;
+  showToast?: (message: string) => void;
 }
 
-// Login Page (Fix #2)
-function Login({ go }: GoProps) {
+function Login({ go, onLogin, showToast }: LoginProps) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const canSubmit = email.trim().length > 0 && password.length > 0;
+  const handleLogin = () => {
+    if (!canSubmit) return;
+    if (onLogin) onLogin();
+    else go("dash");
+  };
   return <div className="bg-background min-h-screen pb-6">
     <Nav go={go} />
     <div className="max-w-[500px] mx-auto py-14 px-6">
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Welcome back</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed">Log in with your university email.</p>
-      <F l="University Email" id="login-email"><Input id="login-email" placeholder="you@mail.utoronto.ca" /></F>
-      <F l="Password" id="login-password"><Input id="login-password" type="password" placeholder="Your password" /></F>
-      <Button className="w-full px-7 py-3 h-auto" onClick={() => go("dash")}>Log In</Button>
-      <div className="mt-3.5 text-center"><Button variant="link" className="text-foreground">Forgot password?</Button></div>
+      <F l="University Email" id="login-email"><Input id="login-email" placeholder="you@mail.utoronto.ca" value={email} onChange={e => setEmail(e.target.value)} /></F>
+      <F l="Password" id="login-password"><Input id="login-password" type="password" placeholder="Your password" value={password} onChange={e => setPassword(e.target.value)} /></F>
+      <Button className="w-full px-7 py-3 h-auto" disabled={!canSubmit} onClick={handleLogin}>Log In</Button>
+      <div className="mt-3.5 text-center"><Button variant="link" className="text-foreground" onClick={() => showToast?.("Check your email for password reset instructions")}>Forgot password?</Button></div>
       <div className="mt-5 text-center text-sm text-gray-500">Don't have an account? <Button variant="link" className="text-foreground p-0 h-auto" onClick={() => go("signup-role")}>Sign up</Button></div>
     </div>
   </div>;
 }
 
-// Profile Edit
-function ProfileEdit({ go: _go }: GoProps) {
+// Profile View + Edit
+function ProfileEdit({ go: _go, showToast }: GoProps & { showToast?: (msg: string) => void }) {
   const ALL_SKILLS = ["Frontend Dev", "Backend", "UI Design", "User Research", "Prototyping", "Data Analysis", "UX Writing", "Project Mgmt"];
   const PROFICIENCY = ["Beginner", "Intermediate", "Proficient", "Expert"];
-  const [bio, setBio] = useState("UX designer focused on accessible, user-centered products.");
-  const [selectedSkills, setSelectedSkills] = useState<string[]>(["UI Design", "User Research"]);
-  const [skillRatings, setSkillRatings] = useState<Record<string, string>>({ "UI Design": "Proficient", "User Research": "Expert" });
-  const [meetFreq, setMeetFreq] = useState("2x/wk");
-  const [meetStyle, setMeetStyle] = useState("In-person");
-  const [commTool, setCommTool] = useState("Discord");
-  const [schedule, setSchedule] = useState(new Set(["Mon-1", "Wed-1", "Fri-1"]));
-  const [saved, setSaved] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [bio, setBio] = useLocalStorage<string>("profileBio", "UX designer focused on accessible, user-centered products.");
+  const [selectedSkills, setSelectedSkills] = useLocalStorage<string[]>("profileSkills", ["UI Design", "User Research"]);
+  const [skillRatings, setSkillRatings] = useLocalStorage<Record<string, string>>("profileSkillRatings", { "UI Design": "Proficient", "User Research": "Expert" });
+  const [meetFreq, setMeetFreq] = useLocalStorage<string>("profileMeetFreq", "2x/wk");
+  const [meetStyle, setMeetStyle] = useLocalStorage<string>("profileMeetStyle", "In-person");
+  const [commTool, setCommTool] = useLocalStorage<string>("profileCommTool", "Discord");
+  const [scheduleArr, setScheduleArr] = useLocalStorage<string[]>("profileSchedule", ["Mon-1", "Wed-1", "Fri-1"]);
+  const schedule = new Set(scheduleArr);
+  const setSchedule = (s: Set<string>) => setScheduleArr([...s]);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [snapshot, setSnapshot] = useState<{ bio: string; skills: string[]; ratings: Record<string, string>; freq: string; style: string; tool: string; sched: string[] } | null>(null);
 
   const toggleSkill = (sk: string) => {
     if (selectedSkills.includes(sk)) {
@@ -3347,20 +3318,118 @@ function ProfileEdit({ go: _go }: GoProps) {
     }
   };
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const enterEdit = () => {
+    setSnapshot({ bio, skills: selectedSkills, ratings: skillRatings, freq: meetFreq, style: meetStyle, tool: commTool, sched: scheduleArr });
+    setEditing(true);
   };
+
+  const handleCancel = () => {
+    if (snapshot) {
+      setBio(snapshot.bio);
+      setSelectedSkills(snapshot.skills);
+      setSkillRatings(snapshot.ratings);
+      setMeetFreq(snapshot.freq);
+      setMeetStyle(snapshot.style);
+      setCommTool(snapshot.tool);
+      setScheduleArr(snapshot.sched);
+    }
+    setEditing(false);
+  };
+
+  const handleSave = () => {
+    setEditing(false);
+    setSnapshot(null);
+    showToast?.("Profile saved!");
+  };
+
+  const ds = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+  const ts = ["9am–12pm", "12–4pm", "4–8pm", "8–11pm"];
+
+  if (!editing) {
+    return (
+      <div className="bg-background min-h-screen pb-6">
+        <div className="max-w-[680px] mx-auto py-10 px-6">
+          <div className="flex items-center gap-4 mb-6">
+            <Avatar className="size-20">
+              {photoUrl ? <img src={photoUrl} className="w-full h-full object-cover rounded-full" /> : <AvatarFallback className="bg-gray-200 text-gray-500 text-2xl font-bold">JD</AvatarFallback>}
+            </Avatar>
+            <div>
+              <h1 className="text-[24px] font-bold text-foreground -tracking-[0.5px]">John Doe</h1>
+              <div className="text-[13px] text-gray-500">Section 201 · CSC318</div>
+              <span className="inline-flex items-center justify-center h-[22px] px-2 rounded-[12px] leading-none text-[11px] font-medium bg-[#DCFCE7] text-[#166534] mt-1">Solo</span>
+            </div>
+          </div>
+
+          <div className="mb-5">
+            <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">About</Label>
+            <p className="text-[14px] text-gray-700 leading-relaxed">{bio || "No bio yet."}</p>
+          </div>
+
+          <div className="mb-5">
+            <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skills</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {selectedSkills.map(sk => (
+                <span key={sk} className="inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-[12px] font-medium bg-[#9652ca]/10 text-[#9652ca]">
+                  {sk} <span className="text-[10px] opacity-70">· {skillRatings[sk]}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="mb-5">
+            <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Work Style</Label>
+            <Card className="p-0 gap-0 shadow-none overflow-hidden">
+              {[["Meeting frequency", meetFreq], ["Meeting style", meetStyle], ["Communication", commTool]].map(([label, value], i) => (
+                <div key={label} className={cn("flex justify-between items-center px-4 py-3", i < 2 && "border-b border-gray-100")}>
+                  <span className="text-[13px] text-gray-500">{label}</span>
+                  <span className="text-[13px] font-medium">{value}</span>
+                </div>
+              ))}
+            </Card>
+          </div>
+
+          <div className="mb-7">
+            <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Weekly Availability</Label>
+            <div className="grid grid-cols-[64px_repeat(5,1fr)] gap-[3px]">
+              <div />{ds.map(d => <div key={d} className="text-center text-xs font-semibold text-gray-500 p-1.5">{d}</div>)}
+              {ts.map((t, ti) => <Fragment key={ti}>
+                <div className="text-[11px] text-gray-500 flex items-center">{t}</div>
+                {ds.map(d => {
+                  const k = `${d}-${ti}`;
+                  return <div key={k} className={cn("py-2.5 px-1 text-center rounded-md text-xs font-medium border", schedule.has(k) ? "bg-primary text-primary-foreground border-primary" : "bg-gray-50 text-gray-300 border-gray-200")} />;
+                })}
+              </Fragment>)}
+            </div>
+          </div>
+
+          <Button variant="outline" className="w-full gap-2 border-[#9652ca] text-[#9652ca] hover:bg-[#9652ca]/5" onClick={() => enterEdit()}>
+            <Icon.pencil size={16} color="#9652ca" />
+            Edit Profile
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-background min-h-screen pb-6">
       <div className="max-w-[680px] mx-auto py-10 px-6">
-        <div className="flex items-center gap-4 mb-8">
-          <Avatar className="size-16"><AvatarFallback className="bg-gray-200 text-gray-500 text-xl font-bold">JD</AvatarFallback></Avatar>
-          <div>
-            <h1 className="text-[24px] font-bold text-foreground -tracking-[0.5px]">John Doe</h1>
-            <div className="text-[13px] text-gray-500">Section 201 · CSC318</div>
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
+            <Avatar className="size-16">
+              {photoUrl ? <img src={photoUrl} className="w-full h-full object-cover rounded-full" /> : <AvatarFallback className="bg-gray-200 text-gray-500 text-xl font-bold">JD</AvatarFallback>}
+            </Avatar>
+            <div>
+              <h1 className="text-[24px] font-bold text-foreground -tracking-[0.5px]">John Doe</h1>
+              <div className="text-[13px] text-gray-500">Section 201 · CSC318</div>
+              <input type="file" accept="image/*" className="hidden" id="profile-photo" onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) setPhotoUrl(URL.createObjectURL(file));
+              }} />
+              <label htmlFor="profile-photo" className="text-[13px] text-primary hover:underline cursor-pointer">Change Photo</label>
+            </div>
           </div>
+          <Button variant="ghost" className="text-gray-500 text-sm" onClick={handleCancel}>Cancel</Button>
         </div>
 
         <F l="Bio">
@@ -3443,50 +3512,65 @@ function ProfileEdit({ go: _go }: GoProps) {
 
         <TGrid sel={schedule} set={setSchedule} label="Weekly Availability" />
 
-        <Button className="w-full" onClick={handleSave}>
-          {saved ? "Saved!" : "Save Changes"}
-        </Button>
+        <Button className="w-full" onClick={handleSave}>Save Profile</Button>
       </div>
     </div>
   );
 }
 
 // ==================== CHATS PAGE ====================
+type ChatMessages = Record<string, { from: string; text: string; time: string }[]>;
+
 interface ChatsPageProps extends GoProps {
   conversations: Conversation[];
   contactStatuses: Record<string, string>;
   onContactStatusChange: (name: string, status: string) => void;
   onAccept?: (name: string) => void;
+  msgs: ChatMessages;
+  onMsgsChange: Dispatch<SetStateAction<ChatMessages>>;
+  initialSelectedConv?: string | null;
+  onClearInitialConv?: () => void;
+  reactions: Record<string, string | null>;
+  onReactionsChange: Dispatch<SetStateAction<Record<string, string | null>>>;
+  onUpdateConvStatus?: (name: string, status: string) => void;
+  onMarkRead?: (name: string) => void;
 }
 
-function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, onAccept }: ChatsPageProps) {
-  const [selectedConv, setSelectedConv] = useState<string | null>(conversations.length > 0 ? conversations[0].targetName : null);
+type ReactionType = "check" | "thumbUp" | "heart" | "sad";
+const REACTION_ICONS: { type: ReactionType; icon: (p: IconProps) => ReactElement; emoji: string }[] = [
+  { type: "check", icon: Icon.reactCheck, emoji: "✓" },
+  { type: "thumbUp", icon: Icon.reactThumbUp, emoji: "👍" },
+  { type: "heart", icon: Icon.reactHeart, emoji: "❤" },
+  { type: "sad", icon: Icon.reactSad, emoji: "😢" },
+];
+const REACTION_COLORS: Record<ReactionType, string> = {
+  check: "#16a34a",
+  thumbUp: "#eab308",
+  heart: "#dc2626",
+  sad: "#3b82f6",
+};
+
+function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, onAccept, msgs, onMsgsChange, initialSelectedConv, onClearInitialConv, reactions: reactionsFromProps, onReactionsChange, onUpdateConvStatus, onMarkRead }: ChatsPageProps) {
+  const [selectedConv, setSelectedConv] = useState<string | null>(initialSelectedConv ?? (conversations.length > 0 ? conversations[0].targetName : null));
+
+  useEffect(() => {
+    if (initialSelectedConv) {
+      setSelectedConv(initialSelectedConv);
+      onClearInitialConv?.();
+    }
+  }, [initialSelectedConv, onClearInitialConv]);
   const [convTab, setConvTab] = useState<"all" | "sent" | "received">("all");
-  const [msgs, setMsgs] = useState<Record<string, { from: string; text: string; time: string }[]>>({
-    "CSC318 Group": [
-      { from: "Jesse Nguyen", text: "Hey everyone! Excited to work together.", time: "Mar 22, 10:00 AM" },
-      { from: "Aisha Khan", text: "Same here! I set up the shared doc.", time: "Mar 22, 10:05 AM" },
-      { from: "me", text: "Great, let's set up a meeting time.", time: "Mar 22, 10:12 AM" },
-      { from: "David Park", text: "I'm free Tuesday and Thursday afternoons.", time: "Mar 22, 10:15 AM" },
-    ],
-    "David Park": [
-      { from: "them", text: "Hey! I saw we have great schedule overlap. Want to form a group?", time: "Mar 22, 2:14 PM" },
-      { from: "me", text: "Sounds great! When are you free this week?", time: "Mar 22, 2:18 PM" },
-    ],
-    "Priya Sharma": [
-      { from: "them", text: "I'd love to join your group. I have strong backend skills.", time: "Mar 23, 3:30 PM" },
-    ],
-    "Jesse Nguyen": [
-      { from: "them", text: "I think our skills complement each other well.", time: "Mar 21, 10:05 AM" },
-      { from: "me", text: "Agreed! Let's do it.", time: "Mar 21, 10:12 AM" },
-      { from: "them", text: "Welcome to the team!", time: "Mar 21, 10:15 AM" },
-    ],
-  });
+  const setMsgs = onMsgsChange;
   const [input, setInput] = useState("");
   const [showDeclineMenu, setShowDeclineMenu] = useState(false);
   const [declineReason, setDeclineReason] = useState("");
   const [declineNote, setDeclineNote] = useState("");
   const [requestExpanded, setRequestExpanded] = useState(true);
+  const reactions = reactionsFromProps;
+  const setReactions = onReactionsChange;
+  const toggleReaction = (msgKey: string, type: ReactionType) => {
+    setReactions(prev => ({ ...prev, [msgKey]: prev[msgKey] === type ? null : type }));
+  };
 
   const groupConv = conversations.find(c => c.isGroup);
   const individualConvs = conversations.filter(c => !c.isGroup);
@@ -3509,11 +3593,28 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
       [selectedConv]: [...(prev[selectedConv] || []), { from: "me", text: input.trim(), time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }],
     }));
     setInput("");
+    // Auto-reply after 1.5s
+    if (selectedConv) {
+      const convName = selectedConv;
+      const isGroup = conversations.find(c => c.targetName === convName)?.isGroup;
+      setTimeout(() => {
+        const replyText = MOCK_REPLIES[Math.floor(Math.random() * MOCK_REPLIES.length)];
+        const replyTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        const replyFrom = isGroup
+          ? (conversations.find(c => c.targetName === convName)?.groupMembers?.[Math.floor(Math.random() * (conversations.find(c => c.targetName === convName)?.groupMembers?.length ?? 1))]?.name ?? "them")
+          : "them";
+        setMsgs(prev => ({
+          ...prev,
+          [convName]: [...(prev[convName] || []), { from: replyFrom, text: replyText, time: replyTime }],
+        }));
+      }, 1500);
+    }
   };
 
   const handleDecline = () => {
     if (!selectedConv) return;
     onContactStatusChange(selectedConv, "declined");
+    onUpdateConvStatus?.(selectedConv, "declined");
     setMsgs(prev => ({
       ...prev,
       [selectedConv]: [...(prev[selectedConv] || []), { from: "me", text: `Declined: ${declineReason}${declineNote ? ` — ${declineNote}` : ""}`, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }],
@@ -3525,7 +3626,7 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
 
   const STATUS_PILL: Record<string, { label: string; cls: string }> = {
     pending: { label: "Pending", cls: "bg-[#FEF3C7] text-[#92400E]" },
-    replied: { label: "Replied", cls: "bg-[#8e57b8]/15 text-[#8e57b8]" },
+    replied: { label: "Replied", cls: "bg-[#9652ca]/15 text-[#9652ca]" },
     accepted: { label: "Accepted", cls: "bg-[#DCFCE7] text-[#166534]" },
     declined: { label: "Declined", cls: "bg-[#FEE2E2] text-[#991B1B]" },
     active: { label: "Active", cls: "bg-[#DCFCE7] text-[#166534]" },
@@ -3555,8 +3656,8 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
                   className={cn(
                     "pb-[6px] text-[13px] border-b-2 capitalize transition-colors cursor-pointer",
                     convTab === t
-                      ? "font-semibold text-[#111827] border-[#8e57b8]"
-                      : "font-normal text-[#9CA3AF] border-transparent hover:border-[#8e57b8]/40"
+                      ? "font-semibold text-[#111827] border-[#9652ca]"
+                      : "font-normal text-[#9CA3AF] border-transparent hover:border-[#9652ca]/40"
                   )}>
                   {t}
                 </button>
@@ -3566,21 +3667,30 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
 
           {/* Conversation list */}
           <div className="flex-1 overflow-y-auto">
+            {conversations.length === 0 && (
+              <div className="flex-1 flex items-center justify-center py-16 px-4 text-center">
+                <div>
+                  <div className="text-4xl mb-3">💬</div>
+                  <div className="text-[15px] font-semibold text-gray-500 mb-2">No conversations yet</div>
+                  <p className="text-[13px] text-gray-400">Start by messaging someone on the Discovery board.</p>
+                </div>
+              </div>
+            )}
             {/* Pinned group chat */}
             {groupConv && (
               <button
-                onClick={() => { setSelectedConv(groupConv.targetName); setShowDeclineMenu(false); }}
+                onClick={() => { setSelectedConv(groupConv.targetName); setShowDeclineMenu(false); onMarkRead?.(groupConv.targetName); }}
                 className={cn(
                   "w-full flex items-center gap-2.5 px-4 py-3 text-left transition-colors border-b-2 border-[#E5E7EB] cursor-pointer",
                   selectedConv === groupConv.targetName
-                    ? "bg-[#F3F4F6] border-l-[3px] border-l-[#8e57b8]"
+                    ? "bg-[#F3F4F6] border-l-[3px] border-l-[#9652ca]"
                     : "hover:bg-[#FAFAFA] border-l-[3px] border-l-transparent bg-[#FAFAFA]"
                 )}
               >
-                {groupConv.unread && <div className="w-1.5 h-1.5 rounded-full bg-[#8e57b8] shrink-0" />}
+                {groupConv.unread && <div className="w-1.5 h-1.5 rounded-full bg-[#9652ca] shrink-0" />}
                 {!groupConv.unread && <div className="w-1.5 shrink-0" />}
-                <div className="size-9 shrink-0 rounded-full bg-[#8e57b8]/15 flex items-center justify-center">
-                  <Icon.chat size={16} color="#8e57b8" />
+                <div className="size-9 shrink-0 rounded-full bg-[#9652ca]/15 flex items-center justify-center">
+                  <Icon.chat size={16} color="#9652ca" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1">
@@ -3589,8 +3699,8 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
                   </div>
                   <div className="text-[12px] text-[#6B7280] truncate">{groupConv.lastMessage}</div>
                   <div className="flex items-center gap-1 mt-0.5">
-                    <span className="text-[10px] text-[#8e57b8] font-medium">{groupConv.groupMembers?.length ?? 0} members</span>
-                    <span className="inline-flex items-center h-[16px] px-1 rounded text-[9px] font-medium bg-[#8e57b8]/10 text-[#8e57b8]">Group</span>
+                    <span className="text-[10px] text-[#9652ca] font-medium">{groupConv.groupMembers?.length ?? 0} members</span>
+                    <span className="inline-flex items-center justify-center h-[16px] px-1 rounded leading-none text-[9px] font-medium bg-[#9652ca]/10 text-[#9652ca]">Group</span>
                   </div>
                 </div>
               </button>
@@ -3603,17 +3713,17 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
               filteredConvs.map(c => (
                 <button
                   key={c.id}
-                  onClick={() => { setSelectedConv(c.targetName); setShowDeclineMenu(false); }}
+                  onClick={() => { setSelectedConv(c.targetName); setShowDeclineMenu(false); onMarkRead?.(c.targetName); }}
                   className={cn(
                     "w-full flex items-start gap-2.5 px-4 py-3 text-left transition-colors border-b border-[#F3F4F6] cursor-pointer",
                     selectedConv === c.targetName
-                      ? "bg-[#F3F4F6] border-l-[3px] border-l-[#8e57b8]"
+                      ? "bg-[#F3F4F6] border-l-[3px] border-l-[#9652ca]"
                       : "hover:bg-[#FAFAFA] border-l-[3px] border-l-transparent"
                   )}
                 >
                   {/* Unread dot */}
                   <div className="w-2 shrink-0 pt-3">
-                    {c.unread && <div className="w-1.5 h-1.5 rounded-full bg-[#8e57b8]" />}
+                    {c.unread && <div className="w-1.5 h-1.5 rounded-full bg-[#9652ca]" />}
                   </div>
                   <Avatar className="size-9 shrink-0 mt-0.5">
                     <AvatarFallback className="bg-gray-200 text-gray-500 text-[11px] font-bold">{c.targetInit}</AvatarFallback>
@@ -3624,7 +3734,7 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
                       <span className="text-[10px] text-[#9CA3AF] shrink-0">{c.timestamp}</span>
                     </div>
                     <div className="text-[12px] text-[#6B7280] truncate mb-1">{c.lastMessage}</div>
-                    <span className={cn("inline-flex items-center h-[18px] px-1.5 rounded-full text-[10px] font-medium", STATUS_PILL[c.status]?.cls)}>
+                    <span className={cn("inline-flex items-center justify-center h-[18px] px-1.5 rounded-full leading-none text-[10px] font-medium", STATUS_PILL[c.status]?.cls)}>
                       {STATUS_PILL[c.status]?.label}
                     </span>
                   </div>
@@ -3642,8 +3752,8 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
               <div className="flex items-center gap-3 h-14 px-5 border-b border-[#E5E7EB] shrink-0">
                 {isGroupChat ? (
                   <>
-                    <div className="size-8 rounded-full bg-[#8e57b8]/15 flex items-center justify-center shrink-0">
-                      <Icon.chat size={14} color="#8e57b8" />
+                    <div className="size-8 rounded-full bg-[#9652ca]/15 flex items-center justify-center shrink-0">
+                      <Icon.chat size={14} color="#9652ca" />
                     </div>
                     <span className="text-[15px] font-semibold">{conv.targetName}</span>
                     <span className="text-[12px] text-[#6B7280]">{conv.groupMembers?.length ?? 0} members</span>
@@ -3673,7 +3783,7 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
                             <Avatar className="size-7"><AvatarFallback className="bg-gray-200 text-gray-500 text-[10px] font-bold">{student.init}</AvatarFallback></Avatar>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="text-[13px] font-semibold text-[#8e57b8]">
+                                <span className="text-[13px] font-semibold text-[#9652ca]">
                                   {conv.type.includes("request") ? "Group Request" : "Group Application"}
                                 </span>
                                 <span className="text-[11px] text-[#9CA3AF]">{conv.timestamp}</span>
@@ -3682,7 +3792,7 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
                                 {iSent ? `You sent to ${student.name}` : `From ${student.name} · Section ${student.sec}`}
                               </div>
                             </div>
-                            <button onClick={() => setRequestExpanded(v => !v)} className="text-[12px] text-[#8e57b8] font-medium hover:underline cursor-pointer shrink-0">
+                            <button onClick={() => setRequestExpanded(v => !v)} className="text-[12px] text-[#9652ca] font-medium hover:underline cursor-pointer shrink-0">
                               {requestExpanded ? "Hide" : "Details"}
                             </button>
                           </div>
@@ -3693,9 +3803,9 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
                               {/* Profile + skills */}
                               <div className="flex items-center gap-2 mb-3 flex-wrap">
                                 {student.skills.slice(0, 3).map(sk => (
-                                  <span key={sk} className="inline-flex items-center h-5 px-1.5 rounded text-[10px] font-medium bg-[#8e57b8]/10 text-[#8e57b8]">{sk}</span>
+                                  <span key={sk} className="inline-flex items-center h-5 px-1.5 rounded text-[10px] font-medium bg-[#9652ca]/10 text-[#9652ca]">{sk}</span>
                                 ))}
-                                <span className="text-[11px] text-[#6B7280] ml-1">Overlap: <strong className="text-[#8e57b8]">{student.overlap}</strong></span>
+                                <span className="text-[11px] text-[#6B7280] ml-1">Overlap: <strong className="text-[#9652ca]">{student.overlap}</strong></span>
                               </div>
                               {/* Form answers */}
                               <div className="space-y-2 mb-3">
@@ -3711,8 +3821,8 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
                               {/* Action buttons — only for received requests */}
                               {!isEnded && !iSent && (
                                 <div className="flex gap-2 pt-3 border-t border-[#F3F4F6]">
-                                  <button onClick={() => { onContactStatusChange(conv.targetName, "accepted"); if (onAccept) onAccept(conv.targetName); }}
-                                    className="flex-1 h-8 rounded-[8px] bg-[#8e57b8] text-white text-[13px] font-medium hover:bg-[#7a4a9e] cursor-pointer transition-colors">Accept</button>
+                                  <button onClick={() => { onContactStatusChange(conv.targetName, "accepted"); if (onAccept) onAccept(conv.targetName); onUpdateConvStatus?.(conv.targetName, "accepted"); }}
+                                    className="flex-1 h-8 rounded-[8px] bg-[#9652ca] text-white text-[13px] font-medium hover:bg-[#7a4a9e] cursor-pointer transition-colors">Accept</button>
                                   <button className="flex-1 h-8 rounded-[8px] border border-[#D1D5DB] text-[#374151] text-[13px] font-medium hover:bg-[#F9FAFB] cursor-pointer transition-colors">Reply</button>
                                   <button onClick={() => setShowDeclineMenu(v => !v)}
                                     className="flex-1 h-8 rounded-[8px] border border-[#D1D5DB] text-[#991B1B] text-[13px] font-medium hover:bg-[#FEE2E2]/30 cursor-pointer transition-colors">Decline</button>
@@ -3725,13 +3835,13 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
                                   <div className="space-y-1.5 mb-3">
                                     {DECLINE_REASONS.map(r => (
                                       <label key={r} className="flex items-center gap-2 cursor-pointer">
-                                        <input type="radio" name="decline" value={r} checked={declineReason === r} onChange={() => setDeclineReason(r)} className="accent-[#8e57b8]" />
+                                        <input type="radio" name="decline" value={r} checked={declineReason === r} onChange={() => setDeclineReason(r)} className="accent-[#9652ca]" />
                                         <span className="text-[13px] text-[#374151]">{r}</span>
                                       </label>
                                     ))}
                                   </div>
                                   <input value={declineNote} onChange={e => setDeclineNote(e.target.value)} placeholder="Optional note..."
-                                    className="w-full h-8 rounded-[6px] border border-[#D1D5DB] px-3 text-[13px] mb-3 outline-none focus:border-[#8e57b8]" />
+                                    className="w-full h-8 rounded-[6px] border border-[#D1D5DB] px-3 text-[13px] mb-3 outline-none focus:border-[#9652ca]" />
                                   <div className="flex gap-2">
                                     <button onClick={() => setShowDeclineMenu(false)} className="flex-1 h-8 rounded-[6px] border border-[#D1D5DB] text-[13px] text-[#374151] cursor-pointer hover:bg-gray-50">Cancel</button>
                                     <button onClick={handleDecline} disabled={!declineReason} className={cn("flex-1 h-8 rounded-[6px] text-[13px] font-medium cursor-pointer transition-colors", declineReason ? "bg-[#DC2626] text-white hover:bg-[#B91C1C]" : "bg-gray-200 text-gray-400")}>Confirm Decline</button>
@@ -3746,22 +3856,54 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
                     );
                   })()}
 
+                  {/* Empty conversation hint */}
+                  {currentMsgs.length === 0 && !isGroupChat && (
+                    <p className="text-[13px] text-[#9CA3AF] italic text-center py-6">Say hello to start chatting!</p>
+                  )}
+
                   {/* Chat messages */}
-                  {currentMsgs.map((m, i) => (
-                    <div key={i} className={cn("flex flex-col", m.from === "me" ? "items-end" : "items-start")}>
-                      {/* Sender name for group chat */}
-                      {isGroupChat && m.from !== "me" && (
-                        <span className="text-[11px] font-medium text-[#8e57b8] mb-0.5 ml-1">{m.from}</span>
-                      )}
-                      <div className={cn(
-                        "max-w-[70%] px-[14px] py-[10px] text-[14px] leading-relaxed",
-                        m.from === "me"
-                          ? "bg-[#8e57b8] text-white rounded-[16px_16px_4px_16px]"
-                          : "bg-[#F3F4F6] text-[#111827] rounded-[16px_16px_16px_4px]"
-                      )}>{m.text}</div>
-                      <span className="text-[11px] text-[#9CA3AF] mt-1">{m.time}</span>
-                    </div>
-                  ))}
+                  {currentMsgs.map((m, i) => {
+                    const msgKey = `${selectedConv}-${i}`;
+                    const myReaction = reactions[msgKey];
+                    return (
+                      <div key={i} className={cn("flex flex-col", m.from === "me" ? "items-end" : "items-start")}>
+                        {isGroupChat && m.from !== "me" && (
+                          <span className="text-[11px] font-medium text-[#9652ca] mb-0.5 ml-1">{m.from}</span>
+                        )}
+                        <div className="relative group">
+                          <div
+                            className={cn(
+                              "px-[14px] py-[10px] text-[14px] leading-relaxed",
+                              m.from === "me"
+                                ? "bg-[#9652ca] text-white rounded-[16px_16px_4px_16px]"
+                                : "bg-[#F3F4F6] text-[#111827] rounded-[16px_16px_16px_4px]"
+                            )}
+                          >{m.text}</div>
+                          {/* Reaction picker — hover-based, bottom-right of bubble */}
+                          {m.from !== "me" && (
+                            <div className="absolute right-0 hidden group-hover:flex gap-0.5 bg-white border border-[#E5E7EB] rounded-full shadow-sm px-1 py-0.5 z-10" style={{ bottom: "-25px" }}>
+                              {REACTION_ICONS.map(r => (
+                                <button key={r.type} onClick={() => toggleReaction(msgKey, r.type)}
+                                  className={cn("w-6 h-6 rounded-full flex items-center justify-center hover:bg-[#F3F4F6] transition-colors cursor-pointer", myReaction === r.type && "bg-opacity-15")}>
+                                  <r.icon size={13} color={myReaction === r.type ? REACTION_COLORS[r.type] : "#6B7280"} />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {/* Active reaction badge */}
+                          {myReaction && (
+                            <div
+                              className="absolute -bottom-2.5 left-1 bg-white border border-[#E5E7EB] rounded-full px-1.5 h-5 flex items-center justify-center shadow-sm cursor-pointer text-[11px]"
+                              onClick={() => toggleReaction(msgKey, myReaction)}
+                            >
+                              {REACTION_ICONS.find(r => r.type === myReaction)?.emoji}
+                            </div>
+                          )}
+                        </div>
+                        <span className={cn("text-[11px] text-[#9CA3AF]", myReaction ? "mt-3.5" : "mt-1")}>{m.time}</span>
+                      </div>
+                    );
+                  })}
                   {conv.status === "accepted" && (
                     <p className="text-[13px] text-[#6B7280] italic text-center py-3">
                       Request accepted — you're forming a group!
@@ -3783,21 +3925,21 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
                     onChange={e => setInput(e.target.value)}
                     onKeyDown={e => e.key === "Enter" && sendMsg()}
                     placeholder="Type a message..."
-                    className="flex-1 h-9 rounded-[20px] border border-[#D1D5DB] px-4 text-[14px] outline-none focus:border-[#8e57b8] bg-white"
+                    className="flex-1 h-9 rounded-[20px] border border-[#D1D5DB] px-4 text-[14px] outline-none focus:border-[#9652ca] bg-white"
                   />
                   <button onClick={sendMsg} disabled={!input.trim()}
                     className={cn("w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors cursor-pointer",
-                      input.trim() ? "bg-[#8e57b8] text-white" : "bg-gray-200 text-gray-400"
+                      input.trim() ? "bg-[#9652ca] text-white" : "bg-gray-200 text-gray-400"
                     )}>
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13V3M3 8l5-5 5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13V3M3 8l5-5 5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
                   </button>
                 </div>
               ) : (
                 <div className="h-14 border-t border-[#E5E7EB] bg-[#F9FAFB] flex items-center justify-center gap-3 shrink-0">
                   <span className="text-[13px] text-[#6B7280]">This conversation has ended.</span>
-                  {conv.status === "accepted" && (
-                    <button onClick={() => go("mygroup")} className="text-[13px] text-[#8e57b8] font-medium hover:underline cursor-pointer">Go to My Group &rarr;</button>
-                  )}
+                  <button onClick={() => go("mygroup")} className="text-[13px] text-[#9652ca] font-medium hover:underline cursor-pointer">My Group</button>
+                  <span className="text-[#D1D5DB]">·</span>
+                  <button onClick={() => go("dash")} className="text-[13px] text-[#9652ca] font-medium hover:underline cursor-pointer">Dashboard</button>
                 </div>
               )}
             </>
@@ -3844,7 +3986,7 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
                 <div className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide mb-2">Group Skills</div>
                 <div className="flex flex-wrap gap-1">
                   {Array.from(new Set(["UI Design", "User Research", ...(conv.groupMembers?.flatMap(m => STU.find(s => s.name === m.name)?.skills ?? []) ?? [])])).map(sk => (
-                    <span key={sk} className="inline-flex items-center h-6 px-2 rounded-[6px] text-[12px] font-medium bg-[#8e57b8]/10 text-[#8e57b8]">{sk}</span>
+                    <span key={sk} className="inline-flex items-center h-6 px-2 rounded-[6px] text-[12px] font-medium bg-[#9652ca]/10 text-[#9652ca]">{sk}</span>
                   ))}
                 </div>
               </div>
@@ -3863,15 +4005,16 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
                 <div className="text-[18px] font-bold">{student.name}</div>
                 <div className="flex items-center gap-2 mt-1.5">
                   <span className={cn(
-                    "inline-flex items-center h-[22px] px-2 rounded-[12px] text-[11px] font-medium",
+                    "inline-flex items-center justify-center h-[22px] px-2 rounded-[12px] leading-none text-[11px] font-medium",
                     student.status === "solo" ? "bg-[#DCFCE7] text-[#166534]" :
-                    student.status === "open-group" ? "bg-[#FEF3C7] text-[#92400E]" :
-                    "bg-gray-100 text-gray-500"
+                      student.status === "open-group" ? "bg-[#FEF3C7] text-[#92400E]" :
+                        "bg-gray-100 text-gray-500"
                   )}>
                     {student.status === "solo" ? "Solo" : student.status === "open-group" ? "Open Group" : "Closed"}
                   </span>
                   <span className="text-[13px] text-[#6B7280]">Section {student.sec}</span>
                 </div>
+                <button onClick={() => go("board")} className="text-[12px] text-[#9652ca] hover:underline cursor-pointer mt-2">View Full Profile →</button>
               </div>
 
               {/* Vertical timeline */}
@@ -3889,18 +4032,18 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
                         <div className="flex flex-col items-center">
                           <div className={cn(
                             "w-2.5 h-2.5 rounded-full shrink-0 mt-1",
-                            isComplete ? "bg-[#8e57b8]" : "border-2 border-[#D1D5DB] bg-white",
-                            isCurrent && "ring-2 ring-[#8e57b8]/30"
+                            isComplete ? "bg-[#9652ca]" : "border-2 border-[#D1D5DB] bg-white",
+                            isCurrent && "ring-2 ring-[#9652ca]/30"
                           )} />
-                          {!isLast && <div className={cn("w-px flex-1 min-h-[28px]", isComplete && i < currentStageIdx ? "bg-[#8e57b8]" : "bg-[#E5E7EB]")} />}
+                          {!isLast && <div className={cn("w-px flex-1 min-h-[28px]", isComplete && i < currentStageIdx ? "bg-[#9652ca]" : "bg-[#E5E7EB]")} />}
                         </div>
                         {/* Label + time */}
                         <div className="pb-4">
                           <div className={cn(
                             "text-[13px]",
-                            isCurrent ? "font-semibold text-[#8e57b8]" :
-                            isComplete ? "font-medium text-[#8e57b8]" :
-                            "text-[#9CA3AF]"
+                            isCurrent ? "font-semibold text-[#9652ca]" :
+                              isComplete ? "font-medium text-[#9652ca]" :
+                                "text-[#9CA3AF]"
                           )}>{label}</div>
                           {isComplete && timestamps[i] && (
                             <div className="text-[11px] text-[#9CA3AF] mt-0.5">{timestamps[i]}</div>
@@ -3925,7 +4068,7 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
                 <div className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide mb-2">Skills</div>
                 <div className="flex flex-wrap gap-1">
                   {student.skills.map(sk => (
-                    <span key={sk} className="inline-flex items-center h-6 px-2 rounded-[6px] text-[12px] font-medium bg-[#8e57b8]/10 text-[#8e57b8]">{sk}</span>
+                    <span key={sk} className="inline-flex items-center h-6 px-2 rounded-[6px] text-[12px] font-medium bg-[#9652ca]/10 text-[#9652ca]">{sk}</span>
                   ))}
                 </div>
               </div>
@@ -3935,9 +4078,9 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
                 <div className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide mb-2">Schedule Overlap</div>
                 <div className="flex items-center gap-2">
                   <div className="flex-1 h-2 rounded-full bg-[#E5E7EB] overflow-hidden">
-                    <div className="h-full rounded-full bg-[#8e57b8]" style={{ width: `${Math.min(100, (student.scheduleOverlapHrs / 10) * 100)}%` }} />
+                    <div className="h-full rounded-full bg-[#9652ca]" style={{ width: `${Math.min(100, (student.scheduleOverlapHrs / 10) * 100)}%` }} />
                   </div>
-                  <span className="text-[13px] font-semibold text-[#8e57b8] shrink-0">{student.overlap}</span>
+                  <span className="text-[13px] font-semibold text-[#9652ca] shrink-0">{student.overlap}</span>
                 </div>
               </div>
 
@@ -3955,7 +4098,18 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
               )}
 
               {/* Last active */}
-              <div className="text-[12px] text-[#9CA3AF]">Last active: {student.lastActive}</div>
+              <div className="text-[12px] text-[#9CA3AF] mb-5">Last active: {student.lastActive}</div>
+
+              {/* Send Group Request button — only when no request sent yet */}
+              {contactStatuses[student.name] === "none" && (
+                <Button variant="outline" className="w-full gap-2 border-[#9652ca] text-[#9652ca] hover:bg-[#9652ca]/5" onClick={() => { onContactStatusChange(student.name, "request-sent"); go("board"); }}>
+                  <Icon.mailSend size={16} color="#9652ca" />
+                  Send Group Request
+                </Button>
+              )}
+              {contactStatuses[student.name] === "request-sent" && (
+                <div className="text-center text-[13px] text-[#6B7280]">Group request sent</div>
+              )}
             </div>
           ) : (
             <div className="flex items-center justify-center h-full text-[#9CA3AF] text-[13px] p-5">
@@ -3970,31 +4124,115 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
 }
 
 // ==================== APP ====================
+const DEFAULT_CHAT_MSGS: ChatMessages = {
+  "CSC318 Group": [
+    { from: "Jesse Nguyen", text: "Hey everyone! Excited to work together.", time: "Mar 22, 10:00 AM" },
+    { from: "Aisha Khan", text: "Same here! I set up the shared doc.", time: "Mar 22, 10:05 AM" },
+    { from: "me", text: "Great, let's set up a meeting time.", time: "Mar 22, 10:12 AM" },
+    { from: "David Park", text: "I'm free Tuesday and Thursday afternoons.", time: "Mar 22, 10:15 AM" },
+  ],
+  "David Park": [
+    { from: "them", text: "Hey! I saw we have great schedule overlap. Want to form a group?", time: "Mar 22, 2:14 PM" },
+    { from: "me", text: "Sounds great! When are you free this week?", time: "Mar 22, 2:18 PM" },
+  ],
+  "Priya Sharma": [
+    { from: "them", text: "I'd love to join your group. I have strong backend skills.", time: "Mar 23, 3:30 PM" },
+  ],
+  "Jesse Nguyen": [
+    { from: "them", text: "I think our skills complement each other well.", time: "Mar 21, 10:05 AM" },
+    { from: "me", text: "Agreed! Let's do it.", time: "Mar 21, 10:12 AM" },
+    { from: "them", text: "Welcome to the team!", time: "Mar 21, 10:15 AM" },
+  ],
+};
+
 export default function Unitor() {
   const [pg, setPg] = useState("landing");
   const [role, setRole] = useState("s");
+  const [showDemoBar, setShowDemoBar] = useState(false);
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === "d") { e.preventDefault(); setShowDemoBar(v => !v); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
   const [sentTarget, setSentTarget] = useState("Jesse");
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
   const [isUrgent, setIsUrgent] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
-  const [appliedGroups, setAppliedGroups] = useState<Record<string, string>>({});
-  const [studentStatus, setStudentStatus] = useState<"searching" | "forming" | "grouped">("searching");
+  const [userName, setUserName] = useLocalStorage<string>("userName", "");
+  const [userEmail, setUserEmail] = useLocalStorage<string>("userEmail", "");
+  const [hasJoinedCourse, setHasJoinedCourse] = useLocalStorage<boolean>("hasJoinedCourse", false);
+  const [hasCreatedCourse, setHasCreatedCourse] = useLocalStorage<boolean>("hasCreatedCourse", false);
+  const [appliedGroups, setAppliedGroups] = useLocalStorage<Record<string, string>>("appliedGroups", {});
+  const [studentStatus, setStudentStatus] = useLocalStorage<"solo" | "open-group" | "closed">("studentStatus", "solo");
   const [notifications, setNotifications] = useState<AppNotification[]>(DEMO_NOTIFICATIONS);
   const [panelMode, setPanelMode] = useState<"view" | "received-request">("view");
-  const [chatTarget, setChatTarget] = useState<string | null>(null);
-  const [contactStatuses, setContactStatuses] = useState<Record<string, string>>(
+  const [contactStatuses, setContactStatuses] = useLocalStorage<Record<string, string>>(
+    "contactStatuses",
     () => Object.fromEntries(STU.map(s => [s.name, s.contactStatus]))
   );
+  const [chatMsgs, setChatMsgs] = useLocalStorage<ChatMessages>("chatMsgs", DEFAULT_CHAT_MSGS);
+  const [conversations, setConversations] = useLocalStorage<Conversation[]>("conversations", DEMO_CONVERSATIONS);
+  const [initialSelectedConv, setInitialSelectedConv] = useState<string | null>(null);
+  const [chatReactions, setChatReactions] = useLocalStorage<Record<string, string | null>>("chatReactions", {});
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const showToast = useCallback((message: string) => {
+    const id = ++toastId;
+    setToasts(prev => [...prev, { id, message }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+  }, []);
+  const removeToast = useCallback((id: number) => setToasts(prev => prev.filter(t => t.id !== id)), []);
 
-  const updateContactStatus = (name: string, status: string) =>
-    setContactStatuses(prev => ({ ...prev, [name]: status }));
+  const addNotification = useCallback((type: NotificationType, title: string, body: string, actionTarget?: string) => {
+    const n: AppNotification = {
+      id: `notif-${Date.now()}`,
+      type,
+      title,
+      body,
+      timestamp: "Just now",
+      read: false,
+      actionTarget,
+    };
+    setNotifications(prev => [n, ...prev]);
+  }, []);
+
+  const updateContactStatus = useCallback((name: string, status: string) =>
+    setContactStatuses(prev => ({ ...prev, [name]: status })), [setContactStatuses]);
+
+  const openChatWith = useCallback((name: string) => {
+    const existing = conversations.find(c => c.targetName === name);
+    if (!existing) {
+      const stu = STU.find(s => s.name === name);
+      const newConv: Conversation = {
+        id: `conv-new-${Date.now()}`,
+        targetName: name,
+        targetInit: stu?.init ?? name.split(" ").map(w => w[0]).join(""),
+        type: "request-sent",
+        status: "pending",
+        lastMessage: "Start a conversation",
+        timestamp: "now",
+        unread: false,
+      };
+      setConversations(prev => [...prev, newConv]);
+    }
+    setInitialSelectedConv(name);
+    setPg("chats");
+    window.scrollTo(0, 0);
+  }, [conversations, setConversations]);
 
   const go = (p: string) => {
     if (p === "signup-s") { setRole("s"); setPg("signup") }
     else if (p === "signup-t") { setRole("t"); setPg("signup") }
-    else if (p === "sent-jesse") { setSentTarget("Jesse"); setPg("sent"); setStudentStatus("open-group") }
-    else if (p === "sent-david") { setSentTarget("David"); setPg("sent"); setStudentStatus("open-group") }
-    else if (p === "sent-priya") { setSentTarget("Priya"); setPg("sent"); setStudentStatus("open-group") }
+    else if (p.startsWith("sent-")) {
+      const name = p.slice(5);
+      const fullName = STU.find(s => s.name.toLowerCase().startsWith(name))?.name ?? name.charAt(0).toUpperCase() + name.slice(1);
+      setSentTarget(fullName);
+      setPg("sent");
+      setStudentStatus("open-group");
+      showToast("Group request sent!");
+      setTimeout(() => addNotification("request-accepted", `${fullName} responded`, `${fullName} replied to your group request.`, "chats"), 3000);
+    }
     else if (p === "sent") { setPg("sent") }
     else setPg(p);
     window.scrollTo(0, 0);
@@ -4006,9 +4244,7 @@ export default function Unitor() {
     setNotifications(prev => prev.map(item => item.id === n.id ? { ...item, read: true } : item));
     if (!n.actionTarget) return;
     if (n.type === "group-request-received") {
-      setSelectedStudent(n.actionTarget);
-      setPanelMode("received-request");
-      setPg("board");
+      go("chats");
     } else if (n.type === "request-accepted" || n.type === "request-declined") {
       go("chats");
     } else if (n.type === "group-application-received") {
@@ -4022,29 +4258,29 @@ export default function Unitor() {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   };
   const P: Record<string, ReactNode> = {
-    landing: <Landing go={go} />, "signup-role": <SignupRole go={go} />, signup: <SignupForm role={role} go={go} />, verify: <Verify role={role} go={go} />,
-    login: <Login go={go} />,
-    dash: <Dash go={go} />, join: <Join go={go} />,
-    "prof-0": <Prof0 go={go} />, "prof-1": <Prof1 go={go} />, "prof-2": <Prof2 go={go} />, "prof-3": <Prof3 go={go} />, "prof-done": <ProfDone go={go} />,
-    "ta-dash": <TADash go={go} />, "ta-create": <TACreate go={go} />,
+    landing: <Landing go={go} />, "signup-role": <SignupRole go={go} />, signup: <SignupForm role={role} go={go} onSetName={setUserName} onSetEmail={setUserEmail} />, verify: <Verify role={role} go={go} userEmail={userEmail} />,
+    login: <Login go={go} onLogin={() => go(hasJoinedCourse ? "dash" : "dash-empty")} showToast={showToast} />,
+    "dash-empty": <DashEmpty go={go} />, dash: <Dash go={go} userName={userName} />, join: <Join go={go} />,
+    "prof-0": <Prof0 go={go} initialName={userName} onSaveName={setUserName} />, "prof-1": <Prof1 go={go} />, "prof-2": <Prof2 go={go} />, "prof-3": <Prof3 go={go} />, "prof-done": <ProfDone go={go} onJoinCourse={() => setHasJoinedCourse(true)} />,
+    "ta-dash-empty": <TADashEmpty go={go} />, "ta-dash": <TADash go={go} />, "ta-course-dash": <TACourseDash go={go} showToast={showToast} />, "ta-create": <TACreate go={go} onCreateCourse={() => setHasCreatedCourse(true)} showToast={showToast} />,
     board: <Discovery go={go} onSelectStudent={(name) => {
       const cs = contactStatuses[name];
       if (cs === "replied") { go("chats"); return; }
       setSelectedStudent(name); setPanelMode("view");
-    }} urgentMode={isUrgent} onSelectGroup={setSelectedGroup} appliedGroups={appliedGroups} contactStatuses={contactStatuses} onContactStatusChange={updateContactStatus} onOpenChat={(name) => { void name; go("chats"); }} />,
-    chats: <ChatsPage go={go} conversations={DEMO_CONVERSATIONS} contactStatuses={contactStatuses} onContactStatusChange={updateContactStatus} onAccept={(name) => { updateContactStatus(name, "accepted"); setStudentStatus("open-group"); }} />,
+    }} urgentMode={isUrgent} onSelectGroup={setSelectedGroup} appliedGroups={appliedGroups} contactStatuses={contactStatuses} onContactStatusChange={updateContactStatus} onOpenChat={(name) => openChatWith(name)} />,
+    chats: <ChatsPage go={go} conversations={conversations} contactStatuses={contactStatuses} onContactStatusChange={updateContactStatus} onAccept={(name) => { updateContactStatus(name, "accepted"); setStudentStatus("open-group"); }} msgs={chatMsgs} onMsgsChange={setChatMsgs} initialSelectedConv={initialSelectedConv} onClearInitialConv={() => setInitialSelectedConv(null)} reactions={chatReactions} onReactionsChange={setChatReactions} onUpdateConvStatus={(name, status) => setConversations(prev => prev.map(c => c.targetName === name ? { ...c, status: status as Conversation["status"] } : c))} onMarkRead={(name) => setConversations(prev => prev.map(c => c.targetName === name ? { ...c, unread: false } : c))} />,
     sent: <Sent go={go} targetName={sentTarget} />,
-    mygroup: <MyGroup go={go} studentStatus={studentStatus} onAcceptRequest={() => setStudentStatus("open-group")} onLeaveGroup={() => setStudentStatus("solo")} onOpenChat={(name) => setChatTarget(name)} />,
-    urgent: <Urgent go={go} />, email: <EmailMock go={go} />,
-    "profile-edit": <ProfileEdit go={go} />,
+    mygroup: <MyGroup go={go} studentStatus={studentStatus} onAcceptRequest={() => setStudentStatus("open-group")} onLeaveGroup={() => setStudentStatus("solo")} onOpenChat={(name) => openChatWith(name)} />,
+    urgent: <Urgent go={go} />,
+    "profile-edit": <ProfileEdit go={go} showToast={showToast} />,
   };
 
   const nav = [
     { g: "Onboard", p: ["landing", "login", "signup-role", "signup", "verify"] },
-    { g: "Student", p: ["dash", "join", "prof-0", "prof-1", "prof-2", "prof-3", "prof-done"] },
+    { g: "Student", p: ["dash-empty", "dash", "join", "prof-0", "prof-1", "prof-2", "prof-3", "prof-done"] },
     { g: "Board", p: ["board", "sent", "profile-edit"] },
-    { g: "Social", p: ["mygroup", "urgent", "email", "chats"] },
-    { g: "TA", p: ["ta-dash", "ta-create"] },
+    { g: "Social", p: ["mygroup", "urgent", "chats"] },
+    { g: "TA", p: ["ta-dash-empty", "ta-dash", "ta-course-dash", "ta-create"] },
   ];
 
   // demo status switcher
@@ -4055,7 +4291,7 @@ export default function Unitor() {
       <Nav go={go} activePage={pg} studentStatus={studentStatus} notifications={notifications} onNotificationClick={handleNotificationClick} onMarkAllRead={handleMarkAllRead} />
     )}
     <div className="flex-1 overflow-y-auto">
-    {P[pg]}
+      {P[pg]}
     </div>
 
     <SlidePanel
@@ -4072,6 +4308,7 @@ export default function Unitor() {
           onApplied={(id) => {
             setAppliedGroups(prev => ({ ...prev, [id]: "applied" }));
           }}
+          onOpenChat={(name) => { setSelectedGroup(null); openChatWith(name); }}
         />
       )}
     </SlidePanel>
@@ -4082,7 +4319,7 @@ export default function Unitor() {
       title={panelMode === "received-request" ? "Group Request" : "Student Profile"}
     >
       {selectedStudent && panelMode === "view" && (
-        <ProfilePanelContent studentName={selectedStudent} go={go} onClose={() => setSelectedStudent(null)} onContactStatusChange={updateContactStatus} urgentMode={isUrgent} contactStatus={contactStatuses[selectedStudent] ?? "none"} />
+        <ProfilePanelContent studentName={selectedStudent} go={go} onClose={() => setSelectedStudent(null)} onContactStatusChange={updateContactStatus} urgentMode={isUrgent} contactStatus={contactStatuses[selectedStudent] ?? "none"} onOpenChat={(name) => { setSelectedStudent(null); openChatWith(name); }} onSelectGroup={(id) => { setSelectedStudent(null); setSelectedGroup(id); }} />
       )}
       {selectedStudent && panelMode === "received-request" && (
         <ReceivedRequestPanel
@@ -4103,26 +4340,36 @@ export default function Unitor() {
       )}
     </SlidePanel>
 
-    <ChatPanel open={chatTarget !== null} onClose={() => setChatTarget(null)} targetName={chatTarget ?? ""} />
+    <ToastContainer toasts={toasts} onRemove={removeToast} />
 
-    {/* Demo controls */}
-    <div className="shrink-0 bg-card border-t border-border py-2 px-4 flex gap-4 items-center overflow-x-auto">
-      {/* Status demo toggle */}
-      <div className="flex items-center gap-[3px] border-r border-gray-200 pr-3 mr-1">
-        <span className="text-[9px] text-gray-400 font-bold uppercase mr-[3px]">Status</span>
-        {statusCycle.map(s => (
-          <button key={s} onClick={() => setStudentStatus(s)} className={cn("py-[3px] px-[7px] text-[10px] rounded-[3px] cursor-pointer font-mono border", studentStatus === s ? "border-[1.5px] border-primary bg-primary text-primary-foreground" : "border-gray-200 bg-card text-gray-500")}>{s}</button>
-        ))}
+    {/* Demo controls — 2 rows */}
+    {showDemoBar && (
+      <div className="shrink-0 bg-card border-t border-border py-1.5 px-4 flex flex-col gap-1">
+        <div className="flex gap-3 items-center flex-wrap">
+          <div className="flex items-center gap-[3px] border-r border-gray-200 pr-3">
+            <span className="text-[9px] text-gray-400 font-bold uppercase mr-[3px]">Status</span>
+            {statusCycle.map(s => (
+              <button key={s} onClick={() => setStudentStatus(s)} className={cn("py-[3px] px-[7px] text-[10px] rounded-[3px] cursor-pointer font-mono border", studentStatus === s ? "border-[1.5px] border-primary bg-primary text-primary-foreground" : "border-gray-200 bg-card text-gray-500")}>{s}</button>
+            ))}
+          </div>
+          {nav.slice(0, 3).map(n => <div key={n.g} className="flex items-center gap-[3px]">
+            <span className="text-[9px] text-gray-400 font-bold uppercase mr-[3px]">{n.g}</span>
+            {n.p.map(p => <button key={p} onClick={() => setPg(p)} className={cn("py-[3px] px-[7px] text-[10px] rounded-[3px] cursor-pointer font-mono border", pg === p ? "border-[1.5px] border-primary bg-primary text-primary-foreground" : "border-gray-200 bg-card text-gray-500")}>{p}</button>)}
+          </div>)}
+        </div>
+        <div className="flex gap-3 items-center flex-wrap">
+          {nav.slice(3).map(n => <div key={n.g} className="flex items-center gap-[3px]">
+            <span className="text-[9px] text-gray-400 font-bold uppercase mr-[3px]">{n.g}</span>
+            {n.p.map(p => <button key={p} onClick={() => setPg(p)} className={cn("py-[3px] px-[7px] text-[10px] rounded-[3px] cursor-pointer font-mono border", pg === p ? "border-[1.5px] border-primary bg-primary text-primary-foreground" : "border-gray-200 bg-card text-gray-500")}>{p}</button>)}
+          </div>)}
+          <div className="flex items-center gap-[3px] ml-auto">
+            <span className="text-[9px] text-gray-400 font-bold uppercase mr-[3px]">Demo</span>
+            <button onClick={() => setIsUrgent(v => !v)} className={cn("py-[3px] px-[7px] text-[10px] rounded-[3px] cursor-pointer font-mono border", isUrgent ? "border-[1.5px] border-danger bg-danger text-white" : "border-gray-200 bg-card text-gray-500")}>urgent</button>
+            <button onClick={() => updateContactStatus("Jesse Nguyen", "no-response")} className="py-[3px] px-[7px] text-[10px] rounded-[3px] cursor-pointer font-mono border border-gray-200 bg-card text-gray-500">no-resp</button>
+            <button onClick={() => { clearAllLocalStorage(); window.location.reload(); }} className="py-[3px] px-[7px] text-[10px] rounded-[3px] cursor-pointer font-mono border border-danger bg-danger/10 text-danger font-bold">reset</button>
+          </div>
+        </div>
       </div>
-      {nav.map(n => <div key={n.g} className="flex items-center gap-[3px]">
-        <span className="text-[9px] text-gray-400 font-bold uppercase mr-[3px]">{n.g}</span>
-        {n.p.map(p => <button key={p} onClick={() => setPg(p)} className={cn("py-[3px] px-[7px] text-[10px] rounded-[3px] cursor-pointer font-mono border", pg === p ? "border-[1.5px] border-primary bg-primary text-primary-foreground" : "border-gray-200 bg-card text-gray-500")}>{p}</button>)}
-      </div>)}
-      <div className="flex items-center gap-[3px] ml-2">
-        <span className="text-[9px] text-gray-400 font-bold uppercase mr-[3px]">Demo</span>
-        <button onClick={() => setIsUrgent(v => !v)} className={cn("py-[3px] px-[7px] text-[10px] rounded-[3px] cursor-pointer font-mono border", isUrgent ? "border-[1.5px] border-danger bg-danger text-white" : "border-gray-200 bg-card text-gray-500")}>urgent</button>
-        <button onClick={() => updateContactStatus("Jesse Nguyen", "no-response")} className="py-[3px] px-[7px] text-[10px] rounded-[3px] cursor-pointer font-mono border border-gray-200 bg-card text-gray-500">no-resp</button>
-      </div>
-    </div>
+    )}
   </div>;
 }
