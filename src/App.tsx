@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 
@@ -49,6 +49,33 @@ function useLocalStorage<T>(key: string, defaultValue: T | (() => T)): [T, Dispa
   }, [fullKey, value]);
 
   return [value, setValue];
+}
+
+function getInitials(name: string): string {
+  if (!name) return "ME";
+  return name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+}
+
+const PROFILE_IMAGES = new Set([
+  "Jesse Nguyen", "Priya Sharma", "Marcus Lee", "Aisha Khan", "Tom Chen",
+  "David Park", "Lisa Wang", "Omar Ali", "Sofia Rodriguez", "Wei Zhang",
+  "Elena Popov", "Kai Tanaka", "Nina Okafor", "Liam Foster",
+]);
+
+function getProfileImageUrl(name: string): string | null {
+  if (PROFILE_IMAGES.has(name)) return `/unitor-demo/profile_images/${name}.png`;
+  return null;
+}
+
+function StudentAvatar({ name, size = "size-9", textSize = "text-[11px]" }: { name: string; size?: string; textSize?: string }) {
+  const url = getProfileImageUrl(name);
+  const init = getInitials(name);
+  return (
+    <Avatar className={size}>
+      {url && <AvatarImage src={url} alt={name} />}
+      <AvatarFallback className={cn("bg-gray-200 text-gray-500 font-bold", textSize)}>{init}</AvatarFallback>
+    </Avatar>
+  );
 }
 
 function clearAllLocalStorage() {
@@ -106,6 +133,7 @@ interface NavProps {
   onNotificationClick?: (n: AppNotification) => void;
   onMarkAllRead?: () => void;
   right?: ReactNode;
+  userName?: string;
 }
 
 interface FProps {
@@ -257,13 +285,13 @@ function NotificationBell({ notifications, onNotificationClick, onMarkAllRead }:
   );
 }
 
-const APP_PAGES = new Set(["board", "sent", "mygroup", "urgent", "profile-edit", "chats"]);
+const APP_PAGES = new Set(["board", "mygroup", "urgent", "profile-edit", "chats"]);
 const PAGE_TO_TAB: Record<string, string> = {
-  "board": "board", "sent": "board", "urgent": "board",
+  "board": "board", "urgent": "board",
   "mygroup": "mygroup", "profile-edit": "profile-edit", "chats": "chats",
 };
 
-function Nav({ go, activePage = "", studentStatus = "solo", notifications = [], onNotificationClick = () => { }, onMarkAllRead = () => { }, right }: NavProps) {
+function Nav({ go, activePage = "", studentStatus = "solo", notifications = [], onNotificationClick = () => { }, onMarkAllRead = () => { }, right, userName = "" }: NavProps) {
   const isAppPage = APP_PAGES.has(activePage);
   const [avatarOpen, setAvatarOpen] = useState(false);
 
@@ -314,7 +342,7 @@ function Nav({ go, activePage = "", studentStatus = "solo", notifications = [], 
         <div className="relative">
           {avatarOpen && <div className="fixed inset-0 z-[190]" onClick={() => setAvatarOpen(false)} />}
           <button onClick={() => setAvatarOpen(o => !o)} className="rounded-full cursor-pointer">
-            <Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-xs font-bold">JD</AvatarFallback></Avatar>
+            <Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-xs font-bold">{getInitials(userName)}</AvatarFallback></Avatar>
           </button>
           {avatarOpen && (
             <div className="absolute right-0 top-full mt-2 w-40 bg-background border border-border rounded-xl shadow-lg z-[200] overflow-hidden py-1">
@@ -702,7 +730,7 @@ interface DashProps extends GoProps {
 // Student Dashboard — With CSC318
 function Dash({ go, userName }: DashProps) {
   return <div className="bg-background min-h-screen pb-6">
-    <Nav go={go} right={<div className="flex items-center gap-4"><Button variant="outline" size="sm" className="px-4" onClick={() => go("mygroup")}>My Group</Button><span className="text-sm text-gray-600">{userName || "John"}</span><Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-[13px] font-bold">JD</AvatarFallback></Avatar></div>} />
+    <Nav go={go} right={<div className="flex items-center gap-4"><Button variant="outline" size="sm" className="px-4" onClick={() => go("mygroup")}>My Group</Button><span className="text-sm text-gray-600">{userName || "Student"}</span><Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-[13px] font-bold">{getInitials(userName)}</AvatarFallback></Avatar></div>} />
     <div className="max-w-[680px] mx-auto py-14 px-6">
       <div className="flex justify-between items-center mb-7">
         <div><div className="text-sm text-gray-500 mb-0.5">Welcome back,</div><h1 className="text-[28px] font-bold text-foreground -tracking-[0.5px]">My Courses</h1></div>
@@ -1180,7 +1208,7 @@ function TACourseDash({ go, showToast }: GoProps & { showToast?: (msg: string) =
         {filteredAdminStudents.map((st, i) => {
           const ss = SS[st.status] ?? { l: st.status, variant: "secondary" as const };
           return <Card key={i} className="p-4 mb-2.5 shadow-none flex-row items-center gap-3">
-            <Avatar className="size-9"><AvatarFallback className="bg-gray-200 text-gray-500 text-xs font-bold">{st.init}</AvatarFallback></Avatar>
+            <StudentAvatar name={st.name} size="size-9" textSize="text-xs" />
             <div className="flex-1">
               <div className="flex justify-between">
                 <span className="text-sm font-semibold">{st.name}</span>
@@ -1214,7 +1242,7 @@ function TACourseDash({ go, showToast }: GoProps & { showToast?: (msg: string) =
         {ADMIN_DATA.atRisk.map((st, i) => (
           <Card key={i} className="p-5 mb-3 gap-0 shadow-none">
             <div className="flex items-center gap-3 mb-3">
-              <Avatar className="size-10"><AvatarFallback className="bg-gray-200 text-gray-500 text-sm font-bold">{st.init}</AvatarFallback></Avatar>
+              <StudentAvatar name={st.name} size="size-10" textSize="text-sm" />
               <div className="flex-1">
                 <div className="text-sm font-semibold">{st.name}</div>
                 <div className="text-xs text-gray-500">Section {st.sec} · Last active {st.daysSinceActivity} days ago</div>
@@ -1307,18 +1335,23 @@ function TACreate({ go, onCreateCourse, showToast }: GoProps & { onCreateCourse:
 const STU: Student[] = [
   { name: "Jesse Nguyen", sec: "202", skills: ["Frontend Dev", "Prototyping"], status: "solo", contactStatus: "none", overlap: "8h/wk", init: "JN", bio: "Love building things. Looking for a design-focused team.", rat: { "Frontend Dev": "Proficient", "Prototyping": "Expert" }, lastActive: "5 min ago", compatScore: 87, scheduleOverlapHrs: 8 },
   { name: "Priya Sharma", sec: "201", skills: ["Backend", "Data Analysis"], status: "solo", contactStatus: "none", overlap: "0h/wk", init: "PS", bio: "Data nerd. Prefer async work.", rat: { "Backend": "Proficient", "Data Analysis": "Expert" }, lastActive: "8 days ago", compatScore: 41, scheduleOverlapHrs: 0 },
-  { name: "Marcus Lee", sec: "201", skills: ["UI Design", "Frontend Dev"], status: "open-group", contactStatus: "none", overlap: "5h/wk", init: "ML", bio: "Design + code. Currently forming a group.", rat: { "UI Design": "Proficient", "Frontend Dev": "Intermediate" }, lastActive: "20 min ago", compatScore: 72, scheduleOverlapHrs: 5 },
-  { name: "Aisha Khan", sec: "203", skills: ["Project Mgmt", "UX Writing"], status: "solo", contactStatus: "none", overlap: "3h/wk", init: "AK", bio: "Organized and reliable.", rat: { "Project Mgmt": "Expert", "UX Writing": "Proficient" }, lastActive: "1 hour ago", compatScore: 65, scheduleOverlapHrs: 3 },
+  { name: "Marcus Lee", sec: "201", skills: ["UI Design", "Frontend Dev"], status: "open-group", contactStatus: "accepted", overlap: "5h/wk", init: "ML", bio: "Design + code. Currently forming a group.", rat: { "UI Design": "Proficient", "Frontend Dev": "Intermediate" }, lastActive: "20 min ago", compatScore: 72, scheduleOverlapHrs: 5 },
+  { name: "Aisha Khan", sec: "203", skills: ["Project Mgmt", "UX Writing"], status: "open-group", contactStatus: "none", overlap: "3h/wk", init: "AK", bio: "Organized and reliable. Leading a group focused on accessibility — looking for more members.", rat: { "Project Mgmt": "Expert", "UX Writing": "Proficient" }, lastActive: "1 hour ago", compatScore: 65, scheduleOverlapHrs: 3 },
   { name: "Tom Chen", sec: "201", skills: ["Backend", "Prototyping"], status: "closed", contactStatus: "none", overlap: "—", init: "TC", bio: "Backend dev and creative prototyper.", rat: { "Backend": "Intermediate", "Prototyping": "Proficient" }, lastActive: "2 days ago", compatScore: 0, scheduleOverlapHrs: 0 },
   { name: "David Park", sec: "202", skills: ["Backend", "Data Analysis"], status: "solo", contactStatus: "none", overlap: "6h/wk", init: "DP", bio: "Full-stack developer interested in data-driven projects.", rat: { "Backend": "Expert", "Data Analysis": "Proficient" }, lastActive: "15 min ago", compatScore: 76, scheduleOverlapHrs: 6 },
   { name: "Lisa Wang", sec: "201", skills: ["Frontend Dev", "UX Writing"], status: "solo", contactStatus: "none", overlap: "4h/wk", init: "LW", bio: "I bridge the gap between design and development.", rat: { "Frontend Dev": "Proficient", "UX Writing": "Intermediate" }, lastActive: "2 hours ago", compatScore: 68, scheduleOverlapHrs: 4 },
   { name: "Omar Ali", sec: "203", skills: ["Project Mgmt"], status: "solo", contactStatus: "none", overlap: "2h/wk", init: "OA", bio: "Experienced PM looking for a motivated team.", rat: { "Project Mgmt": "Expert" }, lastActive: "5 days ago", compatScore: 52, scheduleOverlapHrs: 2 },
-  { name: "Sofia Rodriguez", sec: "202", skills: ["UI Design", "User Research"], status: "open-group", contactStatus: "none", overlap: "7h/wk", init: "SR", bio: "UX researcher passionate about accessible design.", rat: { "UI Design": "Intermediate", "User Research": "Expert" }, lastActive: "10 min ago", compatScore: 81, scheduleOverlapHrs: 7 },
+  { name: "Sofia Rodriguez", sec: "202", skills: ["UI Design", "User Research"], status: "open-group", contactStatus: "accepted", overlap: "7h/wk", init: "SR", bio: "UX researcher passionate about accessible design.", rat: { "UI Design": "Intermediate", "User Research": "Expert" }, lastActive: "10 min ago", compatScore: 81, scheduleOverlapHrs: 7 },
   { name: "Wei Zhang", sec: "202", skills: ["Frontend Dev", "Backend"], status: "solo", contactStatus: "none", overlap: "9h/wk", init: "WZ", bio: "Full-stack dev. Strong in React and Node.", rat: { "Frontend Dev": "Expert", "Backend": "Proficient" }, lastActive: "12 days ago", compatScore: 79, scheduleOverlapHrs: 9 },
   { name: "Elena Popov", sec: "203", skills: ["Data Analysis", "UX Writing"], status: "solo", contactStatus: "none", overlap: "5h/wk", init: "EP", bio: "Research-oriented. Love working with data.", rat: { "Data Analysis": "Expert", "UX Writing": "Intermediate" }, lastActive: "30 min ago", compatScore: 63, scheduleOverlapHrs: 5 },
   { name: "Nadia Kim", sec: "202", skills: ["UX Writing", "User Research"], status: "open-group", contactStatus: "none", overlap: "6h/wk", init: "NK", bio: "UX writer building a team around accessibility.", rat: { "UX Writing": "Expert", "User Research": "Proficient" }, lastActive: "25 min ago", compatScore: 74, scheduleOverlapHrs: 6 },
   { name: "Ben Okafor", sec: "203", skills: ["Backend", "Project Mgmt"], status: "closed", contactStatus: "none", overlap: "—", init: "BO", bio: "Systems thinker and natural team organizer.", rat: { "Backend": "Expert", "Project Mgmt": "Proficient" }, lastActive: "4 days ago", compatScore: 0, scheduleOverlapHrs: 0 },
   { name: "Kai Tanaka", sec: "201", skills: ["Prototyping", "UI Design"], status: "closed", contactStatus: "none", overlap: "—", init: "KT", bio: "Figma wizard.", rat: { "Prototyping": "Expert", "UI Design": "Proficient" }, lastActive: "3 days ago", compatScore: 0, scheduleOverlapHrs: 0 },
+  { name: "Nina Okafor", sec: "201", skills: ["User Research", "Data Analysis"], status: "solo", contactStatus: "none", overlap: "7h/wk", init: "NO", bio: "Research-driven designer. I love digging into user data to find insights.", rat: { "User Research": "Expert", "Data Analysis": "Proficient" }, lastActive: "15 min ago", compatScore: 83, scheduleOverlapHrs: 7 },
+  { name: "Liam Foster", sec: "202", skills: ["Backend", "Project Mgmt"], status: "open-group", contactStatus: "none", overlap: "5h/wk", init: "LF", bio: "Backend dev and team organizer. Forming a group focused on scalable systems.", rat: { "Backend": "Expert", "Project Mgmt": "Intermediate" }, lastActive: "30 min ago", compatScore: 70, scheduleOverlapHrs: 5 },
+  { name: "Yuki Sato", sec: "203", skills: ["Frontend Dev", "UI Design"], status: "open-group", contactStatus: "none", overlap: "6h/wk", init: "YS", bio: "Frontend specialist with a strong eye for design. In Liam's group.", rat: { "Frontend Dev": "Expert", "UI Design": "Intermediate" }, lastActive: "45 min ago", compatScore: 66, scheduleOverlapHrs: 6 },
+  { name: "Amara Diallo", sec: "201", skills: ["Prototyping", "User Research"], status: "solo", contactStatus: "none", overlap: "8h/wk", init: "AD", bio: "Rapid prototyper who loves talking to users. Looking for a collaborative team.", rat: { "Prototyping": "Proficient", "User Research": "Expert" }, lastActive: "5 min ago", compatScore: 78, scheduleOverlapHrs: 8 },
+  { name: "Ryan Mitchell", sec: "202", skills: ["Data Analysis", "Backend"], status: "solo", contactStatus: "none", overlap: "3h/wk", init: "RM", bio: "Data science background. Prefer structured, deadline-driven teams.", rat: { "Data Analysis": "Expert", "Backend": "Intermediate" }, lastActive: "1 hour ago", compatScore: 58, scheduleOverlapHrs: 3 },
 ];
 const SS: Record<string, StatusInfo> = {
   solo: { l: "Solo", variant: "success" },
@@ -1450,6 +1483,61 @@ const COMPAT: Record<string, CompatibilityBreakdown> = {
       { skill: "Prototyping", coveredBy: "gap" }, { skill: "Project Mgmt", coveredBy: "gap" },
     ],
   },
+  "Nina Okafor": {
+    overall: 83, scheduleScore: 85, skillScore: 90, workStyleScore: 78,
+    matchReasons: ["Strong schedule overlap (7h/wk)", "Research + Data Analysis fills key gaps", "Similar work style"],
+    warnings: [],
+    skillComplementarity: [
+      { skill: "UI Design", coveredBy: "you" }, { skill: "User Research", coveredBy: "both" },
+      { skill: "Data Analysis", coveredBy: "them" }, { skill: "Frontend Dev", coveredBy: "gap" },
+      { skill: "Backend", coveredBy: "gap" }, { skill: "Prototyping", coveredBy: "gap" },
+      { skill: "UX Writing", coveredBy: "gap" }, { skill: "Project Mgmt", coveredBy: "gap" },
+    ],
+  },
+  "Liam Foster": {
+    overall: 70, scheduleScore: 65, skillScore: 85, workStyleScore: 56,
+    matchReasons: ["Backend + PM fills major team gaps"],
+    warnings: ["Different meeting style (in-person vs online)", "Already forming a group"],
+    skillComplementarity: [
+      { skill: "UI Design", coveredBy: "you" }, { skill: "User Research", coveredBy: "you" },
+      { skill: "Backend", coveredBy: "them" }, { skill: "Project Mgmt", coveredBy: "them" },
+      { skill: "Frontend Dev", coveredBy: "gap" }, { skill: "Data Analysis", coveredBy: "gap" },
+      { skill: "UX Writing", coveredBy: "gap" }, { skill: "Prototyping", coveredBy: "gap" },
+    ],
+  },
+  "Yuki Sato": {
+    overall: 66, scheduleScore: 70, skillScore: 60, workStyleScore: 67,
+    matchReasons: ["Good schedule overlap (6h/wk)"],
+    warnings: ["Overlapping skills — both do UI Design", "Already in a forming group"],
+    skillComplementarity: [
+      { skill: "UI Design", coveredBy: "both" }, { skill: "User Research", coveredBy: "you" },
+      { skill: "Frontend Dev", coveredBy: "them" }, { skill: "Backend", coveredBy: "gap" },
+      { skill: "Data Analysis", coveredBy: "gap" }, { skill: "UX Writing", coveredBy: "gap" },
+      { skill: "Prototyping", coveredBy: "gap" }, { skill: "Project Mgmt", coveredBy: "gap" },
+    ],
+  },
+  "Amara Diallo": {
+    overall: 78, scheduleScore: 90, skillScore: 80, workStyleScore: 67,
+    matchReasons: ["Excellent schedule overlap (8h/wk)", "Prototyping + Research complement design skills"],
+    warnings: ["Different communication tool (Discord vs WhatsApp)"],
+    skillComplementarity: [
+      { skill: "UI Design", coveredBy: "you" }, { skill: "User Research", coveredBy: "both" },
+      { skill: "Prototyping", coveredBy: "them" }, { skill: "Frontend Dev", coveredBy: "gap" },
+      { skill: "Backend", coveredBy: "gap" }, { skill: "Data Analysis", coveredBy: "gap" },
+      { skill: "UX Writing", coveredBy: "gap" }, { skill: "Project Mgmt", coveredBy: "gap" },
+    ],
+  },
+  "Ryan Mitchell": {
+    overall: 58, scheduleScore: 40, skillScore: 85, workStyleScore: 44,
+    matchReasons: ["Data Analysis + Backend fills technical gaps"],
+    warnings: ["Limited schedule overlap (3h/wk)", "Different meeting frequency (2x vs as-needed)", "Different meeting style"],
+    skillComplementarity: [
+      { skill: "UI Design", coveredBy: "you" }, { skill: "User Research", coveredBy: "you" },
+      { skill: "Data Analysis", coveredBy: "them" }, { skill: "Backend", coveredBy: "them" },
+      { skill: "Frontend Dev", coveredBy: "gap" }, { skill: "Prototyping", coveredBy: "gap" },
+      { skill: "UX Writing", coveredBy: "gap" }, { skill: "Project Mgmt", coveredBy: "gap" },
+    ],
+  },
 };
 
 const PROFILE_TIERS = {
@@ -1469,6 +1557,11 @@ const SCHEDULE_DATA: Record<string, { my: Set<string>; theirs: Set<string>; over
   "Wei Zhang": { my: new Set(["Mon-1", "Wed-1", "Fri-1"]), theirs: new Set(["Mon-1", "Tue-1", "Wed-1", "Thu-1", "Fri-1"]), overlapHrs: 9 },
   "Elena Popov": { my: new Set(["Mon-1", "Wed-1", "Fri-1"]), theirs: new Set(["Mon-0", "Wed-1", "Fri-1"]), overlapHrs: 5 },
   "Nadia Kim": { my: new Set(["Mon-1", "Wed-1", "Fri-1"]), theirs: new Set(["Mon-1", "Wed-1", "Fri-2"]), overlapHrs: 6 },
+  "Nina Okafor": { my: new Set(["Mon-1", "Wed-1", "Fri-1"]), theirs: new Set(["Mon-1", "Tue-1", "Wed-1", "Fri-1"]), overlapHrs: 7 },
+  "Liam Foster": { my: new Set(["Mon-1", "Wed-1", "Fri-1"]), theirs: new Set(["Mon-1", "Wed-2", "Fri-1"]), overlapHrs: 5 },
+  "Yuki Sato": { my: new Set(["Mon-1", "Wed-1", "Fri-1"]), theirs: new Set(["Mon-1", "Wed-1", "Thu-1"]), overlapHrs: 6 },
+  "Amara Diallo": { my: new Set(["Mon-1", "Wed-1", "Fri-1"]), theirs: new Set(["Mon-1", "Tue-1", "Wed-1", "Thu-1", "Fri-1"]), overlapHrs: 8 },
+  "Ryan Mitchell": { my: new Set(["Mon-1", "Wed-1", "Fri-1"]), theirs: new Set(["Tue-2", "Thu-2", "Fri-1"]), overlapHrs: 3 },
 };
 
 const WORK_STYLE_DATA: Record<string, [string, string, string, boolean][]> = {
@@ -1482,6 +1575,11 @@ const WORK_STYLE_DATA: Record<string, [string, string, string, boolean][]> = {
   "Wei Zhang": [["Meeting frequency", "2x/wk", "2x/wk", true], ["Meeting style", "In-person", "Hybrid", false], ["Communication", "Discord", "Discord", true]],
   "Elena Popov": [["Meeting frequency", "2x/wk", "3x/wk", false], ["Meeting style", "In-person", "In-person", true], ["Communication", "Discord", "Slack", false]],
   "Nadia Kim": [["Meeting frequency", "2x/wk", "2x/wk", true], ["Meeting style", "In-person", "In-person", true], ["Communication", "Discord", "Slack", false]],
+  "Nina Okafor": [["Meeting frequency", "2x/wk", "2x/wk", true], ["Meeting style", "In-person", "In-person", true], ["Communication", "Discord", "WhatsApp", false]],
+  "Liam Foster": [["Meeting frequency", "2x/wk", "2x/wk", true], ["Meeting style", "In-person", "Online", false], ["Communication", "Discord", "Discord", true]],
+  "Yuki Sato": [["Meeting frequency", "2x/wk", "2x/wk", true], ["Meeting style", "In-person", "Hybrid", false], ["Communication", "Discord", "Discord", true]],
+  "Amara Diallo": [["Meeting frequency", "2x/wk", "2x/wk", true], ["Meeting style", "In-person", "In-person", true], ["Communication", "Discord", "WhatsApp", false]],
+  "Ryan Mitchell": [["Meeting frequency", "2x/wk", "As needed", false], ["Meeting style", "In-person", "Online", false], ["Communication", "Discord", "Slack", false]],
 };
 
 const DEADLINE_CONFIG = {
@@ -1529,32 +1627,30 @@ interface Conversation {
 
 const DEMO_CONVERSATIONS: Conversation[] = [
   {
-    id: "conv-group", targetName: "CSC318 Group", targetInit: "G", type: "group-chat", status: "active", lastMessage: "Aisha: I set up the shared doc", timestamp: "10m ago", unread: true, isGroup: true, groupMembers: [
-      { name: "Jesse Nguyen", init: "JN" },
-      { name: "Aisha Khan", init: "AK" },
-      { name: "David Park", init: "DP" },
+    id: "conv-group", targetName: "CSC318 Group", targetInit: "G", type: "group-chat", status: "active", lastMessage: "Sofia: Let's meet Thursday!", timestamp: "10m ago", unread: true, isGroup: true, groupMembers: [
+      { name: "Marcus Lee", init: "ML" },
+      { name: "Sofia Rodriguez", init: "SR" },
     ]
   },
-  { id: "conv-1", targetName: "David Park", targetInit: "DP", type: "request-sent", status: "replied", lastMessage: "Sounds great! When are you free this week?", timestamp: "2h ago", unread: true },
-  { id: "conv-2", targetName: "Priya Sharma", targetInit: "PS", type: "application-received", status: "pending", lastMessage: "I applied to your group.", timestamp: "15m ago", unread: true },
-  { id: "conv-3", targetName: "Jesse Nguyen", targetInit: "JN", type: "request-received", status: "accepted", lastMessage: "Welcome to the team!", timestamp: "1d ago", unread: false },
-  { id: "conv-4", targetName: "Aisha Khan", targetInit: "AK", type: "request-sent", status: "pending", lastMessage: "Sent a group request.", timestamp: "3h ago", unread: false },
-  { id: "conv-5", targetName: "Wei Zhang", targetInit: "WZ", type: "request-sent", status: "declined", lastMessage: "Sorry, I found another group.", timestamp: "2d ago", unread: false },
+  { id: "conv-1", targetName: "Marcus Lee", targetInit: "ML", type: "request-sent", status: "accepted", lastMessage: "Welcome to the group!", timestamp: "2d ago", unread: false },
+  { id: "conv-2", targetName: "Sofia Rodriguez", targetInit: "SR", type: "request-received", status: "accepted", lastMessage: "Excited to work together!", timestamp: "1d ago", unread: false },
+  { id: "conv-3", targetName: "David Park", targetInit: "DP", type: "request-sent", status: "replied", lastMessage: "Sounds great! When are you free?", timestamp: "2h ago", unread: true },
+  { id: "conv-4", targetName: "Wei Zhang", targetInit: "WZ", type: "request-sent", status: "declined", lastMessage: "Sorry, I found another group.", timestamp: "2d ago", unread: false },
 ];
 
 const FORMING_GROUPS: FormingGroup[] = [
   {
     id: "group-alpha",
-    leaderName: "Jesse Nguyen",
-    leaderInit: "JN",
-    section: "201",
+    leaderName: "Aisha Khan",
+    leaderInit: "AK",
+    section: "203",
     members: [
-      { name: "Jesse Nguyen", init: "JN", skills: ["Frontend Dev", "Prototyping"] },
       { name: "Aisha Khan", init: "AK", skills: ["Project Mgmt", "UX Writing"] },
+      { name: "Nadia Kim", init: "NK", skills: ["UX Writing", "User Research"] },
     ],
     maxSize: 5,
-    neededSkills: ["Backend", "Data Analysis", "UI Design"],
-    description: "Building an accessibility-focused study app. Looking for someone strong in backend or data.",
+    neededSkills: ["Backend", "Frontend Dev", "Data Analysis"],
+    description: "Building an accessibility-focused study app. Looking for someone strong in backend or frontend dev.",
     applicationQuestions: [
       "What skills can you contribute?",
       "What role do you want?",
@@ -1578,6 +1674,24 @@ const FORMING_GROUPS: FormingGroup[] = [
       "What skills can you contribute?",
       "What role do you want?",
       "When are you free to work?",
+    ],
+  },
+  {
+    id: "group-gamma",
+    leaderName: "Liam Foster",
+    leaderInit: "LF",
+    section: "202",
+    members: [
+      { name: "Liam Foster", init: "LF", skills: ["Backend", "Project Mgmt"] },
+      { name: "Yuki Sato", init: "YS", skills: ["Frontend Dev", "UI Design"] },
+    ],
+    maxSize: 5,
+    neededSkills: ["User Research", "Data Analysis", "UX Writing"],
+    description: "Building a scalable group-matching tool. Strong dev team — need research and design skills.",
+    applicationQuestions: [
+      "What research or design experience do you have?",
+      "How do you approach user testing?",
+      "What's your availability like?",
     ],
   },
 ];
@@ -1763,9 +1877,10 @@ interface GroupDetailPanelProps extends GoProps {
   onClose: () => void;
   onApplied: (groupId: string) => void;
   onOpenChat?: (name: string) => void;
+  onBack?: () => void;
 }
 
-function GroupDetailPanel({ groupId, onClose, onApplied, onOpenChat }: GroupDetailPanelProps) {
+function GroupDetailPanel({ groupId, onClose, onApplied, onOpenChat, onBack }: GroupDetailPanelProps) {
   const group = FORMING_GROUPS.find(g => g.id === groupId)!;
   const [submitted, setSubmitted] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -1787,6 +1902,9 @@ function GroupDetailPanel({ groupId, onClose, onApplied, onOpenChat }: GroupDeta
   return (
     <>
       <div className="p-6">
+        {onBack && (
+          <button onClick={onBack} className="text-[13px] text-gray-500 hover:text-gray-700 mb-3 cursor-pointer">← Back to profile</button>
+        )}
         <div className="mb-5">
           <div className="text-lg font-bold mb-1">{group.leaderName}'s Group</div>
           <div className="text-xs text-gray-500 mb-3">Section {group.section} · {group.members.length}/{group.maxSize} members</div>
@@ -1800,7 +1918,7 @@ function GroupDetailPanel({ groupId, onClose, onApplied, onOpenChat }: GroupDeta
           <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2 block">Members</Label>
           {group.members.map((m, i) => (
             <div key={i} className="flex items-center gap-2 mb-2">
-              <Avatar className="size-7"><AvatarFallback className="text-xs bg-gray-200">{m.init}</AvatarFallback></Avatar>
+              <StudentAvatar name={m.name} size="size-7" textSize="text-xs" />
               <span className="text-[12px] font-medium">{m.name}</span>
               <div className="flex gap-1 ml-auto">
                 {m.skills.map(sk => (
@@ -2013,6 +2131,8 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
 
   const filteredStudents = STU.filter(st => {
     if (st.status === "closed") return false;
+    const cs = contactStatuses[st.name] || "none";
+    if (cs === "accepted") return false;
     if (secFilter !== "all" && st.sec !== secFilter) return false;
     if (skillFilter !== "any") {
       const target = skillFilter === "frontend" ? "Frontend Dev" : skillFilter === "backend" ? "Backend" : skillFilter === "ui" ? "UI Design" : skillFilter === "research" ? "User Research" : skillFilter === "proto" ? "Prototyping" : skillFilter === "data" ? "Data Analysis" : skillFilter === "ux" ? "UX Writing" : "Project Mgmt";
@@ -2315,9 +2435,12 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
                   )}
                   onClick={() => !hiddenStudents.has(st.name) && onSelectStudent(st.name)}
                 >
-                  {/* Row 1: Name + Actions */}
-                  <div className="flex items-start justify-between mb-1.5">
-                    <span className="text-[15px] font-semibold text-[#111827] leading-snug">{st.name}</span>
+                  {/* Row 1: Avatar + Name + Actions */}
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2.5">
+                      <StudentAvatar name={st.name} size="size-9" textSize="text-[11px]" />
+                      <span className="text-[15px] font-semibold text-[#111827] leading-snug">{st.name}</span>
+                    </div>
                     <div className="flex gap-1 ml-2 shrink-0 items-center pointer-events-auto relative z-10">
                       <button onClick={(e) => { e.stopPropagation(); toggleStar(st.name); }}
                         className="p-0.5 rounded transition-colors cursor-pointer" aria-label="Toggle favorite">
@@ -2334,14 +2457,19 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
                     </div>
                   </div>
 
-                  {/* Row 2: Status + Section */}
-                  <div className="flex items-center gap-2 mb-2.5">
+                  {/* Row 2: Status + Contact Status + Section */}
+                  <div className="flex items-center gap-1.5 mb-2.5">
                     <span className={cn(
                       "inline-flex items-center justify-center h-[22px] px-2 rounded-[12px] leading-none text-[11px] font-medium",
                       st.status === "solo" ? "bg-[#DCFCE7] text-[#166534]" : "bg-[#FEF3C7] text-[#92400E]"
                     )}>
                       {st.status === "solo" ? "Solo" : "Open Group"}
                     </span>
+                    {cs && cs !== "none" && CONTACT_STATUS_LABELS[cs] && (
+                      <span className={cn("inline-flex items-center justify-center h-[22px] px-2 rounded-[12px] leading-none text-[11px] font-medium", CONTACT_STATUS_LABELS[cs].cls)}>
+                        {CONTACT_STATUS_LABELS[cs].l}
+                      </span>
+                    )}
                     <span className="text-[12px] text-[#6B7280]">{st.sec}</span>
                     {isRecentlyActive(st.lastActive) && <span className="w-1.5 h-1.5 rounded-full bg-green-400 ml-auto" />}
                   </div>
@@ -2376,14 +2504,6 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
                     </div>
                   </div>
 
-                  {/* Row 5: Contact Status (conditional) */}
-                  {cs && cs !== "none" && CONTACT_STATUS_LABELS[cs] && (
-                    <div className="mt-2 pt-2 border-t border-[#F3F4F6]">
-                      <span className={cn("inline-flex items-center justify-center h-[22px] px-2 rounded-[12px] leading-none text-[11px] font-medium", CONTACT_STATUS_LABELS[cs].cls)}>
-                        {CONTACT_STATUS_LABELS[cs].l}
-                      </span>
-                    </div>
-                  )}
                 </Card>
               );
             })}
@@ -2395,11 +2515,11 @@ function Discovery({ go, onSelectStudent, urgentMode = false, onSelectGroup, app
 }
 
 // FormingStudentPanel
-function FormingStudentPanel({ student, onViewGroup }: { student: Student; onViewGroup: () => void }) {
+function FormingStudentPanel({ student, onViewGroup, hasGroup = true, onChat }: { student: Student; onViewGroup: () => void; hasGroup?: boolean; onChat?: () => void }) {
   return (
     <div className="p-6">
       <div className="flex gap-4 items-center mb-5">
-        <Avatar className="size-12"><AvatarFallback className="bg-gray-200 text-gray-500 text-base font-bold">{student.init}</AvatarFallback></Avatar>
+        <StudentAvatar name={student.name} size="size-12" textSize="text-base" />
         <div className="flex-1">
           <div className="text-[18px] font-bold">{student.name}</div>
           <div className="text-sm text-gray-500">Section {student.sec}</div>
@@ -2408,9 +2528,12 @@ function FormingStudentPanel({ student, onViewGroup }: { student: Student; onVie
       </div>
       <div className="py-4 px-5 bg-gray-50 rounded-xl border border-gray-200 mb-5">
         <div className="text-[13px] font-semibold mb-1">{student.name.split(" ")[0]} is already in a formed group</div>
-        <div className="text-[12px] text-gray-600">You can’t send a direct request, but you can apply to join their group.</div>
+        <div className="text-[12px] text-gray-600">{hasGroup ? "You can’t send a direct request, but you can apply to join their group." : "You can message them to discuss joining their group."}</div>
       </div>
-      <Button className="w-full" onClick={onViewGroup}>Join Their Group →</Button>
+      <div className="flex gap-2">
+        {hasGroup && <Button className="flex-1" onClick={onViewGroup}>Join Their Group →</Button>}
+        {onChat && <Button variant="outline" className={cn("gap-1.5 border-[#9652ca] text-[#9652ca] hover:bg-[#9652ca]/5", hasGroup ? "flex-1" : "w-full")} onClick={onChat}><Icon.mailSend size={14} color="#9652ca" /> Chat</Button>}
+      </div>
     </div>
   );
 }
@@ -2448,7 +2571,7 @@ function ReceivedRequestPanel({ senderName, onClose, onAccept, onReply }: Receiv
         </div>
       </div>
       <div className="flex gap-3 items-center mb-5 pb-5 border-b border-gray-100">
-        <Avatar className="size-10"><AvatarFallback className="bg-gray-200 text-gray-500 text-sm font-bold">{sender.init}</AvatarFallback></Avatar>
+        <StudentAvatar name={sender.name} size="size-10" textSize="text-sm" />
         <div>
           <div className="text-sm font-semibold">{sender.name}</div>
           <div className="text-xs text-gray-500">Section {sender.sec} · {sender.overlap} overlap</div>
@@ -2513,9 +2636,11 @@ interface ProfilePanelProps extends GoProps {
   contactStatus?: string;
   onOpenChat?: (name: string) => void;
   onSelectGroup?: (groupId: string) => void;
+  onSendRequest?: (name: string, why: string, question: string) => void;
 }
 
-function ProfilePanelContent({ go, studentName, onClose, onContactStatusChange, urgentMode = false, contactStatus = "none", onOpenChat, onSelectGroup }: ProfilePanelProps) {
+function ProfilePanelContent({ go, studentName, onClose, onContactStatusChange, urgentMode = false, contactStatus = "none", onOpenChat, onSelectGroup: _onSelectGroup, onSendRequest }: ProfilePanelProps) {
+  const [inlineGroupId, setInlineGroupId] = useState<string | null>(null);
   const [ack, setAck] = useState(false);
   const [requestStep, setRequestStep] = useState<"view" | "confirm" | "form">("view");
   const [requestWhy, setRequestWhy] = useState("");
@@ -2529,7 +2654,7 @@ function ProfilePanelContent({ go, studentName, onClose, onContactStatusChange, 
     return (
       <div className="p-6">
         <div className="flex gap-4 items-center mb-5">
-          <Avatar className="size-12"><AvatarFallback className="bg-gray-200 text-gray-500 text-base font-bold">{st.init}</AvatarFallback></Avatar>
+          <StudentAvatar name={st.name} size="size-12" textSize="text-base" />
           <div className="flex-1">
             <div className="text-[18px] font-bold">{st.name}</div>
             <div className="text-sm text-gray-500">Section {st.sec}</div>
@@ -2546,10 +2671,28 @@ function ProfilePanelContent({ go, studentName, onClose, onContactStatusChange, 
 
   if (st.status === "open-group") {
     const studentGroup = FORMING_GROUPS.find(g => g.members.some(m => m.name === st.name) || g.leaderName === st.name);
-    return <FormingStudentPanel student={st} onViewGroup={() => {
-      onClose();
-      if (studentGroup && onSelectGroup) onSelectGroup(studentGroup.id);
-    }} />;
+
+    if (inlineGroupId) {
+      const groupExists = FORMING_GROUPS.find(g => g.id === inlineGroupId);
+      if (groupExists) {
+        return (
+          <GroupDetailPanel
+            go={go}
+            groupId={inlineGroupId}
+            onClose={onClose}
+            onApplied={() => {}}
+            onOpenChat={(name) => { onClose(); if (onOpenChat) onOpenChat(name); }}
+            onBack={() => setInlineGroupId(null)}
+          />
+        );
+      }
+    }
+
+    return <FormingStudentPanel student={st} hasGroup={!!studentGroup} onViewGroup={() => {
+      if (studentGroup) {
+        setInlineGroupId(studentGroup.id);
+      }
+    }} onChat={() => { if (onOpenChat) onOpenChat(st.name); onClose(); }} />;
   }
 
   const c = COMPAT[studentName];
@@ -2576,7 +2719,7 @@ function ProfilePanelContent({ go, studentName, onClose, onContactStatusChange, 
     <div>
       <div className="p-6 pb-2">
         <div className="flex gap-4 items-center mb-4">
-          <Avatar className="size-14"><AvatarFallback className="bg-gray-200 text-gray-500 text-lg font-bold">{st.init}</AvatarFallback></Avatar>
+          <StudentAvatar name={st.name} size="size-14" textSize="text-lg" />
           <div className="flex-1">
             <div className="text-[22px] font-bold">{st.name}</div>
             <div className="flex items-center gap-2 mt-1">
@@ -2748,7 +2891,7 @@ function ProfilePanelContent({ go, studentName, onClose, onContactStatusChange, 
                 disabled={urgentMode ? requestWhy.trim() === "" : (requestWhy.trim() === "" || requestQuestion.trim() === "")}
                 onClick={() => {
                   onContactStatusChange(studentName, "request-sent");
-                  go(sentKey);
+                  if (onSendRequest) onSendRequest(studentName, requestWhy, requestQuestion);
                   onClose();
                 }}
               >
@@ -2818,7 +2961,42 @@ const MOCK_REPLIES = [
   "I'm interested! Let me check my schedule.",
   "Thanks for reaching out! What part of the project excites you most?",
   "Sure, I think we'd work well together. Let's discuss more!",
+  "Awesome! I was hoping someone with your skills would reach out.",
+  "Let me think about it and get back to you soon!",
+  "Sounds good! Do you prefer meeting in person or online?",
+  "I'd love to chat more about this. When are you free?",
+  "Great timing — I was just looking for teammates!",
+  "That works for me! Should we set up a quick call?",
 ];
+
+const MOCK_REQUEST_REPLIES = [
+  "Thanks for the request! I've been looking at your profile and I think we'd be a great match.",
+  "Hey! I'd love to work together. Your skills really complement mine.",
+  "Interesting! Let me review your profile. What's your experience with group projects?",
+  "Thanks for reaching out! I have a few questions before I decide — when are you usually available to meet?",
+  "Hi! I like your profile. Do you have a preference for how the group communicates?",
+];
+
+const MOCK_FOLLOWUPS: Record<string, string[]> = {
+  "Jesse Nguyen": [
+    "By the way, I found a great template for our project proposal!",
+    "Also, Prof mentioned the midterm deliverable is due March 15",
+    "I just shared the Google Doc link in the group chat",
+  ],
+  "David Park": [
+    "I set up a GitHub repo for us already — I'll share the link",
+    "Quick question — do you prefer React or Vue for the frontend?",
+    "I noticed we overlap on Tuesdays and Thursdays, want to make those our meeting days?",
+  ],
+  "Priya Sharma": [
+    "I've been working on some backend prototypes, want me to share?",
+    "By the way, I have experience with the dataset from last year's course",
+  ],
+  "Aisha Khan": [
+    "I created a project timeline — want to take a look?",
+    "Should we set up a shared Notion workspace?",
+  ],
+};
 
 interface ApplicationCardProps {
   applicant: {
@@ -2840,7 +3018,7 @@ function ApplicationCard({ applicant, isLeader, onReply, onAccept }: Application
   return (
     <Card className="p-5 mb-3.5 shadow-none gap-0">
       <div className="flex items-center gap-3 mb-4">
-        <Avatar className="size-10"><AvatarFallback className="bg-gray-200 text-gray-500 text-sm font-bold">{applicant.init}</AvatarFallback></Avatar>
+        <StudentAvatar name={applicant.name} size="size-10" textSize="text-sm" />
         <div>
           <div className="text-sm font-semibold">{applicant.name}</div>
           <div className="text-xs text-gray-500">Section {applicant.sec} · {applicant.scheduleOverlap} overlap</div>
@@ -2891,32 +3069,33 @@ interface MyGroupProps extends GoProps {
   onAcceptRequest?: () => void;
   onLeaveGroup?: () => void;
   onOpenChat?: (name: string) => void;
+  userName?: string;
 }
 
-function MyGroup({ go, studentStatus = "open-group", onAcceptRequest, onLeaveGroup, onOpenChat }: MyGroupProps) {
+function MyGroup({ go, studentStatus = "open-group", onAcceptRequest, onLeaveGroup, onOpenChat, userName = "" }: MyGroupProps) {
   const [accepted, setAccepted] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [confirmStage, setConfirmStage] = useState<ConfirmStage>("idle");
   const [recruiting, setRecruiting] = useState(false);
   const membersPartial = [
-    { name: "John D.", init: "JD", skills: ["UI Design", "User Research"], role: "You", platform: "Discord", handle: "john.d" },
-    { name: "Jesse Nguyen", init: "JN", skills: ["Frontend Dev", "Prototyping"], role: "Member", platform: "Discord", handle: "jesse.dev" },
-    { name: "Aisha Khan", init: "AK", skills: ["Project Mgmt", "UX Writing"], role: "Member", platform: "WhatsApp", handle: "+1 (647) 555-0123" },
+    { name: userName || "You", init: getInitials(userName), skills: ["UI Design", "User Research"], role: "You (Leader)", platform: "Discord", handle: userName ? userName.toLowerCase().replace(/\s/g, ".") : "you" },
+    { name: "Marcus Lee", init: "ML", skills: ["UI Design", "Frontend Dev"], role: "Member", platform: "Discord", handle: "marcus.lee" },
+    { name: "Sofia Rodriguez", init: "SR", skills: ["UI Design", "User Research"], role: "Member", platform: "Discord", handle: "sofia.r" },
   ];
   const membersFull = [
     ...membersPartial,
-    { name: "Priya Sharma", init: "PS", skills: ["Backend", "Data Analysis"], role: "Member", platform: "Discord", handle: "priya.s" },
+    { name: "Lisa Wang", init: "LW", skills: ["Frontend Dev", "UX Writing"], role: "Member", platform: "Discord", handle: "lisa.wang" },
   ];
   const members = accepted ? membersFull : membersPartial;
   const pendingApplicants = accepted ? [] : [
     {
-      name: "Priya Sharma", init: "PS", sec: "201",
-      skills: ["Backend", "Data Analysis"],
-      scheduleOverlap: "6h/wk",
+      name: "Lisa Wang", init: "LW", sec: "201",
+      skills: ["Frontend Dev", "UX Writing"],
+      scheduleOverlap: "4h/wk",
       formAnswers: [
-        { q: "What skills can you contribute?", a: "Backend APIs and data pipelines." },
-        { q: "What role do you want?", a: "Backend lead." },
-        { q: "When are you free to work?", a: "Evenings and weekends." },
+        { q: "What skills can you contribute?", a: "Frontend development and UX copywriting." },
+        { q: "What role do you want?", a: "Frontend dev — I love building interactive UIs." },
+        { q: "When are you free to work?", a: "Weekday afternoons and Saturday mornings." },
       ],
       votes: { up: 1, down: 0 },
     },
@@ -3012,7 +3191,7 @@ function MyGroup({ go, studentStatus = "open-group", onAcceptRequest, onLeaveGro
 
       {members.map((m, i) => (
         <Card key={i} className="p-5 mb-3.5 shadow-none flex-row items-center gap-3.5">
-          <Avatar className="size-11"><AvatarFallback className="bg-gray-200 text-gray-500 text-sm font-bold">{m.init}</AvatarFallback></Avatar>
+          <StudentAvatar name={m.name} size="size-11" textSize="text-sm" />
           <div className="flex-1">
             <div className="flex justify-between">
               <span className="text-sm font-semibold">{m.name}</span>
@@ -3178,7 +3357,7 @@ function Urgent({ go }: GoProps) {
     { name: "Omar Ali", init: "OA", skills: ["Project Mgmt"], compat: "52%", overlap: "2h/wk" },
   ];
   const provisionalMembers = [
-    { name: "You (John D.)", init: "JD", skills: ["UI Design", "User Research"] },
+    { name: "You", init: "ME", skills: ["UI Design", "User Research"] },
     { name: "Omar Ali", init: "OA", skills: ["Project Mgmt"] },
     { name: "Wei Zhang", init: "WZ", skills: ["Frontend Dev", "Backend"] },
     { name: "Elena Popov", init: "EP", skills: ["Data Analysis", "UX Writing"] },
@@ -3220,7 +3399,7 @@ function Urgent({ go }: GoProps) {
       <h1 className="text-[28px] font-bold text-foreground mb-5 -tracking-[0.5px]">Suggested Matches</h1>
       {recs.map((r, i) => (
         <Card key={i} className="p-5 mb-3.5 shadow-none flex-row items-center gap-3.5">
-          <Avatar className="size-[46px]"><AvatarFallback className="bg-gray-200 text-gray-500 text-[15px] font-bold">{r.init}</AvatarFallback></Avatar>
+          <StudentAvatar name={r.name} size="size-[46px]" textSize="text-[15px]" />
           <div className="flex-1">
             <div className="text-[15px] font-semibold">{r.name}</div>
             <div className="flex gap-1 mt-1">{r.skills.map(sk => <span key={sk} className="py-0.5 px-2 bg-gray-100 rounded-lg text-[11px] text-gray-600">{sk}</span>)}</div>
@@ -3292,7 +3471,7 @@ function Login({ go, onLogin, showToast }: LoginProps) {
 }
 
 // Profile View + Edit
-function ProfileEdit({ go: _go, showToast }: GoProps & { showToast?: (msg: string) => void }) {
+function ProfileEdit({ go: _go, showToast, userName = "" }: GoProps & { showToast?: (msg: string) => void; userName?: string }) {
   const ALL_SKILLS = ["Frontend Dev", "Backend", "UI Design", "User Research", "Prototyping", "Data Analysis", "UX Writing", "Project Mgmt"];
   const PROFICIENCY = ["Beginner", "Intermediate", "Proficient", "Expert"];
   const [editing, setEditing] = useState(false);
@@ -3351,10 +3530,10 @@ function ProfileEdit({ go: _go, showToast }: GoProps & { showToast?: (msg: strin
         <div className="max-w-[680px] mx-auto py-10 px-6">
           <div className="flex items-center gap-4 mb-6">
             <Avatar className="size-20">
-              {photoUrl ? <img src={photoUrl} className="w-full h-full object-cover rounded-full" /> : <AvatarFallback className="bg-gray-200 text-gray-500 text-2xl font-bold">JD</AvatarFallback>}
+              {photoUrl ? <img src={photoUrl} className="w-full h-full object-cover rounded-full" /> : <AvatarFallback className="bg-gray-200 text-gray-500 text-2xl font-bold">{getInitials(userName)}</AvatarFallback>}
             </Avatar>
             <div>
-              <h1 className="text-[24px] font-bold text-foreground -tracking-[0.5px]">John Doe</h1>
+              <h1 className="text-[24px] font-bold text-foreground -tracking-[0.5px]">{userName || "Student"}</h1>
               <div className="text-[13px] text-gray-500">Section 201 · CSC318</div>
               <span className="inline-flex items-center justify-center h-[22px] px-2 rounded-[12px] leading-none text-[11px] font-medium bg-[#DCFCE7] text-[#166534] mt-1">Solo</span>
             </div>
@@ -3417,10 +3596,10 @@ function ProfileEdit({ go: _go, showToast }: GoProps & { showToast?: (msg: strin
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
             <Avatar className="size-16">
-              {photoUrl ? <img src={photoUrl} className="w-full h-full object-cover rounded-full" /> : <AvatarFallback className="bg-gray-200 text-gray-500 text-xl font-bold">JD</AvatarFallback>}
+              {photoUrl ? <img src={photoUrl} className="w-full h-full object-cover rounded-full" /> : <AvatarFallback className="bg-gray-200 text-gray-500 text-xl font-bold">{getInitials(userName)}</AvatarFallback>}
             </Avatar>
             <div>
-              <h1 className="text-[24px] font-bold text-foreground -tracking-[0.5px]">John Doe</h1>
+              <h1 className="text-[24px] font-bold text-foreground -tracking-[0.5px]">{userName || "Student"}</h1>
               <div className="text-[13px] text-gray-500">Section 201 · CSC318</div>
               <input type="file" accept="image/*" className="hidden" id="profile-photo" onChange={(e) => {
                 const file = e.target.files?.[0];
@@ -3534,6 +3713,8 @@ interface ChatsPageProps extends GoProps {
   onReactionsChange: Dispatch<SetStateAction<Record<string, string | null>>>;
   onUpdateConvStatus?: (name: string, status: string) => void;
   onMarkRead?: (name: string) => void;
+  onDeleteConversation?: (name: string) => void;
+  userName?: string;
 }
 
 type ReactionType = "check" | "thumbUp" | "heart" | "sad";
@@ -3550,7 +3731,7 @@ const REACTION_COLORS: Record<ReactionType, string> = {
   sad: "#3b82f6",
 };
 
-function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, onAccept, msgs, onMsgsChange, initialSelectedConv, onClearInitialConv, reactions: reactionsFromProps, onReactionsChange, onUpdateConvStatus, onMarkRead }: ChatsPageProps) {
+function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, onAccept, msgs, onMsgsChange, initialSelectedConv, onClearInitialConv, reactions: reactionsFromProps, onReactionsChange, onUpdateConvStatus, onMarkRead, onDeleteConversation, userName = "" }: ChatsPageProps) {
   const [selectedConv, setSelectedConv] = useState<string | null>(initialSelectedConv ?? (conversations.length > 0 ? conversations[0].targetName : null));
 
   useEffect(() => {
@@ -3566,6 +3747,7 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
   const [declineReason, setDeclineReason] = useState("");
   const [declineNote, setDeclineNote] = useState("");
   const [requestExpanded, setRequestExpanded] = useState(true);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
   const reactions = reactionsFromProps;
   const setReactions = onReactionsChange;
   const toggleReaction = (msgKey: string, type: ReactionType) => {
@@ -3586,29 +3768,76 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
   const currentMsgs = selectedConv ? (msgs[selectedConv] || []) : [];
   const isEnded = conv?.status === "accepted" || conv?.status === "declined";
 
-  const sendMsg = () => {
-    if (!input.trim() || !selectedConv) return;
+  const [typing, setTyping] = useState<string | null>(null);
+  const msgEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => { msgEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
+
+  const addReply = useCallback((convName: string, from: string, text: string) => {
+    const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     setMsgs(prev => ({
       ...prev,
-      [selectedConv]: [...(prev[selectedConv] || []), { from: "me", text: input.trim(), time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }],
+      [convName]: [...(prev[convName] || []), { from, text, time }],
+    }));
+  }, [setMsgs]);
+
+  const sendMsg = () => {
+    if (!input.trim() || !selectedConv) return;
+    const text = input.trim();
+    const convName = selectedConv;
+    const convObj = conversations.find(c => c.targetName === convName);
+    const isGroup = convObj?.isGroup;
+    setMsgs(prev => ({
+      ...prev,
+      [convName]: [...(prev[convName] || []), { from: "me", text, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }],
     }));
     setInput("");
-    // Auto-reply after 1.5s
-    if (selectedConv) {
-      const convName = selectedConv;
-      const isGroup = conversations.find(c => c.targetName === convName)?.isGroup;
-      setTimeout(() => {
-        const replyText = MOCK_REPLIES[Math.floor(Math.random() * MOCK_REPLIES.length)];
-        const replyTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-        const replyFrom = isGroup
-          ? (conversations.find(c => c.targetName === convName)?.groupMembers?.[Math.floor(Math.random() * (conversations.find(c => c.targetName === convName)?.groupMembers?.length ?? 1))]?.name ?? "them")
-          : "them";
-        setMsgs(prev => ({
-          ...prev,
-          [convName]: [...(prev[convName] || []), { from: replyFrom, text: replyText, time: replyTime }],
-        }));
-      }, 1500);
-    }
+    setTimeout(scrollToBottom, 50);
+
+    // Show typing indicator
+    const typingName = isGroup
+      ? (convObj?.groupMembers?.[Math.floor(Math.random() * (convObj?.groupMembers?.length ?? 1))]?.name ?? "Someone")
+      : convName;
+    setTyping(typingName);
+
+    // Primary reply after 1-2s
+    const delay1 = 1000 + Math.random() * 1000;
+    setTimeout(() => {
+      setTyping(null);
+      const replyFrom = isGroup ? typingName : "them";
+      // Pick contextual reply based on what user said
+      let replyText: string;
+      const lower = text.toLowerCase();
+      if (lower.includes("meet") || lower.includes("schedule") || lower.includes("free")) {
+        replyText = ["I'm free Tuesday and Thursday afternoons!", "How about Wednesday at 2pm?", "Evenings work best for me — maybe 7pm?", "I can do any weekday after 4pm!"][Math.floor(Math.random() * 4)];
+      } else if (lower.includes("skill") || lower.includes("experience") || lower.includes("good at")) {
+        replyText = ["I'm strongest in frontend — React and TypeScript mostly.", "I've done a lot of UX research projects before.", "Backend is my thing — APIs, databases, the whole stack.", "I'm pretty versatile but I really enjoy data analysis."][Math.floor(Math.random() * 4)];
+      } else if (lower.includes("hello") || lower.includes("hi") || lower.includes("hey")) {
+        replyText = ["Hey! Nice to hear from you! 😊", "Hi there! How's it going?", "Hey! What's up?"][Math.floor(Math.random() * 3)];
+      } else if (lower.includes("group") || lower.includes("team") || lower.includes("join")) {
+        replyText = ["I'd love to be part of the team!", "Sounds like a great group so far!", "I'm in! When do we start?", "Excited to work together on this!"][Math.floor(Math.random() * 4)];
+      } else if (lower.includes("thank") || lower.includes("great") || lower.includes("awesome") || lower.includes("perfect")) {
+        replyText = ["No problem! 😄", "Glad we're on the same page!", "Awesome, looking forward to it!", "Great, let's keep the momentum going!"][Math.floor(Math.random() * 4)];
+      } else {
+        replyText = MOCK_REPLIES[Math.floor(Math.random() * MOCK_REPLIES.length)];
+      }
+      addReply(convName, replyFrom, replyText);
+      setTimeout(scrollToBottom, 50);
+
+      // 30% chance of a follow-up message after 2-4 more seconds
+      if (Math.random() < 0.3) {
+        const delay2 = 2000 + Math.random() * 2000;
+        const followups = MOCK_FOLLOWUPS[convName] ?? ["By the way, have you checked the course syllabus yet?", "Also, when's the deadline for group formation?"];
+        setTimeout(() => {
+          setTyping(isGroup ? typingName : convName);
+          setTimeout(() => {
+            setTyping(null);
+            addReply(convName, replyFrom, followups[Math.floor(Math.random() * followups.length)]);
+            setTimeout(scrollToBottom, 50);
+          }, 800 + Math.random() * 800);
+        }, delay2);
+      }
+    }, delay1);
   };
 
   const handleDecline = () => {
@@ -3681,20 +3910,21 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
               <button
                 onClick={() => { setSelectedConv(groupConv.targetName); setShowDeclineMenu(false); onMarkRead?.(groupConv.targetName); }}
                 className={cn(
-                  "w-full flex items-center gap-2.5 px-4 py-3 text-left transition-colors border-b-2 border-[#E5E7EB] cursor-pointer",
+                  "w-full flex items-center gap-2 px-2.5 py-3 text-left transition-colors border-b-2 border-[#E5E7EB] cursor-pointer",
                   selectedConv === groupConv.targetName
                     ? "bg-[#F3F4F6] border-l-[3px] border-l-[#9652ca]"
                     : "hover:bg-[#FAFAFA] border-l-[3px] border-l-transparent bg-[#FAFAFA]"
                 )}
               >
-                {groupConv.unread && <div className="w-1.5 h-1.5 rounded-full bg-[#9652ca] shrink-0" />}
-                {!groupConv.unread && <div className="w-1.5 shrink-0" />}
                 <div className="size-9 shrink-0 rounded-full bg-[#9652ca]/15 flex items-center justify-center">
                   <Icon.chat size={16} color="#9652ca" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1">
-                    <span className={cn("text-[13px] truncate", groupConv.unread ? "font-semibold text-[#111827]" : "font-medium text-[#374151]")}>{groupConv.targetName}</span>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className={cn("text-[13px] truncate", groupConv.unread ? "font-semibold text-[#111827]" : "font-medium text-[#374151]")}>{groupConv.targetName}</span>
+                      {groupConv.unread && <span className="w-2 h-2 rounded-full bg-[#9652ca] shrink-0" />}
+                    </div>
                     <span className="text-[10px] text-[#9CA3AF] shrink-0">{groupConv.timestamp}</span>
                   </div>
                   <div className="text-[12px] text-[#6B7280] truncate">{groupConv.lastMessage}</div>
@@ -3715,22 +3945,19 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
                   key={c.id}
                   onClick={() => { setSelectedConv(c.targetName); setShowDeclineMenu(false); onMarkRead?.(c.targetName); }}
                   className={cn(
-                    "w-full flex items-start gap-2.5 px-4 py-3 text-left transition-colors border-b border-[#F3F4F6] cursor-pointer",
+                    "w-full flex items-center gap-2 px-2.5 py-3 text-left transition-colors border-b border-[#F3F4F6] cursor-pointer",
                     selectedConv === c.targetName
                       ? "bg-[#F3F4F6] border-l-[3px] border-l-[#9652ca]"
                       : "hover:bg-[#FAFAFA] border-l-[3px] border-l-transparent"
                   )}
                 >
-                  {/* Unread dot */}
-                  <div className="w-2 shrink-0 pt-3">
-                    {c.unread && <div className="w-1.5 h-1.5 rounded-full bg-[#9652ca]" />}
-                  </div>
-                  <Avatar className="size-9 shrink-0 mt-0.5">
-                    <AvatarFallback className="bg-gray-200 text-gray-500 text-[11px] font-bold">{c.targetInit}</AvatarFallback>
-                  </Avatar>
+                  <StudentAvatar name={c.targetName} size="size-9" textSize="text-[11px]" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-1">
-                      <span className={cn("text-[13px] truncate", c.unread ? "font-semibold text-[#111827]" : "font-medium text-[#374151]")}>{c.targetName}</span>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className={cn("text-[13px] truncate", c.unread ? "font-semibold text-[#111827]" : "font-medium text-[#374151]")}>{c.targetName}</span>
+                        {c.unread && <span className="w-2 h-2 rounded-full bg-[#9652ca] shrink-0" />}
+                      </div>
                       <span className="text-[10px] text-[#9CA3AF] shrink-0">{c.timestamp}</span>
                     </div>
                     <div className="text-[12px] text-[#6B7280] truncate mb-1">{c.lastMessage}</div>
@@ -3780,7 +4007,7 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
                         <div className={cn("max-w-[85%] rounded-[12px] border border-[#E5E7EB] overflow-hidden", iSent ? "rounded-br-[4px]" : "rounded-bl-[4px]")}>
                           {/* Compact header — always visible */}
                           <div className="flex items-center gap-2.5 px-4 py-3 bg-[#FAFAFA]">
-                            <Avatar className="size-7"><AvatarFallback className="bg-gray-200 text-gray-500 text-[10px] font-bold">{student.init}</AvatarFallback></Avatar>
+                            <StudentAvatar name={student.name} size="size-7" textSize="text-[10px]" />
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
                                 <span className="text-[13px] font-semibold text-[#9652ca]">
@@ -3914,6 +4141,17 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
                       Request declined.
                     </p>
                   )}
+                  {typing && (
+                    <div className="flex flex-col items-start">
+                      <span className="text-[11px] font-medium text-[#9652ca] mb-0.5 ml-1">{typing}</span>
+                      <div className="bg-[#F3F4F6] rounded-[16px_16px_16px_4px] px-4 py-2.5 flex gap-1 items-center">
+                        <span className="w-2 h-2 bg-[#9CA3AF] rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                        <span className="w-2 h-2 bg-[#9CA3AF] rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                        <span className="w-2 h-2 bg-[#9CA3AF] rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                      </div>
+                    </div>
+                  )}
+                  <div ref={msgEndRef} />
                 </div>
               </div>
 
@@ -3962,9 +4200,9 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
                 <div className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide mb-3">Members ({(conv.groupMembers?.length ?? 0) + 1})</div>
                 {/* Current user */}
                 <div className="flex items-center gap-2.5 py-2 border-b border-[#F3F4F6]">
-                  <Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-[11px] font-bold">JD</AvatarFallback></Avatar>
+                  <Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-[11px] font-bold">{getInitials(userName)}</AvatarFallback></Avatar>
                   <div className="flex-1">
-                    <div className="text-[13px] font-medium">John Doe (You)</div>
+                    <div className="text-[13px] font-medium">{userName || "You"} (You)</div>
                     <div className="text-[11px] text-[#6B7280]">UI Design, User Research</div>
                   </div>
                 </div>
@@ -3972,7 +4210,7 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
                   const s = STU.find(st => st.name === m.name);
                   return (
                     <div key={m.name} className="flex items-center gap-2.5 py-2 border-b border-[#F3F4F6]">
-                      <Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-[11px] font-bold">{m.init}</AvatarFallback></Avatar>
+                      <StudentAvatar name={m.name} size="size-8" textSize="text-[11px]" />
                       <div className="flex-1">
                         <div className="text-[13px] font-medium">{m.name}</div>
                         <div className="text-[11px] text-[#6B7280]">{s?.skills.join(", ") ?? ""}</div>
@@ -3999,9 +4237,7 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
             <div className="p-5">
               {/* Profile header */}
               <div className="flex flex-col items-center text-center mb-5 pb-5 border-b border-[#E5E7EB]">
-                <Avatar className="size-16 mb-3">
-                  <AvatarFallback className="bg-gray-200 text-gray-500 text-xl font-bold">{student.init}</AvatarFallback>
-                </Avatar>
+                <StudentAvatar name={student.name} size="size-16 mb-3" textSize="text-xl" />
                 <div className="text-[18px] font-bold">{student.name}</div>
                 <div className="flex items-center gap-2 mt-1.5">
                   <span className={cn(
@@ -4110,6 +4346,10 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
               {contactStatuses[student.name] === "request-sent" && (
                 <div className="text-center text-[13px] text-[#6B7280]">Group request sent</div>
               )}
+
+              <div className="mt-6 pt-4 border-t border-[#F3F4F6] text-center">
+                <button onClick={() => setDeleteConfirm(true)} className="text-[13px] text-[#DC2626] font-semibold hover:text-[#B91C1C] hover:underline cursor-pointer">Delete this chat</button>
+              </div>
             </div>
           ) : (
             <div className="flex items-center justify-center h-full text-[#9CA3AF] text-[13px] p-5">
@@ -4119,6 +4359,25 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
         </div>
 
       </div>
+
+      {/* Delete chat confirmation modal */}
+      {deleteConfirm && selectedConv && (
+        <div className="fixed inset-0 bg-foreground/40 z-[300] flex items-center justify-center p-4">
+          <div className="bg-background rounded-2xl p-6 w-full max-w-[360px] shadow-xl text-center">
+            <div className="text-lg font-bold mb-2">Delete this chat?</div>
+            <p className="text-[13px] text-gray-600 mb-5">This will permanently remove the conversation with <strong>{selectedConv}</strong> and all messages.</p>
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setDeleteConfirm(false)}>Cancel</Button>
+              <Button className="flex-1 bg-[#DC2626] hover:bg-[#B91C1C] text-white" onClick={() => {
+                const name = selectedConv;
+                onDeleteConversation?.(name);
+                setDeleteConfirm(false);
+                setSelectedConv(conversations.find(c => c.targetName !== name)?.targetName ?? null);
+              }}>Delete</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -4126,22 +4385,28 @@ function ChatsPage({ go, conversations, contactStatuses, onContactStatusChange, 
 // ==================== APP ====================
 const DEFAULT_CHAT_MSGS: ChatMessages = {
   "CSC318 Group": [
-    { from: "Jesse Nguyen", text: "Hey everyone! Excited to work together.", time: "Mar 22, 10:00 AM" },
-    { from: "Aisha Khan", text: "Same here! I set up the shared doc.", time: "Mar 22, 10:05 AM" },
+    { from: "Marcus Lee", text: "Hey everyone! Excited to work together.", time: "Mar 22, 10:00 AM" },
+    { from: "Sofia Rodriguez", text: "Same here! I set up the shared doc.", time: "Mar 22, 10:05 AM" },
     { from: "me", text: "Great, let's set up a meeting time.", time: "Mar 22, 10:12 AM" },
-    { from: "David Park", text: "I'm free Tuesday and Thursday afternoons.", time: "Mar 22, 10:15 AM" },
+    { from: "Sofia Rodriguez", text: "Let's meet Thursday!", time: "Mar 22, 10:15 AM" },
+  ],
+  "Marcus Lee": [
+    { from: "me", text: "Hey Marcus! I saw we have similar design skills. Want to team up?", time: "Mar 20, 3:00 PM" },
+    { from: "them", text: "Definitely! I've been looking for a UI-focused group.", time: "Mar 20, 3:05 PM" },
+    { from: "me", text: "Awesome, welcome to the group!", time: "Mar 20, 3:10 PM" },
+  ],
+  "Sofia Rodriguez": [
+    { from: "them", text: "Hi! I'm interested in joining your group. I bring UX research experience.", time: "Mar 21, 11:00 AM" },
+    { from: "me", text: "That sounds perfect! We'd love to have you.", time: "Mar 21, 11:15 AM" },
+    { from: "them", text: "Excited to work together!", time: "Mar 21, 11:20 AM" },
   ],
   "David Park": [
     { from: "them", text: "Hey! I saw we have great schedule overlap. Want to form a group?", time: "Mar 22, 2:14 PM" },
     { from: "me", text: "Sounds great! When are you free this week?", time: "Mar 22, 2:18 PM" },
   ],
-  "Priya Sharma": [
-    { from: "them", text: "I'd love to join your group. I have strong backend skills.", time: "Mar 23, 3:30 PM" },
-  ],
-  "Jesse Nguyen": [
-    { from: "them", text: "I think our skills complement each other well.", time: "Mar 21, 10:05 AM" },
-    { from: "me", text: "Agreed! Let's do it.", time: "Mar 21, 10:12 AM" },
-    { from: "them", text: "Welcome to the team!", time: "Mar 21, 10:15 AM" },
+  "Wei Zhang": [
+    { from: "me", text: "Hi Wei! Want to join our CSC318 group?", time: "Mar 19, 4:00 PM" },
+    { from: "them", text: "Sorry, I found another group already. Good luck!", time: "Mar 20, 9:00 AM" },
   ],
 };
 
@@ -4156,7 +4421,6 @@ export default function Unitor() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
-  const [sentTarget, setSentTarget] = useState("Jesse");
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
   const [isUrgent, setIsUrgent] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
@@ -4224,16 +4488,6 @@ export default function Unitor() {
   const go = (p: string) => {
     if (p === "signup-s") { setRole("s"); setPg("signup") }
     else if (p === "signup-t") { setRole("t"); setPg("signup") }
-    else if (p.startsWith("sent-")) {
-      const name = p.slice(5);
-      const fullName = STU.find(s => s.name.toLowerCase().startsWith(name))?.name ?? name.charAt(0).toUpperCase() + name.slice(1);
-      setSentTarget(fullName);
-      setPg("sent");
-      setStudentStatus("open-group");
-      showToast("Group request sent!");
-      setTimeout(() => addNotification("request-accepted", `${fullName} responded`, `${fullName} replied to your group request.`, "chats"), 3000);
-    }
-    else if (p === "sent") { setPg("sent") }
     else setPg(p);
     window.scrollTo(0, 0);
   };
@@ -4268,17 +4522,16 @@ export default function Unitor() {
       if (cs === "replied") { go("chats"); return; }
       setSelectedStudent(name); setPanelMode("view");
     }} urgentMode={isUrgent} onSelectGroup={setSelectedGroup} appliedGroups={appliedGroups} contactStatuses={contactStatuses} onContactStatusChange={updateContactStatus} onOpenChat={(name) => openChatWith(name)} />,
-    chats: <ChatsPage go={go} conversations={conversations} contactStatuses={contactStatuses} onContactStatusChange={updateContactStatus} onAccept={(name) => { updateContactStatus(name, "accepted"); setStudentStatus("open-group"); }} msgs={chatMsgs} onMsgsChange={setChatMsgs} initialSelectedConv={initialSelectedConv} onClearInitialConv={() => setInitialSelectedConv(null)} reactions={chatReactions} onReactionsChange={setChatReactions} onUpdateConvStatus={(name, status) => setConversations(prev => prev.map(c => c.targetName === name ? { ...c, status: status as Conversation["status"] } : c))} onMarkRead={(name) => setConversations(prev => prev.map(c => c.targetName === name ? { ...c, unread: false } : c))} />,
-    sent: <Sent go={go} targetName={sentTarget} />,
-    mygroup: <MyGroup go={go} studentStatus={studentStatus} onAcceptRequest={() => setStudentStatus("open-group")} onLeaveGroup={() => setStudentStatus("solo")} onOpenChat={(name) => openChatWith(name)} />,
+    chats: <ChatsPage go={go} conversations={conversations} contactStatuses={contactStatuses} onContactStatusChange={updateContactStatus} onAccept={(name) => { updateContactStatus(name, "accepted"); setStudentStatus("open-group"); }} msgs={chatMsgs} onMsgsChange={setChatMsgs} initialSelectedConv={initialSelectedConv} onClearInitialConv={() => setInitialSelectedConv(null)} reactions={chatReactions} onReactionsChange={setChatReactions} onUpdateConvStatus={(name, status) => setConversations(prev => prev.map(c => c.targetName === name ? { ...c, status: status as Conversation["status"] } : c))} onMarkRead={(name) => setConversations(prev => prev.map(c => c.targetName === name ? { ...c, unread: false } : c))} onDeleteConversation={(name) => { setConversations(prev => prev.filter(c => c.targetName !== name)); setChatMsgs(prev => { const next = { ...prev }; delete next[name]; return next; }); }} userName={userName} />,
+    mygroup: <MyGroup go={go} studentStatus={studentStatus} onAcceptRequest={() => setStudentStatus("open-group")} onLeaveGroup={() => setStudentStatus("solo")} onOpenChat={(name) => openChatWith(name)} userName={userName} />,
     urgent: <Urgent go={go} />,
-    "profile-edit": <ProfileEdit go={go} showToast={showToast} />,
+    "profile-edit": <ProfileEdit go={go} showToast={showToast} userName={userName} />,
   };
 
   const nav = [
     { g: "Onboard", p: ["landing", "login", "signup-role", "signup", "verify"] },
     { g: "Student", p: ["dash-empty", "dash", "join", "prof-0", "prof-1", "prof-2", "prof-3", "prof-done"] },
-    { g: "Board", p: ["board", "sent", "profile-edit"] },
+    { g: "Board", p: ["board", "profile-edit"] },
     { g: "Social", p: ["mygroup", "urgent", "chats"] },
     { g: "TA", p: ["ta-dash-empty", "ta-dash", "ta-course-dash", "ta-create"] },
   ];
@@ -4288,7 +4541,7 @@ export default function Unitor() {
 
   return <div className="flex flex-col h-screen">
     {APP_PAGES.has(pg) && (
-      <Nav go={go} activePage={pg} studentStatus={studentStatus} notifications={notifications} onNotificationClick={handleNotificationClick} onMarkAllRead={handleMarkAllRead} />
+      <Nav go={go} activePage={pg} studentStatus={studentStatus} notifications={notifications} onNotificationClick={handleNotificationClick} onMarkAllRead={handleMarkAllRead} userName={userName} />
     )}
     <div className="flex-1 overflow-y-auto">
       {P[pg]}
@@ -4319,7 +4572,34 @@ export default function Unitor() {
       title={panelMode === "received-request" ? "Group Request" : "Student Profile"}
     >
       {selectedStudent && panelMode === "view" && (
-        <ProfilePanelContent studentName={selectedStudent} go={go} onClose={() => setSelectedStudent(null)} onContactStatusChange={updateContactStatus} urgentMode={isUrgent} contactStatus={contactStatuses[selectedStudent] ?? "none"} onOpenChat={(name) => { setSelectedStudent(null); openChatWith(name); }} onSelectGroup={(id) => { setSelectedStudent(null); setSelectedGroup(id); }} />
+        <ProfilePanelContent studentName={selectedStudent} go={go} onClose={() => setSelectedStudent(null)} onContactStatusChange={updateContactStatus} urgentMode={isUrgent} contactStatus={contactStatuses[selectedStudent] ?? "none"} onOpenChat={(name) => { setSelectedStudent(null); openChatWith(name); }} onSelectGroup={(id) => { setSelectedStudent(null); setSelectedGroup(id); }} onSendRequest={(name, why, question) => {
+          setSelectedStudent(null);
+          setStudentStatus("open-group");
+          const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          const msgText = `📋 Group Request\n\nWhy: ${why}${question ? `\n\nQuestion: ${question}` : ""}`;
+          // Ensure conversation exists
+          const existing = conversations.find(c => c.targetName === name);
+          if (!existing) {
+            const stu = STU.find(s => s.name === name);
+            setConversations(prev => [...prev, { id: `conv-${Date.now()}`, targetName: name, targetInit: stu?.init ?? name.split(" ").map(w => w[0]).join(""), type: "request-sent", status: "pending", lastMessage: "Group request sent", timestamp: "now", unread: false }]);
+          } else {
+            setConversations(prev => prev.map(c => c.targetName === name ? { ...c, type: "request-sent", status: "pending", lastMessage: "Group request sent", timestamp: "now" } : c));
+          }
+          setChatMsgs(prev => ({ ...prev, [name]: [...(prev[name] || []), { from: "me", text: msgText, time }] }));
+          setInitialSelectedConv(name);
+          setPg("chats");
+          showToast("Group request sent!");
+          // Auto-reply to group request after 3-5s
+          const firstName = name.split(" ")[0];
+          setTimeout(() => {
+            const replyText = MOCK_REQUEST_REPLIES[Math.floor(Math.random() * MOCK_REQUEST_REPLIES.length)];
+            const replyTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+            setChatMsgs(prev => ({ ...prev, [name]: [...(prev[name] || []), { from: "them", text: replyText, time: replyTime }] }));
+            setConversations(prev => prev.map(c => c.targetName === name ? { ...c, status: "replied", lastMessage: replyText, unread: true } : c));
+            addNotification("request-accepted", `${firstName} responded`, `${firstName} replied to your group request.`, "chats");
+          }, 3000 + Math.random() * 2000);
+          window.scrollTo(0, 0);
+        }} />
       )}
       {selectedStudent && panelMode === "received-request" && (
         <ReceivedRequestPanel
