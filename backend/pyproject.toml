@@ -1,0 +1,87 @@
+[project]
+name = "unitor-backend"
+version = "0.1.0"
+description = "Unitor backend — FastAPI service handling matching, roster ingest, group lifecycle, and scheduled jobs."
+requires-python = ">=3.12"
+readme = "README.md"
+
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic[email]>=2.9.0",
+    "pydantic-settings>=2.6.0",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
+    "alembic>=1.14.0",
+    "pyjwt>=2.10.0",
+    "httpx>=0.28.0",
+    "structlog>=24.4.0",
+    "sentry-sdk[fastapi]>=2.18.0",
+    "python-multipart>=0.0.20",
+    "uuid-utils>=0.10.0",
+    "tzdata>=2024.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+    "types-python-jose",
+    "httpx>=0.28.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",  # pycodestyle / pyflakes
+    "I",            # isort
+    "B",            # bugbear
+    "UP",           # pyupgrade
+    "RUF",          # ruff-specific
+    "ASYNC",        # async-correct usage
+    "S",            # bandit security
+]
+ignore = [
+    "E501",  # line length (formatter handles it)
+    "B008",  # FastAPI Depends() in defaults
+    "S101",  # asserts (used in tests)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "S105", "S106"]
+"alembic/**/*.py" = ["E402"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_configs = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["alembic.*"]
+ignore_errors = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "--strict-markers -ra"
+markers = [
+    "integration: integration tests that require a running Supabase local stack",
+]
