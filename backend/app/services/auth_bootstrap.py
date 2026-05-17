@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from uuid_utils import uuid7
+from uuid_utils.compat import uuid7
 
 from app.auth.jwt import CurrentUser
 from app.db.models import Course, Enrollment, RosterEntry, Section, User

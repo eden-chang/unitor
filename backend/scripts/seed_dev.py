@@ -32,7 +32,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
-from uuid_utils import uuid7
+from uuid_utils.compat import uuid7
 
 from app.config import get_settings
 
