@@ -22,7 +22,9 @@ import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from functools import lru_cache
+from typing import Annotated
 
+from fastapi import Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -31,7 +33,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.auth.jwt import CurrentUser
+from app.auth.jwt import CurrentUser, get_current_user
 from app.config import get_settings
 
 # ---------------------------------------------------------------------------
@@ -114,8 +116,20 @@ async def user_session(user: CurrentUser) -> AsyncIterator[AsyncSession]:
 
 
 # FastAPI-friendly wrapper. Endpoints use this with ``Depends``.
+#
+# Usage::
+#
+#     async def my_endpoint(
+#         user: CurrentUserDep,
+#         db: UserSessionDep,
+#     ): ...
 async def user_session_dep(
-    user: CurrentUser,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
 ) -> AsyncIterator[AsyncSession]:
     async with user_session(user) as session:
         yield session
+
+
+# Convenience aliases — short, type-safe, work everywhere.
+CurrentUserDep = Annotated[CurrentUser, Depends(get_current_user)]
+UserSessionDep = Annotated[AsyncSession, Depends(user_session_dep)]
