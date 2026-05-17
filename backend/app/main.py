@@ -1,64 +1,31 @@
 """FastAPI application entrypoint.
 
-Wires up middleware, routers, lifespan, and Sentry. Keep this file thin —
+Wires middleware, routers, lifespan, and observability. Keep this thin --
 real logic lives under ``app/api/v1/``, ``app/services/``, and ``app/db/``.
 """
 
 from __future__ import annotations
 
-import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-import sentry_sdk
 import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import auth as auth_routes
 from app.api.v1 import health, profiles
-from app.config import get_settings
-
-
-def _configure_logging(level: str) -> None:
-    """Set up structlog to emit JSON in prod and pretty in dev."""
-    log_level = getattr(logging, level.upper(), logging.INFO)
-    logging.basicConfig(level=log_level, format="%(message)s")
-    settings = get_settings()
-    processors: list[structlog.types.Processor] = [
-        structlog.contextvars.merge_contextvars,
-        structlog.processors.add_log_level,
-        structlog.processors.TimeStamper(fmt="iso", utc=True),
-    ]
-    if settings.is_production:
-        processors.append(structlog.processors.JSONRenderer())
-    else:
-        processors.append(structlog.dev.ConsoleRenderer())
-    structlog.configure(
-        processors=processors,
-        wrapper_class=structlog.make_filtering_bound_logger(log_level),
-        cache_logger_on_first_use=True,
-    )
-
-
-def _configure_sentry() -> None:
-    settings = get_settings()
-    if not settings.SENTRY_DSN:
-        return
-    sentry_sdk.init(
-        dsn=settings.SENTRY_DSN,
-        environment=settings.APP_ENV,
-        send_default_pii=False,
-        traces_sample_rate=0.1 if settings.is_production else 0.0,
-    )
+from app.config import build_cors_origin_regex, get_settings
+from app.middleware.request_id import RequestIDMiddleware
+from app.observability import configure_logging, configure_sentry
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Startup / shutdown hooks. Keep async-friendly resources here."""
     settings = get_settings()
-    _configure_logging(settings.LOG_LEVEL)
-    _configure_sentry()
+    configure_logging(settings.LOG_LEVEL)
+    configure_sentry()
     log = structlog.get_logger()
     log.info("unitor.startup", env=settings.APP_ENV)
     yield
@@ -80,13 +47,26 @@ def create_app() -> FastAPI:
         openapi_url="/api/v1/openapi.json",
     )
 
+    # CORS: explicit origins for known callers + regex for Vercel preview
+    # URLs (`https://*.vercel.app`). Starlette's `allow_origins` is exact-
+    # string-only; the wildcard form belongs in `allow_origin_regex`.
+    allow_origins, allow_origin_regex = build_cors_origin_regex(settings.cors_origins_list)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origins_list,
+        allow_origins=allow_origins,
+        allow_origin_regex=allow_origin_regex,
         allow_credentials=False,
-        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-Cron-Token"],
+        allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "X-Cron-Token",
+            "X-Request-Id",
+        ],
+        expose_headers=["X-Request-Id"],
     )
+
+    app.add_middleware(RequestIDMiddleware)
 
     app.include_router(health.router, prefix="/api/v1", tags=["health"])
     app.include_router(auth_routes.router, prefix="/api/v1")

@@ -1,0 +1,72 @@
+name: Backend CI
+
+on:
+  push:
+    branches: ['main']
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend.yml'
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      # Fake values: ruff/mypy/pytest unit tests don't hit the network.
+      # Connection-string format is what matters; values aren't dialed.
+      APP_ENV: dev
+      DATABASE_URL: postgresql+asyncpg://test:test@localhost:6543/postgres
+      DATABASE_DIRECT_URL: postgresql+asyncpg://test:test@localhost:5432/postgres
+      SUPABASE_URL: https://test.supabase.co
+      SUPABASE_ANON_KEY: ci-anon-stub
+      SUPABASE_SERVICE_ROLE_KEY: ci-service-stub
+      SUPABASE_JWT_SECRET: ci-jwt-secret-stub-but-long-enough-for-hs256-12345678
+      CRON_TOKEN: ci-cron-stub
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: 'latest'
+          enable-cache: true
+          cache-dependency-glob: 'backend/uv.lock'
+
+      - name: Sync dependencies (incl. dev)
+        run: uv sync --all-groups --frozen
+
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Format check (ruff)
+        run: uv run ruff format --check .
+
+      - name: Type check (mypy)
+        run: uv run mypy app
+        # mypy is strict in pyproject.toml. If a stub package is missing
+        # we'll see it here.
+
+      - name: Unit tests
+        run: uv run pytest tests/unit/ -q
+
+      - name: Migrations parse (offline)
+        # Confirms every Alembic migration imports and the chain resolves
+        # to a single head, without needing a real DB.
+        run: |
+          uv run python - <<'PY'
+          from alembic.config import Config
+          from alembic.script import ScriptDirectory
+          cfg = Config("alembic.ini")
+          script = ScriptDirectory.from_config(cfg)
+          head = script.get_current_head()
+          assert head is not None, "No alembic head"
+          print(f"Alembic head: {head}")
+          PY
