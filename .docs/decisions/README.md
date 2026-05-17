@@ -23,6 +23,7 @@ If you arrived here without context, read `../01-current-state.md` and `../04-ba
 | [0007](./0007-domain-modeling.md) | Profile scope, user-university, roster, sections, group leadership | Accepted (default; subject to review) |
 | [0008](./0008-conventions.md) | Cross-cutting conventions (IDs, timestamps, errors, soft delete, etc.) | Accepted (default; subject to review) |
 | [0009](./0009-audit-corrections.md) | Senior-engineer audit findings + research log; amends ADRs 0001/0002/0003/0005/0006 and specs 06/08/09/10 | Accepted |
+| [0010](./0010-second-audit.md) | Second senior audit (post-profile-CRUD): transaction lifecycle, CORS regex, JWT hardening, Sentry PII, secrets, CI; amends ADRs 0002/0003/0006/0008 | Accepted |
 
 ## Conventions
 

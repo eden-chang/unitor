@@ -1,8 +1,10 @@
 """Profile CRUD routes.
 
 All routes use ``user_session`` so RLS enforces "own profile only" at
-the database layer. The route still maps domain exceptions to API
-error codes per ADR 0008 section 3.
+the database layer. The session context manager owns the transaction --
+**do not call ``await db.commit()`` here** (see ``app/db/session.py``
+for why). The route only maps domain exceptions to API error codes
+per ADR 0008 section 3.
 """
 
 from __future__ import annotations
@@ -47,7 +49,7 @@ async def create_profile(
     _user: CurrentUserDep,
 ) -> ProfileRead:
     try:
-        result = await profile_service.create_profile(db, payload)
+        return await profile_service.create_profile(db, payload)
     except profile_service.ProfileAlreadyExists as exc:
         raise _err(status.HTTP_409_CONFLICT, "PROFILE_ALREADY_EXISTS", str(exc)) from exc
     except profile_service.EnrollmentNotFound as exc:
@@ -58,8 +60,6 @@ async def create_profile(
             "INVALID_SKILL_FOR_COURSE",
             f"skill id(s) not in this course's catalog: {exc}",
         ) from exc
-    await db.commit()
-    return result
 
 
 @router.get(
@@ -111,7 +111,7 @@ async def get_profile(
     description=(
         "Partial update of the profile row's own columns. For skills, "
         "schedule, or links use the dedicated /skills, /schedule, /links "
-        "endpoints — each replaces the full set atomically."
+        "endpoints -- each replaces the full set atomically."
     ),
 )
 async def update_profile(
@@ -121,11 +121,9 @@ async def update_profile(
     _user: CurrentUserDep,
 ) -> ProfileRead:
     try:
-        result = await profile_service.update_profile(db, profile_id, payload)
+        return await profile_service.update_profile(db, profile_id, payload)
     except profile_service.ProfileNotFound as exc:
         raise _err(status.HTTP_404_NOT_FOUND, "PROFILE_NOT_FOUND", str(exc)) from exc
-    await db.commit()
-    return result
 
 
 @router.put(
@@ -140,7 +138,7 @@ async def replace_skills(
     _user: CurrentUserDep,
 ) -> list[SkillRead]:
     try:
-        result = await profile_service.replace_skills(db, profile_id, payload)
+        return await profile_service.replace_skills(db, profile_id, payload)
     except profile_service.ProfileNotFound as exc:
         raise _err(status.HTTP_404_NOT_FOUND, "PROFILE_NOT_FOUND", str(exc)) from exc
     except profile_service.InvalidSkill as exc:
@@ -149,8 +147,6 @@ async def replace_skills(
             "INVALID_SKILL_FOR_COURSE",
             f"skill id(s) not in this course's catalog: {exc}",
         ) from exc
-    await db.commit()
-    return result
 
 
 @router.put(
@@ -165,11 +161,9 @@ async def replace_schedule(
     _user: CurrentUserDep,
 ) -> list[ScheduleSlot]:
     try:
-        result = await profile_service.replace_schedule(db, profile_id, payload)
+        return await profile_service.replace_schedule(db, profile_id, payload)
     except profile_service.ProfileNotFound as exc:
         raise _err(status.HTTP_404_NOT_FOUND, "PROFILE_NOT_FOUND", str(exc)) from exc
-    await db.commit()
-    return result
 
 
 @router.post(
@@ -177,7 +171,7 @@ async def replace_schedule(
     response_model=CompletionResponse,
     summary="Check whether the profile is ready for matching",
     description=(
-        "Doesn't change the profile structurally — it just reports which "
+        "Doesn't change the profile structurally -- it just reports which "
         "completion criteria still need attention and bumps last_active_at."
     ),
 )
@@ -187,8 +181,27 @@ async def check_completion(
     _user: CurrentUserDep,
 ) -> CompletionResponse:
     try:
-        result = await profile_service.check_completion(db, profile_id)
+        return await profile_service.check_completion(db, profile_id)
     except profile_service.ProfileNotFound as exc:
         raise _err(status.HTTP_404_NOT_FOUND, "PROFILE_NOT_FOUND", str(exc)) from exc
-    await db.commit()
-    return result
+
+
+@router.delete(
+    "/{profile_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete my profile",
+    description=(
+        "Hard-deletes the profile and cascades to skills, schedule slots, "
+        "and links. The enrollment remains (use the dedicated leave-course "
+        "endpoint for that). RLS limits this to the owner."
+    ),
+)
+async def delete_profile(
+    profile_id: UUID,
+    db: UserSessionDep,
+    _user: CurrentUserDep,
+) -> None:
+    try:
+        await profile_service.delete_profile(db, profile_id)
+    except profile_service.ProfileNotFound as exc:
+        raise _err(status.HTTP_404_NOT_FOUND, "PROFILE_NOT_FOUND", str(exc)) from exc

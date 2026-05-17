@@ -35,7 +35,7 @@ target_metadata = Base.metadata
 
 def _database_url() -> str:
     """Resolve at call time; avoids env-load side effects at import."""
-    return get_settings().DATABASE_DIRECT_URL
+    return get_settings().DATABASE_DIRECT_URL.get_secret_value()
 
 
 def run_migrations_offline() -> None:

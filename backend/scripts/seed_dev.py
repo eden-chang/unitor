@@ -280,7 +280,7 @@ async def _upsert_roster_entry(
 
 async def seed(*, my_email: str | None, with_classmates: bool, reset: bool) -> None:
     settings = get_settings()
-    engine = create_async_engine(settings.DATABASE_DIRECT_URL)
+    engine = create_async_engine(settings.DATABASE_DIRECT_URL.get_secret_value())
 
     async with engine.begin() as conn:
         if reset:

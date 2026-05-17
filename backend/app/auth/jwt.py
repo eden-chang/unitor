@@ -34,12 +34,29 @@ class CurrentUser:
     jwt_claims_subset: dict[str, Any]
 
 
+def _expected_issuer() -> str:
+    """Supabase signs JWTs with ``iss = {SUPABASE_URL}/auth/v1``."""
+    return f"{get_settings().SUPABASE_URL.rstrip('/')}/auth/v1"
+
+
 def _decode_with(secret: str, token: str) -> dict[str, Any]:
-    return jwt.decode(  # type: ignore[no-any-return]
+    return jwt.decode(
         token,
         secret,
         algorithms=["HS256"],
         audience="authenticated",
+        issuer=_expected_issuer(),
+        options={
+            # Belt-and-suspenders: refuse a token missing any of these.
+            # PyJWT verifies `exp` by default but doesn't require it to
+            # exist; we make existence mandatory.
+            "require": ["sub", "exp", "iat", "iss", "aud"],
+            "verify_signature": True,
+            "verify_exp": True,
+            "verify_iat": True,
+            "verify_aud": True,
+            "verify_iss": True,
+        },
     )
 
 
@@ -47,12 +64,13 @@ def _verify_token(token: str) -> dict[str, Any]:
     """Verify against current secret, falling back to previous if rotating."""
     settings = get_settings()
     try:
-        return _decode_with(settings.SUPABASE_JWT_SECRET, token)
+        return _decode_with(settings.SUPABASE_JWT_SECRET.get_secret_value(), token)
     except jwt.PyJWTError as primary_error:
-        if not settings.SUPABASE_JWT_SECRET_PREVIOUS:
+        previous = settings.SUPABASE_JWT_SECRET_PREVIOUS
+        if previous is None:
             raise primary_error
         try:
-            return _decode_with(settings.SUPABASE_JWT_SECRET_PREVIOUS, token)
+            return _decode_with(previous.get_secret_value(), token)
         except jwt.PyJWTError:
             # Both failed; raise the *current* error for clearer messaging.
             raise primary_error from None
@@ -110,7 +128,12 @@ async def verify_cron_token(
     instead of a user JWT.
     """
     settings = get_settings()
-    if not x_cron_token or x_cron_token != settings.CRON_TOKEN:
+    expected = settings.CRON_TOKEN.get_secret_value()
+    # secrets.compare_digest is constant-time -- defends against timing
+    # analysis attempting to brute-force the shared secret one byte at a time.
+    import secrets
+
+    if not x_cron_token or not secrets.compare_digest(x_cron_token, expected):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": "AUTH_REQUIRED", "message": "Invalid cron token."},

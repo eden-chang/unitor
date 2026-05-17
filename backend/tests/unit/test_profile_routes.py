@@ -227,3 +227,30 @@ def test_requires_auth_for_create(client: TestClient) -> None:
         json={"enrollment_id": str(_ENROLLMENT_ID)},
     )
     assert response.status_code == 401
+
+
+def test_delete_profile_204(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_delete(_db, _pid):  # type: ignore[no-untyped-def]
+        return None
+
+    monkeypatch.setattr(profiles_routes.profile_service, "delete_profile", fake_delete)
+    response = client.delete(f"/api/v1/profiles/{_PROFILE_ID}")
+    assert response.status_code == 204
+    # FastAPI returns no body on 204.
+    assert response.content == b""
+
+
+def test_delete_profile_404_when_missing(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_delete(_db, _pid):  # type: ignore[no-untyped-def]
+        raise profile_service.ProfileNotFound(str(_PROFILE_ID))
+
+    monkeypatch.setattr(profiles_routes.profile_service, "delete_profile", fake_delete)
+    response = client.delete(f"/api/v1/profiles/{_PROFILE_ID}")
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "PROFILE_NOT_FOUND"

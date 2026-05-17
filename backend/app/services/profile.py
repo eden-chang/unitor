@@ -336,6 +336,28 @@ async def check_completion(
 
 
 # ---------------------------------------------------------------------------
+# Delete
+# ---------------------------------------------------------------------------
+
+
+async def delete_profile(
+    session: AsyncSession,
+    profile_id: UUID,
+) -> None:
+    """Hard-delete the profile. Child rows cascade.
+
+    The enrollment row is untouched -- leaving the course is a separate
+    operation. RLS will already filter out profiles the caller doesn't
+    own, so we just need to confirm the row exists (or surface 404).
+    """
+    profile = await session.get(Profile, profile_id)
+    if profile is None:
+        raise ProfileNotFound(str(profile_id))
+    await session.delete(profile)
+    await session.flush()
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 

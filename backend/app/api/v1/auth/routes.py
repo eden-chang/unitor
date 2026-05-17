@@ -47,9 +47,10 @@ async def precheck(body: PrecheckRequest) -> PrecheckResponse:
 async def bootstrap(
     current_user: Annotated[CurrentUser, Depends(get_current_user)],
 ) -> BootstrapResponse:
+    # admin_session owns the transaction; we don't commit explicitly.
     async with admin_session() as session:
         try:
-            response = await auth_bootstrap.bootstrap(session, current_user)
+            return await auth_bootstrap.bootstrap(session, current_user)
         except auth_bootstrap.RosterEmailNotFound as exc:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -62,5 +63,3 @@ async def bootstrap(
                     "details": {"email": str(exc)},
                 },
             ) from exc
-        await session.commit()
-        return response
