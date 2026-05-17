@@ -68,9 +68,7 @@ def upgrade() -> None:
         sa.Column("decline_reason", sa.Text(), nullable=True),
         sa.Column("decline_note", sa.Text(), nullable=True),
         sa.Column("expires_at", postgresql.TIMESTAMP(timezone=True), nullable=False),
-        sa.CheckConstraint(
-            "sender_user_id <> receiver_user_id", name="ck_requests_self_request"
-        ),
+        sa.CheckConstraint("sender_user_id <> receiver_user_id", name="ck_requests_self_request"),
     )
     op.create_index(
         "ix_requests_inbox",

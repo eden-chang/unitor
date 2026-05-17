@@ -16,9 +16,7 @@ from app.db.models.base import Base
 # Postgres-side enum (created in migration 0001). create_type=False tells
 # SQLAlchemy not to issue CREATE TYPE; it only attaches the type info so
 # WHERE clauses cast literals correctly.
-_COURSE_STATE = SAEnum(
-    "draft", "active", "archived", name="course_state", create_type=False
-)
+_COURSE_STATE = SAEnum("draft", "active", "archived", name="course_state", create_type=False)
 
 
 class University(Base):

@@ -13,9 +13,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.models.base import Base
 
-_ENROLLMENT_ROLE = SAEnum(
-    "student", "ta", "instructor", name="enrollment_role", create_type=False
-)
+_ENROLLMENT_ROLE = SAEnum("student", "ta", "instructor", name="enrollment_role", create_type=False)
 _ENROLLMENT_STATUS = SAEnum(
     "active", "dropped", "completed", name="enrollment_status", create_type=False
 )
