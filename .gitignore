@@ -1,5 +1,45 @@
-node_modules
-dist
+# OS
 .DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# Planning docs (.docs/) are tracked — they are the architecture record.
+# Personal scratch goes in a separate ignored path (e.g. .scratch/).
+.scratch/
+
+# === Frontend (Node / Vite) ===
+node_modules/
+dist/
+dist-stale/
 *.local
-/.docs
+.env
+.env.local
+.env.*.local
+frontend/.env
+frontend/.env.local
+
+# === Backend (Python) ===
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+backend/.venv/
+backend/.env
+backend/.env.local
+
+# === Packages ===
+packages/*/node_modules/
+packages/*/dist/
+
+# === Infra ===
+infra/supabase/.branches/
+infra/supabase/.temp/
