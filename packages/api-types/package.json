@@ -1,0 +1,17 @@
+{
+  "name": "@unitor/api-types",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./src/generated.ts",
+  "types": "./src/generated.ts",
+  "exports": {
+    ".": "./src/generated.ts"
+  },
+  "scripts": {
+    "generate": "openapi-typescript ../../backend/openapi.json -o ./src/generated.ts"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.4.0"
+  }
+}

@@ -1,0 +1,23 @@
+# Generated API types — collapse diff in PRs by default.
+# See ADR 0005 §5 + ADR 0009 §15.
+packages/api-types/src/generated.ts  linguist-generated=true
+backend/openapi.json                 linguist-generated=true
+
+# Normalize line endings for cross-OS development.
+* text=auto eol=lf
+
+# Treat Python source as text.
+*.py text eol=lf
+
+# Treat TypeScript / JavaScript as text.
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+
+# Binary files — never normalize.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.svg text
+*.ico binary
