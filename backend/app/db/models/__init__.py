@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from app.db.models.base import Base
 from app.db.models.enrollment import Enrollment, RosterEntry
+from app.db.models.group import Group, GroupApplicationQuestion, GroupMembership
 from app.db.models.profile import Profile, ProfileLink, ProfileScheduleSlot, ProfileSkill
 from app.db.models.tenancy import Course, CourseSkill, Section, University
 from app.db.models.user import User
@@ -21,6 +22,9 @@ __all__ = [
     "Course",
     "CourseSkill",
     "Enrollment",
+    "Group",
+    "GroupApplicationQuestion",
+    "GroupMembership",
     "Profile",
     "ProfileLink",
     "ProfileScheduleSlot",
