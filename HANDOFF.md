@@ -292,6 +292,16 @@ Before assuming the code is wrong:
 
 Append-only running log of what was just done and what's actively in progress. Newest entry on top. One short bullet per session — link to commits or session-log files for detail.
 
+- **2026-05-18** — **Stage 1 / Step A — Frontend foundation (no behavior change).**
+  - `npm i @supabase/supabase-js @tanstack/react-query react-router-dom` (frontend/package.json).
+  - `frontend/.env.example` with `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_BASE_URL`. **`frontend/.env` is required before `npm run dev`** — copy from `.env.example` and fill with the Supabase project's URL + anon key (same project as `backend/.env`).
+  - `src/supabase/client.ts` — Supabase singleton.
+  - `src/api/client.ts` — `apiFetch` + typed `ApiError` (parses the ADR-0008 error envelope; routes 422s through `VALIDATION_ERROR`).
+  - `src/api/{auth,profile,discovery,compatibility,courses}.ts` — hand-typed wrappers for every endpoint stage 1 needs (some courses/* endpoints don't exist on the backend yet — added in step D).
+  - `src/types/api.ts` — mirrors backend Pydantic shapes. Replace with generated types in stage 2.
+  - `src/context/AuthContext.tsx` + `auth-context.ts` — stub auth provider; only exposes Supabase session + `isAuthenticated`. Real shape (user + enrollments + signIn/Out/joinCourse) lands in step C.
+  - `src/main.tsx` wrapped in `QueryClientProvider` + `BrowserRouter` (basename driven by `BASE_URL` so the `/unitor-demo/` GH-Pages prefix still works) + `AuthProvider`.
+  - Plan: [`.docs/frontend-stage1-plan.md`](./.docs/frontend-stage1-plan.md). Step B next.
 - **2026-05-18** — **Task F shipped: compatibility matching algorithm + `POST /api/v1/compatibility/batch`.**
   - Pure scoring service `app/services/compatibility.py` implementing spec §3-6 (schedule / skill / work-style sub-scores + weighted overall). `CURRENT_ALGORITHM_VERSION = 1`.
   - Schemas `app/schemas/compatibility.py` (batch request/response + `SkillCoverageEntry` + `SkippedTarget`).
