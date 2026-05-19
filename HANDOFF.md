@@ -21,7 +21,7 @@ For the *prototype's* design intent (scenarios, user flows, evaluations), see [`
 These are the constraints the previous contributor was operating under. They are non-negotiable unless the user explicitly relaxes them.
 
 - **Commit author**: every commit must be authored as `eden-chang <eden.chang27@gmail.com>` via `git commit --author "eden-chang <eden.chang27@gmail.com>" ...`. **Do not modify global `git config`**. **Do not add `Co-Authored-By` lines for Claude or any tool.**
-- **Branches**: all future work happens on feature branches. Never commit directly to `main`. The branch you are reading this from is `docs/session-and-handoff`; merge it to `main` once approved.
+- **Branches**: commit directly to `main`. We do **not** use feature branches anymore. Instead, **track ongoing work in this document** (see §11 "Work log") so whoever picks up next can see what was just done and what's in flight. (Earlier in the project we used branches; that policy was retired on 2026-05-18 at the user's request.)
 - **Secrets**: `backend/.env` is gitignored. Never paste full secret values into chat, commits, or external systems. Never commit `.env`.
 - **Migrations are canonical**: never apply SQL via the Supabase dashboard. Schema lives in `backend/alembic/versions/`. See [ADR 0006](./.docs/decisions/0006-development-toolchain.md).
 - **No silent reverts**: if you have to change a decision recorded in `.docs/decisions/`, write a new ADR that supersedes the old one instead of rewriting history.
@@ -143,29 +143,30 @@ If you only have time to read three: **0002, 0009, 0010**.
 
 | Capability | Status | Where it lives |
 |---|---|---|
-| Multi-tenant schema (25 tables) | Applied to live Supabase | `backend/alembic/versions/0001-0009` |
+| Multi-tenant schema (25 tables) | Applied to live Supabase (head = 0010) | `backend/alembic/versions/0001-0010` |
 | Auth bootstrap (`/precheck` + `/bootstrap`) | Working end-to-end | `app/api/v1/auth.py`, `app/services/auth_bootstrap.py` |
 | Profile CRUD + skills/schedule replace-set | Working end-to-end | `app/api/v1/profiles.py`, `app/services/profile.py` |
 | Discovery read (students + groups feeds) | Working end-to-end | `app/api/v1/discovery.py`, `app/services/discovery.py` |
+| Compatibility matching (`POST /compatibility/batch`) | Working end-to-end, cache + invalidation triggers live | `app/api/v1/compatibility.py`, `app/services/compatibility.py`, migration 0010 |
 | Two-mode DB sessions (`user_session` + `admin_session`) | Owns its own transaction | `app/db/session.py`, `app/db/admin.py` |
 | JWT verification (aud + iss + required claims) | Hardened per ADR 0010 | `app/auth/jwt.py` |
 | Observability (structlog + Sentry with PII scrubber) | Wired | `app/observability.py`, `app/middleware/request_id.py` |
 | CI (ruff + format + mypy strict + pytest + alembic chain) | Runs on every push | `.github/workflows/backend.yml` |
 | Dev seed (UofT + CSC318 + 8 classmates) | Idempotent | `backend/scripts/seed_dev.py` |
-| Tests (37 unit tests passing) | Green | `backend/tests/unit/` |
+| Tests (53 unit tests passing) | Green | `backend/tests/unit/` |
 
 ### Next, in suggested order
 
-1. **Task F — Compatibility matching algorithm + `POST /api/v1/compatibility/batch`.**
-   Spec: [`.docs/08-matching-spec.md`](./.docs/08-matching-spec.md). Wire up so Discovery can sort by Best Match. Cache results in `compatibility_scores` (already in schema). Use `user_session` so RLS applies.
-
-2. **Task B-1.5 — TA bootstrap endpoints.**
+1. **Task B-1.5 — TA bootstrap endpoints.**
    Use the `ta_allowlist` table (migration 0008). Mirror the student bootstrap pattern in `app/api/v1/auth.py`. `admin_session` import is legal here.
 
-3. **Task C — Frontend wiring.**
-   `frontend/App.tsx` is ~4655 lines of prototype. Replace hardcoded data + `localStorage` with real calls. Use the Supabase JS SDK for magic-link sign-in, then call FastAPI for bootstrap, profile, discovery, and (once F is done) compatibility. Regenerate `packages/api-types/` from `backend/openapi.json` and import via `import type { paths } from "@unitor/api-types"`.
+2. **Task C — Frontend wiring.**
+   `frontend/App.tsx` is ~4655 lines of prototype. Replace hardcoded data + `localStorage` with real calls. Use the Supabase JS SDK for magic-link sign-in, then call FastAPI for bootstrap, profile, discovery, and compatibility. Discovery's "Best Match" sort uses `POST /api/v1/compatibility/batch`. Regenerate `packages/api-types/` from `backend/openapi.json` and import via `import type { paths } from "@unitor/api-types"`.
 
-4. **Pre-pilot hardening** (not blocking F/B-1.5/C, but should happen before any real users):
+3. **Compatibility weight tune-up.**
+   The literal formula in `services/compatibility.py` clamps high for fully-complementary pairs and low for fully-redundant pairs (see HANDOFF §11 entry for 2026-05-18). When the pilot generates real data, revisit weights + bump `CURRENT_ALGORITHM_VERSION` in the same change.
+
+4. **Pre-pilot hardening** (not blocking B-1.5/C, but should happen before any real users):
    - Rate limiting on `/auth/precheck` (e.g. `slowapi`) — anti-enumeration.
    - CI lint rule enforcing `admin_session` import restriction (currently a convention, not enforced).
    - `selectinload` to batch profile children if profiling shows the 3-query hydration is hot.
@@ -266,12 +267,12 @@ For the narrative version of how each one was found, see [`.docs/session-logs/20
 
 ## 9. Things explicitly out of scope right now
 
-Not "never," just "not in the current branch." Don't get sidetracked.
+Not "never," just "not on the path to the pilot." Don't get sidetracked.
 
 - Real-time (Supabase Realtime channels for chat / group state) — schema is ready (messages/reactions partitioned), wiring is not.
 - Notifications (in-app + email via Resend) — table exists in migration 0007, no producer/consumer yet.
 - File uploads (profile photos, CSV archives) to Cloudflare R2 — vendor chosen in ADR 0003, no integration yet.
-- Frontend refactor of `App.tsx` (4655 lines, single file). Wait until after task F so you have a real endpoint surface to bind against.
+- Frontend refactor of `App.tsx` (4655 lines, single file). The backend endpoint surface is now complete enough to bind against (auth + profile + discovery + compatibility) — this is the next big block of work.
 - Admin / TA dashboard endpoints beyond bootstrap.
 - Production deploy to Railway. Currently the backend only runs locally and against the Supabase Free tier.
 
@@ -284,5 +285,23 @@ Before assuming the code is wrong:
 1. Read the matching ADR. The decision is probably deliberate and the reason is recorded.
 2. Read the session log section for that area.
 3. If you're still convinced the decision was wrong, **write a new ADR that supersedes the old one** — don't silently change the code. Future-you (or the next handoff) needs the rationale.
+
+---
+
+## 11. Work log
+
+Append-only running log of what was just done and what's actively in progress. Newest entry on top. One short bullet per session — link to commits or session-log files for detail.
+
+- **2026-05-18** — **Task F shipped: compatibility matching algorithm + `POST /api/v1/compatibility/batch`.**
+  - Pure scoring service `app/services/compatibility.py` implementing spec §3-6 (schedule / skill / work-style sub-scores + weighted overall). `CURRENT_ALGORITHM_VERSION = 1`.
+  - Schemas `app/schemas/compatibility.py` (batch request/response + `SkillCoverageEntry` + `SkippedTarget`).
+  - Route `app/api/v1/compatibility.py` wired in `main.py`. Returns `PROFILE_INCOMPLETE` (400) for viewers without a complete profile; lists targets without a profile in `skipped` rather than failing the batch.
+  - ORM model `app/db/models/compatibility.py` (`CompatibilityCache`) + re-export from `app/db/models/__init__.py`.
+  - **Migration 0010** applied to live Supabase: viewer-own INSERT/UPDATE policies on `compatibility_cache`, and Postgres triggers on `profiles` / `profile_skills` / `profile_schedule_slots` that NULL `computed_at` on related cache rows. Cache invalidation is now server-side; no app-code wiring needed.
+  - 16 new unit tests (53 total). Five of the six spec §10 test vectors land in the expected tier; test 5 (group full coverage) asserts the warning fires but documents that the literal formula scores higher than the spec's "<60" prose expectation — flagged as a weight tune-up candidate.
+  - **Known divergences from spec (documented in test module):** the §5 skill formula clamps high for "fully complementary" pairs (spec ≈95, actual 100) and low for "identical pairs" (spec ≈60, actual 50). Both are within tier; bump weights + algorithm version together when tuning.
+  - **Open follow-up:** group-skill invalidation trigger when group join/leave endpoints land (spec §9 second bullet) — schema is ready, no producer yet.
+- **2026-05-18** — Branch-per-feature policy retired; commit directly to `main` from here on, with progress tracked in this section.
+- **2026-05-17** — Backend bring-up: 10 ADRs locked in, 9 Alembic migrations applied to live Supabase, auth bootstrap + profile CRUD + discovery read endpoints shipped, two senior audits absorbed, CI added. Detail: [`.docs/session-logs/2026-05-17-backend-bringup.md`](./.docs/session-logs/2026-05-17-backend-bringup.md).
 
 Welcome aboard.
