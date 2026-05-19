@@ -22,6 +22,11 @@ import { ScheduleGrid } from "@/components/shared/ScheduleGrid";
 import { SlidePanel } from "@/components/shared/SlidePanel";
 import { StudentAvatar } from "@/components/shared/StudentAvatar";
 import { ToastContainer } from "@/components/shared/Toast";
+import { Landing } from "@/components/landing/Landing";
+import { Login } from "@/components/auth/Login";
+import { SignupForm } from "@/components/auth/SignupForm";
+import { SignupRole } from "@/components/auth/SignupRole";
+import { Verify } from "@/components/auth/Verify";
 import { useToasts } from "@/hooks/useToasts";
 import type {
   AppNotification,
@@ -48,138 +53,6 @@ function isRecentlyActive(lastActive: string): boolean {
 }
 
 // ==================== PAGES ====================
-
-// Landing
-function Landing({ go }: GoProps) {
-  return <div className="bg-background min-h-screen pb-6">
-    <Nav go={go} right={<><Button variant="outline" size="sm" className="px-4" onClick={() => go("login")}>Log In</Button><Button size="sm" className="px-4" onClick={() => go("signup-role")}>Sign Up</Button></>} />
-    <div className="text-center pt-[120px] px-6 pb-20">
-      <h1 className="text-[52px] font-extrabold -tracking-[2px] text-foreground mb-4 leading-[1.05]">Find your people.<br />Form your team.</h1>
-      <p className="text-lg text-gray-600 max-w-[520px] mx-auto mb-11 leading-[1.7]">Match with classmates by skills, schedule, and work style.</p>
-      <div className="flex gap-3.5 justify-center">
-        <Button className="px-9 py-3.5 text-base h-auto" onClick={() => go("signup-role")}>Get Started</Button>
-        <Button variant="outline" className="px-9 py-3.5 text-base h-auto" onClick={() => go("login")}>Log In</Button>
-      </div>
-    </div>
-    <div className="max-w-[880px] mx-auto px-6 pb-[100px] grid grid-cols-3 gap-5">
-      {(["Discover", "Compare", "Connect"] as const).map((t, i) => {
-        const descs = ["Browse available teammates.", "Compare schedules, skills, and work style.", "Message and form your group."];
-        const icons = [<Icon.search key="s" size={32} />, <Icon.balance key="b" size={32} />, <Icon.chat key="c" size={32} />];
-        return (
-          <Card key={i} className="px-7 py-8 gap-0 shadow-none rounded-[14px]">
-            <div className="mb-3.5">{icons[i]}</div>
-            <div className="text-[17px] font-semibold mb-2">{t}</div>
-            <div className="text-sm text-gray-600 leading-relaxed">{descs[i]}</div>
-          </Card>
-        );
-      })}
-    </div>
-    <footer className="max-w-[880px] mx-auto px-6 pb-16 flex justify-center gap-6 text-[13px] text-gray-400">
-      <span>© 2026 unitor</span>
-      <span className="cursor-pointer hover:text-gray-600">Privacy Policy</span>
-      <span className="cursor-pointer hover:text-gray-600">Terms of Service</span>
-      <span className="cursor-pointer hover:text-gray-600">Contact</span>
-    </footer>
-  </div>;
-}
-
-// Signup Role
-function SignupRole({ go }: GoProps) {
-  return <div className="bg-background min-h-screen pb-6">
-    <Nav go={go} />
-    <div className="max-w-[500px] mx-auto py-14 px-6">
-      <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Join unitor</h1>
-      <p className="text-base text-gray-600 mb-9 leading-relaxed">How will you use unitor?</p>
-      {[{ i: <Icon.graduation size={24} />, t: "Student", d: "Find and join project groups", to: "signup-s" }, { i: <Icon.clipboard size={24} />, t: "TA / Instructor", d: "Create courses and manage groups", to: "signup-t" }].map(r => (
-        <Card key={r.t} className="p-5 mb-3.5 shadow-none cursor-pointer flex-row items-center gap-4 hover:border-gray-300 hover:shadow-sm transition-colors" onClick={() => go(r.to)}>
-          <div className="w-[50px] h-[50px] rounded-xl bg-gray-50 flex items-center justify-center">{r.i}</div>
-          <div className="flex-1"><div className="text-base font-semibold">{r.t}</div><div className="text-sm text-gray-500">{r.d}</div></div>
-          <span className="text-gray-300 text-lg">→</span>
-        </Card>
-      ))}
-    </div>
-  </div>;
-}
-
-// Signup Form
-interface SignupFormProps extends RoleGoProps {
-  onSetName: (name: string) => void;
-  onSetEmail: (email: string) => void;
-}
-
-function SignupForm({ role, go, onSetName, onSetEmail }: SignupFormProps) {
-  const [showError, setShowError] = useState(false);
-  const [emailError, setEmailError] = useState(false);
-  const [fullName, setFullName] = useState("");
-  const [university, setUniversity] = useState("");
-  const [email, setEmail] = useState("");
-  const [pw, setPw] = useState("");
-  const [pw2, setPw2] = useState("");
-  const canSubmit = fullName.trim().length > 0 && university.length > 0 && email.trim().length > 0 && pw.length >= 8 && pw === pw2;
-  const handleSubmit = () => {
-    if (!canSubmit) return;
-    if (email === "unknown@mail.utoronto.ca") {
-      setEmailError(true);
-      return;
-    }
-    setEmailError(false);
-    onSetName(fullName);
-    onSetEmail(email);
-    go("verify");
-  };
-  return <div className="bg-background min-h-screen pb-6">
-    <Nav go={go} right={<span className="text-[13px] text-gray-500">{role === "t" ? "TA / Instructor" : "Student"}</span>} />
-    <div className="max-w-[500px] mx-auto py-14 px-6">
-      <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 1 of 2</div>
-      <Progress value={(1 / 2) * 100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
-      <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Create your account</h1>
-      <p className="text-base text-gray-600 mb-9 leading-relaxed">Verification link will be sent to your email.</p>
-      <FormField l="Full Name" id="signup-name"><Input id="signup-name" placeholder="e.g. John Doe" value={fullName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFullName(e.target.value)} /></FormField>
-      <FormField l="University">
-        <Select value={university} onValueChange={setUniversity}>
-          <SelectTrigger className="w-full"><SelectValue placeholder="Select your university..." /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="utoronto">University of Toronto</SelectItem>
-            <SelectItem value="york">York University</SelectItem>
-          </SelectContent>
-        </Select>
-      </FormField>
-      <div className="mb-[18px]">
-        <Label htmlFor="signup-email" className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">University Email</Label>
-        <Input id="signup-email" placeholder="yourid@mail.utoronto.ca" value={email} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEmail(e.target.value); setEmailError(false); }} className={emailError ? "border-danger" : ""} />
-        <p className="text-[13px] text-gray-500 mt-1.5">Must match your course enrollment email.</p>
-        {emailError && <p className="text-[13px] text-danger mt-1">Your email was not found in this course. Contact your TA.</p>}
-      </div>
-      <div className="grid grid-cols-2 gap-3 mb-1">
-        <FormField l="Password" id="signup-pw"><Input id="signup-pw" type="password" placeholder="Min 8 characters" value={pw} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setPw(e.target.value); setShowError(false); }} /></FormField>
-        <FormField l="Confirm Password" id="signup-pw2"><Input id="signup-pw2" type="password" placeholder="Re-enter" className={showError ? "border-danger" : ""} value={pw2} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setPw2(e.target.value); setShowError(false); }} /></FormField>
-      </div>
-      {pw2.length > 0 && pw !== pw2 && <div className="text-[13px] text-danger mb-4">Passwords don't match.</div>}
-      {(pw2.length === 0 || pw === pw2) && <div className="mb-5" />}
-      <Button className="w-full px-7 py-3 h-auto" disabled={!canSubmit} onClick={handleSubmit}>Send Verification Email</Button>
-    </div>
-  </div>;
-}
-
-interface VerifyProps extends RoleGoProps {
-  userEmail?: string;
-}
-
-// Email Verify
-function Verify({ role, go, userEmail }: VerifyProps) {
-  return <div className="bg-background min-h-screen pb-6">
-    <Nav go={go} />
-    <div className="max-w-[500px] mx-auto pt-20 px-6 text-center">
-      <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">Step 2 of 2</div>
-      <Progress value={(2 / 2) * 100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
-      <div className="mb-5 flex justify-center"><Icon.email size={48} /></div>
-      <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px] text-center">Check your inbox</h1>
-      <p className="text-base text-gray-600 mb-9 leading-relaxed text-center">We sent a link to <strong>{userEmail || "j.doe@mail.utoronto.ca"}</strong></p>
-      <Button className="w-full px-7 py-3 h-auto" onClick={() => go(role === "t" ? "ta-dash-empty" : "dash-empty")}>I've Verified My Email</Button>
-      <div className="mt-3.5"><Button variant="link" className="text-foreground">Resend email</Button></div>
-    </div>
-  </div>;
-}
 
 // Student Dashboard — Empty
 function DashEmpty({ go }: GoProps) {
@@ -2856,35 +2729,6 @@ function Urgent({ go }: GoProps) {
   </div>;
 }
 
-// Email Notification Mockup
-// Login Page
-interface LoginProps extends GoProps {
-  onLogin?: () => void;
-  showToast?: (message: string) => void;
-}
-
-function Login({ go, onLogin, showToast }: LoginProps) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const canSubmit = email.trim().length > 0 && password.length > 0;
-  const handleLogin = () => {
-    if (!canSubmit) return;
-    if (onLogin) onLogin();
-    else go("dash");
-  };
-  return <div className="bg-background min-h-screen pb-6">
-    <Nav go={go} />
-    <div className="max-w-[500px] mx-auto py-14 px-6">
-      <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Welcome back</h1>
-      <p className="text-base text-gray-600 mb-9 leading-relaxed">Log in with your university email.</p>
-      <FormField l="University Email" id="login-email"><Input id="login-email" placeholder="you@mail.utoronto.ca" value={email} onChange={e => setEmail(e.target.value)} /></FormField>
-      <FormField l="Password" id="login-password"><Input id="login-password" type="password" placeholder="Your password" value={password} onChange={e => setPassword(e.target.value)} /></FormField>
-      <Button className="w-full px-7 py-3 h-auto" disabled={!canSubmit} onClick={handleLogin}>Log In</Button>
-      <div className="mt-3.5 text-center"><Button variant="link" className="text-foreground" onClick={() => showToast?.("Check your email for password reset instructions")}>Forgot password?</Button></div>
-      <div className="mt-5 text-center text-sm text-gray-500">Don't have an account? <Button variant="link" className="text-foreground p-0 h-auto" onClick={() => go("signup-role")}>Sign up</Button></div>
-    </div>
-  </div>;
-}
 
 // Profile View + Edit
 function ProfileEdit({ go: _go, showToast, userName = "" }: GoProps & { showToast?: (msg: string) => void; userName?: string }) {
