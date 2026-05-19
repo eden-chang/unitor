@@ -61,10 +61,12 @@ Frontend imports the types via `import type { paths } from "@unitor/api-types"`.
 
 Authoritative docs live under `.docs/`:
 
-- **Locked decisions**: [`./.docs/decisions/`](./.docs/decisions/) — 9 ADRs covering multi-tenancy, backend stack, hosting, data strategy, repo layout, toolchain, domain modeling, conventions, and the audit corrections.
+- **Handoff for the next contributor**: [`./HANDOFF.md`](./HANDOFF.md) — file map, what's done, what's next, gotchas, quick-start. **Read this first if you're picking up the project.**
+- **Locked decisions**: [`./.docs/decisions/`](./.docs/decisions/) — 10 ADRs covering multi-tenancy, backend stack, hosting, data strategy, repo layout, toolchain, domain modeling, conventions, and the two senior-audit corrections.
 - **Current state and specs**: [`./.docs/README.md`](./.docs/README.md) — points at the frontend inventory, ERD, auth flows, matching spec, CSV spec, and API surface.
+- **Session logs**: [`./.docs/session-logs/`](./.docs/session-logs/) — chronological narratives of working sessions.
 
-If you're new, start at [`./.docs/01-current-state.md`](./.docs/01-current-state.md).
+If you're new, start at [`./HANDOFF.md`](./HANDOFF.md), then read [`./.docs/01-current-state.md`](./.docs/01-current-state.md) for context.
 
 ## Deployment
 
