@@ -27,6 +27,9 @@ import { Login } from "@/components/auth/Login";
 import { SignupForm } from "@/components/auth/SignupForm";
 import { SignupRole } from "@/components/auth/SignupRole";
 import { Verify } from "@/components/auth/Verify";
+import { Dash } from "@/components/dashboard/Dash";
+import { DashEmpty } from "@/components/dashboard/DashEmpty";
+import { Join } from "@/components/dashboard/Join";
 import { useToasts } from "@/hooks/useToasts";
 import type {
   AppNotification,
@@ -54,84 +57,6 @@ function isRecentlyActive(lastActive: string): boolean {
 
 // ==================== PAGES ====================
 
-// Student Dashboard — Empty
-function DashEmpty({ go }: GoProps) {
-  return <div className="bg-background min-h-screen pb-6">
-    <Nav go={go} />
-    <div className="max-w-[680px] mx-auto py-14 px-6">
-      <div className="flex justify-between items-center mb-7">
-        <div><div className="text-sm text-gray-500 mb-0.5">Welcome back,</div><h1 className="text-[28px] font-bold text-foreground -tracking-[0.5px]">My Courses</h1></div>
-        <Button size="sm" className="px-4" onClick={() => go("join")}>+ Join a Course</Button>
-      </div>
-      <Card className="py-[52px] px-6 mb-3.5 gap-0 shadow-none text-center border-dashed border-gray-300">
-        <div className="mb-3 flex justify-center"><Icon.books size={36} /></div>
-        <p className="text-[15px] text-gray-500 mb-4">No courses yet.</p>
-        <Button variant="outline" size="sm" className="px-4 mx-auto" onClick={() => go("join")}>Join your first course</Button>
-      </Card>
-    </div>
-  </div>;
-}
-
-interface DashProps extends GoProps {
-  userName?: string;
-}
-
-// Student Dashboard — With CSC318
-function Dash({ go, userName }: DashProps) {
-  return <div className="bg-background min-h-screen pb-6">
-    <Nav go={go} right={<div className="flex items-center gap-4"><Button variant="outline" size="sm" className="px-4" onClick={() => go("mygroup")}>My Group</Button><span className="text-sm text-gray-600">{userName || "Student"}</span><Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-[13px] font-bold">{getInitials(userName)}</AvatarFallback></Avatar></div>} />
-    <div className="max-w-[680px] mx-auto py-14 px-6">
-      <div className="flex justify-between items-center mb-7">
-        <div><div className="text-sm text-gray-500 mb-0.5">Welcome back,</div><h1 className="text-[28px] font-bold text-foreground -tracking-[0.5px]">My Courses</h1></div>
-        <Button size="sm" className="px-4" onClick={() => go("join")}>+ Join a Course</Button>
-      </div>
-      <Card className="p-5 mb-3.5 gap-0 shadow-none cursor-pointer hover:border-gray-300 hover:shadow-sm transition-colors" onClick={() => go("board")}>
-        <div className="flex justify-between items-start">
-          <div><div className="text-lg font-semibold">CSC318</div><div className="text-sm text-gray-500">The Design of Interactive Computational Media</div><div className="text-[13px] text-gray-400 mt-1">Winter 2026 · Section 201</div></div>
-          <Badge variant="success">Active</Badge>
-        </div>
-        <Separator className="my-3.5 bg-gray-100" />
-        <div className="flex justify-between"><span className="text-[13px] text-gray-500">Group status</span><span className="text-[13px] font-semibold">Looking for group →</span></div>
-      </Card>
-    </div>
-  </div>;
-}
-
-// Join Course
-function Join({ go }: GoProps) {
-  const [step, setStep] = useState(0);
-  const [code, setCode] = useState("");
-  return <div className="bg-background min-h-screen pb-6">
-    <Nav go={go} />
-    <div className="max-w-[500px] mx-auto py-14 px-6">
-      <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={() => go("dash")}>← Back to Dashboard</Button>
-      {step === 0 ? <>
-        <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Join a Course</h1>
-        <p className="text-base text-gray-600 mb-9 leading-relaxed">Enter course code from your TA.</p>
-        <FormField l="Course Code"><Input className="text-[22px] font-bold tracking-[6px] text-center py-[18px] h-auto" placeholder="ABC123" value={code} onChange={e => setCode(e.target.value.toUpperCase())} /></FormField>
-        <Button className="w-full px-7 py-3 h-auto" disabled={!code.trim()} onClick={() => setStep(1)}>Look Up</Button>
-      </> :
-        <>
-          <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Confirm Course</h1>
-          <p className="text-base text-gray-600 mb-9 leading-relaxed">Is this the right one?</p>
-          <Card className="p-5 gap-0 shadow-none bg-gray-50">
-            <div className="text-[22px] font-bold mb-1">CSC318</div>
-            <div className="text-[15px] text-gray-600">The Design of Interactive Computational Media</div>
-            <div className="text-sm text-gray-400 mb-3">Winter 2026 · University of Toronto</div>
-            <Separator className="my-3 bg-gray-100" />
-            <div className="grid grid-cols-2 gap-1.5 text-[13px] text-gray-500">
-              <span>Sections: 201, 202, 203</span><span>Group size: 4–6</span>
-              <span>Deadline: Mar 15, 2026</span><span>Code: W543M7</span>
-            </div>
-          </Card>
-          <div className="flex gap-3 mt-6">
-            <Button variant="outline" className="flex-1 px-7 py-3 h-auto" onClick={() => setStep(0)}>Back</Button>
-            <Button className="flex-1 px-7 py-3 h-auto" onClick={() => go("prof-0")}>Join & Set Up Profile</Button>
-          </div>
-        </>}
-    </div>
-  </div>;
-}
 
 // Profile 0 - Name & Photo
 interface Prof0Props extends GoProps {
