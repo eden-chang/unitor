@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, Fragment, type ReactNode, type ReactElement, type Dispatch, type SetStateAction } from "react";
+import { useState, useEffect, useRef, useCallback, Fragment, type ReactNode, type ReactElement } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -8,186 +8,31 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
-
-// ==================== TOAST SYSTEM ====================
-type Toast = { id: number; message: string };
-let toastId = 0;
-
-function ToastContainer({ toasts, onRemove }: { toasts: Toast[]; onRemove: (id: number) => void }) {
-  return (
-    <div className="fixed bottom-4 right-4 z-[500] flex flex-col gap-2">
-      {toasts.map(t => (
-        <div key={t.id} className="bg-foreground text-background px-5 py-3 rounded-xl shadow-lg text-[14px] font-medium animate-[fadeIn_0.3s_ease] cursor-pointer"
-          onClick={() => onRemove(t.id)}>
-          {t.message}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ==================== LOCAL STORAGE HOOK ====================
-const LS_PREFIX = "unitor_";
-
-function useLocalStorage<T>(key: string, defaultValue: T | (() => T)): [T, Dispatch<SetStateAction<T>>] {
-  const fullKey = LS_PREFIX + key;
-  const [value, setValue] = useState<T>(() => {
-    try {
-      const stored = localStorage.getItem(fullKey);
-      if (stored !== null) return JSON.parse(stored) as T;
-    } catch { /* ignore corrupt data */ }
-    return typeof defaultValue === "function" ? (defaultValue as () => T)() : defaultValue;
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(fullKey, JSON.stringify(value));
-    } catch { /* storage full — ignore */ }
-  }, [fullKey, value]);
-
-  return [value, setValue];
-}
-
-function getInitials(name: string): string {
-  if (!name) return "ME";
-  return name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
-}
-
-const PROFILE_IMAGES = new Set([
-  "Jesse Nguyen", "Priya Sharma", "Marcus Lee", "Aisha Khan", "Tom Chen",
-  "David Park", "Lisa Wang", "Omar Ali", "Sofia Rodriguez", "Wei Zhang",
-  "Elena Popov", "Kai Tanaka", "Nina Okafor", "Liam Foster",
-]);
-
-function getProfileImageUrl(name: string): string | null {
-  if (PROFILE_IMAGES.has(name)) return `/unitor-demo/profile_images/${name}.png`;
-  return null;
-}
-
-function StudentAvatar({ name, size = "size-9", textSize = "text-[11px]" }: { name: string; size?: string; textSize?: string }) {
-  const url = getProfileImageUrl(name);
-  const init = getInitials(name);
-  return (
-    <Avatar className={size}>
-      {url && <AvatarImage src={url} alt={name} />}
-      <AvatarFallback className={cn("bg-gray-200 text-gray-500 font-bold", textSize)}>{init}</AvatarFallback>
-    </Avatar>
-  );
-}
-
-function clearAllLocalStorage() {
-  const keys = Object.keys(localStorage).filter(k => k.startsWith(LS_PREFIX));
-  keys.forEach(k => localStorage.removeItem(k));
-}
-
-// ==================== TYPES ====================
-interface GoProps {
-  go: (page: string) => void;
-}
-
-interface RoleGoProps extends GoProps {
-  role: string;
-}
-
-type NotificationType =
-  | "group-request-received"
-  | "group-application-received"
-  | "request-accepted"
-  | "request-declined"
-  | "application-accepted"
-  | "application-declined"
-  | "member-left"
-  | "confirm-requested"
-  | "urgent-mode";
-
-interface AppNotification {
-  id: string;
-  type: NotificationType;
-  title: string;
-  body: string;
-  timestamp: string;
-  read: boolean;
-  actionTarget?: string;
-}
-
-interface NotificationBellProps {
-  notifications: AppNotification[];
-  onNotificationClick: (n: AppNotification) => void;
-  onMarkAllRead: () => void;
-}
-
-interface NotificationItemProps {
-  notification: AppNotification;
-  icon: ReactElement;
-  onClick: () => void;
-}
-
-interface NavProps {
-  go: (page: string) => void;
-  activePage?: string;
-  studentStatus?: "solo" | "open-group" | "closed";
-  notifications?: AppNotification[];
-  onNotificationClick?: (n: AppNotification) => void;
-  onMarkAllRead?: () => void;
-  right?: ReactNode;
-  userName?: string;
-}
-
-interface FProps {
-  l: string;
-  id?: string;
-  children: ReactNode;
-}
-
-interface SentProps extends GoProps {
-  targetName: string;
-}
-
-interface TGridProps {
-  sel: Set<string>;
-  set: (s: Set<string>) => void;
-  label: string;
-  disabled?: boolean;
-}
-
-interface IconProps {
-  size?: number;
-  color?: string;
-}
-
-interface Student {
-  name: string;
-  sec: string;
-  skills: string[];
-  status: "solo" | "open-group" | "closed";
-  contactStatus: "none" | "request-sent" | "replied" | "declined" | "no-response";
-  overlap: string;
-  init: string;
-  bio: string;
-  rat: Record<string, string>;
-  lastActive: string;
-  compatScore: number;
-  scheduleOverlapHrs: number;
-}
-
-interface StatusInfo {
-  l: string;
-  variant?: "success" | "warning" | "danger";
-  cls?: string;
-}
-
-interface CompatibilityBreakdown {
-  overall: number;
-  scheduleScore: number;
-  skillScore: number;
-  workStyleScore: number;
-  matchReasons: string[];
-  warnings: string[];
-  skillComplementarity: { skill: string; coveredBy: "you" | "them" | "both" | "gap" }[];
-}
+import { LS_PREFIX, useLocalStorage } from "@/hooks/useLocalStorage";
+import { clearAllLocalStorage } from "@/lib/storage";
+import { getInitials } from "@/lib/avatar";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { FormField } from "@/components/shared/FormField";
+import { Icon } from "@/components/shared/icons";
+import { Nav } from "@/components/shared/Nav";
+import { ScheduleGrid } from "@/components/shared/ScheduleGrid";
+import { SlidePanel } from "@/components/shared/SlidePanel";
+import { StudentAvatar } from "@/components/shared/StudentAvatar";
+import { ToastContainer } from "@/components/shared/Toast";
+import { useToasts } from "@/hooks/useToasts";
+import type {
+  AppNotification,
+  CompatibilityBreakdown,
+  GoProps,
+  NotificationType,
+  RoleGoProps,
+  SentProps,
+  StatusInfo,
+  Student,
+} from "@/types/ui";
 
 // ==================== HELPERS ====================
 function parseActivityMinutes(lastActive: string): number {
@@ -201,375 +46,6 @@ function parseActivityMinutes(lastActive: string): number {
 function isRecentlyActive(lastActive: string): boolean {
   return parseActivityMinutes(lastActive) < 30;
 }
-function NotificationItem({ notification: n, icon, onClick }: NotificationItemProps) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "w-full flex gap-3 items-start px-4 py-3 text-left transition-colors hover:bg-gray-50 border-b border-gray-100",
-        !n.read && "bg-accent/30"
-      )}
-    >
-      <span className="mt-0.5 shrink-0">{icon}</span>
-      <div className="flex-1 min-w-0">
-        <div className={cn("text-[12px] leading-snug", !n.read ? "font-semibold text-foreground" : "text-gray-700")}>
-          {n.title}
-        </div>
-        <div className="text-[11px] text-gray-500 mt-0.5 truncate">{n.body}</div>
-        <div className="text-[10px] text-gray-400 mt-1">{n.timestamp}</div>
-      </div>
-      {!n.read && <div className="w-2 h-2 rounded-full bg-primary shrink-0 mt-1.5" />}
-    </button>
-  );
-}
-
-function NotificationBell({ notifications, onNotificationClick, onMarkAllRead }: NotificationBellProps) {
-  const [open, setOpen] = useState(false);
-  const unreadCount = notifications.filter(n => !n.read).length;
-  const TYPE_ICONS: Record<NotificationType, ReactElement> = {
-    "group-request-received": <Icon.wave size={16} color="#9652ca" />,
-    "group-application-received": <Icon.document size={16} color="#9652ca" />,
-    "request-accepted": <Icon.checkCircle size={16} color="#16a34a" />,
-    "request-declined": <Icon.xCircle size={16} color="#DC2626" />,
-    "application-accepted": <Icon.checkCircle size={16} color="#16a34a" />,
-    "application-declined": <Icon.xCircle size={16} color="#DC2626" />,
-    "member-left": <Icon.userIcon size={16} color="#6B7280" />,
-    "confirm-requested": <Icon.bellIcon size={16} color="#9652ca" />,
-    "urgent-mode": <Icon.warning size={16} color="#DC2626" />,
-  };
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="relative p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"
-        aria-label="Notifications"
-      >
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6" />
-          <path d="M9 17v1a3 3 0 0 0 6 0v-1" />
-        </svg>
-        {unreadCount > 0 && (
-          <span className="absolute top-1 right-1 w-2 h-2 bg-[#DC2626] rounded-full" />
-        )}
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-[190]" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-2 w-[360px] bg-white border border-[#E5E7EB] rounded-[12px] shadow-[0_8px_24px_rgba(0,0,0,0.12)] z-[200] overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <span className="text-sm font-bold">Notifications</span>
-              {unreadCount > 0 && (
-                <button onClick={onMarkAllRead} className="text-[11px] text-primary hover:text-accent-foreground cursor-pointer">
-                  Mark all read
-                </button>
-              )}
-            </div>
-            <div className="max-h-[480px] overflow-y-auto">
-              {notifications.length === 0 ? (
-                <div className="py-10 text-center text-[13px] text-gray-400">No notifications</div>
-              ) : (
-                notifications.map(n => (
-                  <NotificationItem
-                    key={n.id}
-                    notification={n}
-                    icon={TYPE_ICONS[n.type]}
-                    onClick={() => { onNotificationClick(n); setOpen(false); }}
-                  />
-                ))
-              )}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-const APP_PAGES = new Set(["board", "mygroup", "urgent", "profile-edit", "chats"]);
-const PAGE_TO_TAB: Record<string, string> = {
-  "board": "board", "urgent": "board",
-  "mygroup": "mygroup", "profile-edit": "profile-edit", "chats": "chats",
-};
-
-function Nav({ go, activePage = "", studentStatus = "solo", notifications = [], onNotificationClick = () => { }, onMarkAllRead = () => { }, right, userName = "" }: NavProps) {
-  const isAppPage = APP_PAGES.has(activePage);
-  const [avatarOpen, setAvatarOpen] = useState(false);
-
-  if (!isAppPage) {
-    return (
-      <div className="flex justify-between items-center h-14 px-12 bg-white border-b border-[#E5E7EB] sticky top-0 z-[100]">
-        <span className="text-[22px] font-extrabold text-foreground -tracking-[1px] cursor-pointer" onClick={() => go("landing")}>unitor</span>
-        <div className="flex items-center gap-3">{right}</div>
-      </div>
-    );
-  }
-
-  const activeTab = PAGE_TO_TAB[activePage] ?? "";
-  const tabs = [
-    { id: "board", label: "Discovery", show: studentStatus !== "closed" },
-    { id: "mygroup", label: "My Group", show: true },
-    { id: "chats", label: "Chats", show: true },
-    { id: "profile-edit", label: "Profile", show: true },
-  ];
-
-  return (
-    <div className="flex justify-between items-stretch h-14 px-12 bg-white border-b border-[#E5E7EB] sticky top-0 z-[100]">
-      <span className="flex items-center text-[22px] font-extrabold text-foreground -tracking-[1px] cursor-pointer" onClick={() => go("landing")}>unitor</span>
-      <div className="flex h-full items-end gap-1" role="tablist">
-        {tabs.filter(t => t.show).map(t => (
-          <button
-            key={t.id}
-            role="tab"
-            aria-selected={activeTab === t.id}
-            onClick={() => go(t.id)}
-            className={cn(
-              "px-4 pb-[11px] text-[16px] border-b-[4px] transition-colors cursor-pointer",
-              activeTab === t.id
-                ? "font-bold text-[#111827] border-[#9652ca]"
-                : "font-medium text-[#6B7280] border-transparent hover:text-[#111827] hover:border-[#9652ca]/40"
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-      <div className="flex items-center gap-4">
-        <NotificationBell
-          notifications={notifications}
-          onNotificationClick={onNotificationClick}
-          onMarkAllRead={onMarkAllRead}
-        />
-        <div className="relative">
-          {avatarOpen && <div className="fixed inset-0 z-[190]" onClick={() => setAvatarOpen(false)} />}
-          <button onClick={() => setAvatarOpen(o => !o)} className="rounded-full cursor-pointer">
-            <Avatar className="size-8"><AvatarFallback className="bg-gray-200 text-gray-500 text-xs font-bold">{getInitials(userName)}</AvatarFallback></Avatar>
-          </button>
-          {avatarOpen && (
-            <div className="absolute right-0 top-full mt-2 w-40 bg-background border border-border rounded-xl shadow-lg z-[200] overflow-hidden py-1">
-              <button onClick={() => { go("profile-edit"); setAvatarOpen(false); }} className="w-full text-left px-4 py-2.5 text-[13px] text-[#374151] hover:bg-gray-50">Edit Profile</button>
-              <button onClick={() => { go("landing"); setAvatarOpen(false); }} className="w-full text-left px-4 py-2.5 text-[13px] text-[#374151] hover:bg-gray-50">Log Out</button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function F({ l, id, children }: FProps) {
-  return (
-    <div className="mb-[18px]">
-      <Label htmlFor={id} className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">{l}</Label>
-      {children}
-    </div>
-  );
-}
-
-function TGrid({ sel, set, label, disabled = false }: TGridProps) {
-  const ds = ["Mon", "Tue", "Wed", "Thu", "Fri"], ts = ["9am–12pm", "12–4pm", "4–8pm", "8–11pm"];
-  const dragging = useRef(false);
-  const didDragMultiple = useRef(false);
-  const [dragMode, setDragMode] = useState<"add" | "remove">("add");
-  const startDrag = (k: string) => {
-    if (disabled) return;
-    dragging.current = true;
-    didDragMultiple.current = false;
-    const mode = sel.has(k) ? "remove" : "add";
-    setDragMode(mode);
-    const n = new Set(sel);
-    mode === "add" ? n.add(k) : n.delete(k);
-    set(n);
-  };
-  const enterDrag = (k: string) => {
-    if (!dragging.current || disabled) return;
-    didDragMultiple.current = true;
-    const n = new Set(sel);
-    dragMode === "add" ? n.add(k) : n.delete(k);
-    set(n);
-  };
-  const stopDrag = () => { dragging.current = false; };
-  return (
-    <div className={cn("mb-7", disabled && "opacity-40")} onMouseUp={stopDrag} onMouseLeave={stopDrag}>
-      <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">{label}</Label>
-      <div className="grid grid-cols-[64px_repeat(5,1fr)] gap-[3px]" style={{ userSelect: "none" }}>
-        <div />{ds.map(d => <div key={d} className="text-center text-xs font-semibold text-gray-500 p-1.5">{d}</div>)}
-        {ts.map((t, ti) => <Fragment key={ti}>
-          <div className="text-[11px] text-gray-500 flex items-center">{t}</div>
-          {ds.map(d => {
-            const k = `${d}-${ti}`; return <button key={k} type="button" role="checkbox" aria-checked={sel.has(k)} aria-label={`${d} ${t}`}
-              onMouseDown={(e) => { e.preventDefault(); startDrag(k); }}
-              onMouseEnter={() => enterDrag(k)}
-              className={cn("py-2.5 px-1 text-center rounded-md text-xs font-medium transition-colors border", disabled ? "pointer-events-none cursor-default" : "cursor-pointer", sel.has(k) ? "bg-primary text-primary-foreground border-primary" : "bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100 hover:border-gray-300")} />;
-          })}
-        </Fragment>)}
-      </div>
-    </div>
-  );
-}
-
-// ==================== ICONS ====================
-const Icon: Record<string, (props: IconProps) => ReactElement> = {
-  graduation: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path fillRule="evenodd" clipRule="evenodd" d="M12 13c-2.755 0-5-2.245-5-5V3.5H4V2h14.75c.69 0 1.25.56 1.25 1.25V9h-1.5V3.5H17V8c0 2.755-2.245 5-5 5ZM8.5 8c0 1.93 1.57 3.5 3.5 3.5s3.5-1.57 3.5-3.5V7h-7v1Zm0-2.5h7v-2h-7v2Zm6.43 9a4.752 4.752 0 0 1 4.59 3.52l1.015 3.785-1.45.39-1.015-3.785A3.253 3.253 0 0 0 14.93 16H9.07c-1.47 0-2.76.99-3.14 2.41l-1.015 3.785-1.45-.39L4.48 18.02a4.762 4.762 0 0 1 4.59-3.52h5.86Z" fill={color} />
-    </svg>
-  ),
-  clipboard: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path fillRule="evenodd" clipRule="evenodd" d="M7.105 5H5.5v15.5h5V22H4V3.5h3V2h10v1.5h3V11h-1.5V5h-1.605c-.33 1.15-1.39 2-2.645 2h-4.5c-1.26 0-2.315-.85-2.645-2ZM15.5 3.5h-7v.75c0 .69.56 1.25 1.25 1.25h4.5c.69 0 1.25-.56 1.25-1.25V3.5Zm2.22 9.72a2.164 2.164 0 1 1 3.06 3.06l-5.125 5.125-2.22.74a1.237 1.237 0 0 1-1.28-.3c-.335-.34-.45-.83-.3-1.28l.74-2.22 5.125-5.125Zm-2.875 6.875 4.875-4.875a.664.664 0 1 0-.94-.94l-4.875 4.875-.47 1.41 1.41-.47Z" fill={color} />
-    </svg>
-  ),
-  email: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path fillRule="evenodd" clipRule="evenodd" d="M19.25 20H6.5v-1.5h12.75c.69 0 1.25-.56 1.25-1.25V9.46L12 14.37 2 8.595V6.75A2.755 2.755 0 0 1 4.75 4h14.5A2.755 2.755 0 0 1 22 6.75v10.5A2.755 2.755 0 0 1 19.25 20ZM3.5 7.725 12 12.63l8.5-4.905V6.75c0-.69-.56-1.25-1.25-1.25H4.75c-.69 0-1.25.56-1.25 1.25v.975ZM9 15H3.5v1.5H9V15Zm-7-3h2.5v1.5H2V12Z" fill={color} />
-    </svg>
-  ),
-  books: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M15 4a3.745 3.745 0 0 0-3 1.51A3.745 3.745 0 0 0 9 4H2v16h7.5c.69 0 1.25.56 1.25 1.25h2.5c0-.69.56-1.25 1.25-1.25H22V4h-7Zm-3.75 15.13a2.726 2.726 0 0 0-1.75-.63h-6v-13H9c1.24 0 2.25 1.01 2.25 2.25v11.38Zm9.25-.63h-6c-.665 0-1.275.235-1.75.63V7.75c0-1.24 1.01-2.25 2.25-2.25h5.5v13Z" fill={color} />
-    </svg>
-  ),
-  camera: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path fillRule="evenodd" clipRule="evenodd" d="M2 17.25A2.755 2.755 0 0 0 4.75 20h14.5A2.755 2.755 0 0 0 22 17.25v-9a2.755 2.755 0 0 0-2.75-2.75h-2.64l-2-2.5H9.39l-2 2.5H4.75A2.755 2.755 0 0 0 2 8.25v9ZM8.11 7l2-2.5h3.78l2 2.5h3.36c.69 0 1.25.56 1.25 1.25v9c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-9C3.5 7.56 4.06 7 4.75 7h3.36Zm-.61 5.5c0 2.48 2.02 4.5 4.5 4.5s4.5-2.02 4.5-4.5S14.48 8 12 8s-4.5 2.02-4.5 4.5Zm1.5 0c0-1.655 1.345-3 3-3s3 1.345 3 3-1.345 3-3 3-3-1.345-3-3Z" fill={color} />
-    </svg>
-  ),
-  search: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="m21.78 20.72-5.62-5.62A7.96 7.96 0 0 0 18 10c0-4.41-3.59-8-8-8s-8 3.59-8 8 3.59 8 8 8a7.96 7.96 0 0 0 5.1-1.84l5.62 5.62 1.06-1.06ZM10 16.5A6.506 6.506 0 0 1 3.5 10c0-3.585 2.915-6.5 6.5-6.5s6.5 2.915 6.5 6.5-2.915 6.5-6.5 6.5Z" fill={color} />
-    </svg>
-  ),
-  balance: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path fillRule="evenodd" clipRule="evenodd" d="M12.75 12.5h9.265l-.02-.77a9.99 9.99 0 0 0-9.725-9.725l-.77-.02v9.265c0 .69.56 1.25 1.25 1.25Zm7.69-1.5H13V3.56A8.493 8.493 0 0 1 20.44 11ZM3.5 12c0 4.685 3.815 8.5 8.5 8.5 3.965 0 7.345-2.785 8.255-6.5h1.535c-.94 4.545-5 8-9.79 8-5.515 0-10-4.485-10-10 0-4.83 3.44-8.87 8-9.8v1.545C6.275 4.65 3.5 8.005 3.5 12Z" fill={color} />
-    </svg>
-  ),
-  chat: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path fillRule="evenodd" clipRule="evenodd" d="M2.77 17.7c.155.065.32.095.48.095l.005-.005c.32 0 .64-.125.88-.365L6.56 15h8.19a2.755 2.755 0 0 0 2.75-2.75v-6.5A2.755 2.755 0 0 0 14.75 3h-10A2.755 2.755 0 0 0 2 5.75v10.795c0 .51.3.96.77 1.155ZM3.5 5.75c0-.69.56-1.25 1.25-1.25h10c.69 0 1.25.56 1.25 1.25v6.5c0 .69-.56 1.25-1.25 1.25H5.94L3.5 15.94V5.75Zm16.365 15.68c.24.24.56.365.885.365v.005A1.245 1.245 0 0 0 22 20.55V10.255a2.755 2.755 0 0 0-2.75-2.75H19v1.5h.25c.69 0 1.25.56 1.25 1.25v9.69l-1.94-1.94h-6.81c-.69 0-1.25-.56-1.25-1.25V16.5H9v.255a2.755 2.755 0 0 0 2.75 2.75h6.19l1.925 1.925Z" fill={color} />
-    </svg>
-  ),
-  clockAlert: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path fillRule="evenodd" clipRule="evenodd" d="M12 22C6.485 22 2 17.515 2 12S6.485 2 12 2s10 4.485 10 10-4.485 10-10 10Zm0-18.5c-4.685 0-8.5 3.815-8.5 8.5 0 4.685 3.815 8.5 8.5 8.5 4.685 0 8.5-3.815 8.5-8.5 0-4.685-3.815-8.5-8.5-8.5Zm.75 10V8h-1.5v5.5h1.5ZM13 16a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z" fill={color} />
-    </svg>
-  ),
-  star: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-    </svg>
-  ),
-  starFilled: ({ size = 24, color = "#9652ca" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill={color} stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-    </svg>
-  ),
-  eyeOpen: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
-    </svg>
-  ),
-  eyeOff: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" /><line x1="1" y1="1" x2="23" y2="23" />
-    </svg>
-  ),
-  pencil: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" /><path d="M13.5 6.5l4 4" />
-    </svg>
-  ),
-  reactCheck: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 3m0 2a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z" /><path d="M9 12l2 2l4 -4" />
-    </svg>
-  ),
-  reactThumbUp: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M7 11v8a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1v-7a1 1 0 0 1 1 -1h3a4 4 0 0 0 4 -4v-1a2 2 0 0 1 4 0v5h3a2 2 0 0 1 2 2l-1 5a2 3 0 0 1 -2 2h-7a3 3 0 0 1 -3 -3" />
-    </svg>
-  ),
-  reactHeart: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M19.5 12.572l-7.5 7.428l-7.5 -7.428a5 5 0 1 1 7.5 -6.566a5 5 0 1 1 7.5 6.572" />
-    </svg>
-  ),
-  reactSad: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9 10l.01 0" /><path d="M15 10l.01 0" /><path d="M9.5 15.25a3.5 3.5 0 0 1 5 0" /><path d="M17.566 17.606a2 2 0 1 0 2.897 .03l-1.463 -1.636l-1.434 1.606z" /><path d="M20.865 13.517a8.937 8.937 0 0 0 .135 -1.517a9 9 0 1 0 -9 9c.69 0 1.36 -.076 2 -.222" />
-    </svg>
-  ),
-  mailSend: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 7a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-10z" /><path d="M3 7l9 6l9 -6" />
-    </svg>
-  ),
-  wave: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M18 11V6a2 2 0 0 0-4 0v1M14 10V4a2 2 0 0 0-4 0v6M10 10V6a2 2 0 0 0-4 0v8c0 4.42 3.58 8 8 8h1a7 7 0 0 0 7-7v-3a2 2 0 0 0-4 0" />
-    </svg>
-  ),
-  document: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" />
-    </svg>
-  ),
-  checkCircle: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
-    </svg>
-  ),
-  xCircle: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
-    </svg>
-  ),
-  userIcon: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
-    </svg>
-  ),
-  bellIcon: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6" /><path d="M9 17v1a3 3 0 0 0 6 0v-1" />
-    </svg>
-  ),
-  thumbUp: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z" /><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
-    </svg>
-  ),
-  thumbDown: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z" /><path d="M17 2h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3" />
-    </svg>
-  ),
-  warning: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
-    </svg>
-  ),
-  messageCircle: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-    </svg>
-  ),
-  chevronLeft: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="15 18 9 12 15 6" />
-    </svg>
-  ),
-  chevronRight: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="9 18 15 12 9 6" />
-    </svg>
-  ),
-  x: ({ size = 24, color = "var(--icon-default)" }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-    </svg>
-  ),
-};
 
 // ==================== PAGES ====================
 
@@ -658,8 +134,8 @@ function SignupForm({ role, go, onSetName, onSetEmail }: SignupFormProps) {
       <Progress value={(1 / 2) * 100} className="h-[3px] bg-gray-100 rounded-sm mb-8" />
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Create your account</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed">Verification link will be sent to your email.</p>
-      <F l="Full Name" id="signup-name"><Input id="signup-name" placeholder="e.g. John Doe" value={fullName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFullName(e.target.value)} /></F>
-      <F l="University">
+      <FormField l="Full Name" id="signup-name"><Input id="signup-name" placeholder="e.g. John Doe" value={fullName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFullName(e.target.value)} /></FormField>
+      <FormField l="University">
         <Select value={university} onValueChange={setUniversity}>
           <SelectTrigger className="w-full"><SelectValue placeholder="Select your university..." /></SelectTrigger>
           <SelectContent>
@@ -667,7 +143,7 @@ function SignupForm({ role, go, onSetName, onSetEmail }: SignupFormProps) {
             <SelectItem value="york">York University</SelectItem>
           </SelectContent>
         </Select>
-      </F>
+      </FormField>
       <div className="mb-[18px]">
         <Label htmlFor="signup-email" className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">University Email</Label>
         <Input id="signup-email" placeholder="yourid@mail.utoronto.ca" value={email} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEmail(e.target.value); setEmailError(false); }} className={emailError ? "border-danger" : ""} />
@@ -675,8 +151,8 @@ function SignupForm({ role, go, onSetName, onSetEmail }: SignupFormProps) {
         {emailError && <p className="text-[13px] text-danger mt-1">Your email was not found in this course. Contact your TA.</p>}
       </div>
       <div className="grid grid-cols-2 gap-3 mb-1">
-        <F l="Password" id="signup-pw"><Input id="signup-pw" type="password" placeholder="Min 8 characters" value={pw} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setPw(e.target.value); setShowError(false); }} /></F>
-        <F l="Confirm Password" id="signup-pw2"><Input id="signup-pw2" type="password" placeholder="Re-enter" className={showError ? "border-danger" : ""} value={pw2} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setPw2(e.target.value); setShowError(false); }} /></F>
+        <FormField l="Password" id="signup-pw"><Input id="signup-pw" type="password" placeholder="Min 8 characters" value={pw} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setPw(e.target.value); setShowError(false); }} /></FormField>
+        <FormField l="Confirm Password" id="signup-pw2"><Input id="signup-pw2" type="password" placeholder="Re-enter" className={showError ? "border-danger" : ""} value={pw2} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setPw2(e.target.value); setShowError(false); }} /></FormField>
       </div>
       {pw2.length > 0 && pw !== pw2 && <div className="text-[13px] text-danger mb-4">Passwords don't match.</div>}
       {(pw2.length === 0 || pw === pw2) && <div className="mb-5" />}
@@ -759,7 +235,7 @@ function Join({ go }: GoProps) {
       {step === 0 ? <>
         <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Join a Course</h1>
         <p className="text-base text-gray-600 mb-9 leading-relaxed">Enter course code from your TA.</p>
-        <F l="Course Code"><Input className="text-[22px] font-bold tracking-[6px] text-center py-[18px] h-auto" placeholder="ABC123" value={code} onChange={e => setCode(e.target.value.toUpperCase())} /></F>
+        <FormField l="Course Code"><Input className="text-[22px] font-bold tracking-[6px] text-center py-[18px] h-auto" placeholder="ABC123" value={code} onChange={e => setCode(e.target.value.toUpperCase())} /></FormField>
         <Button className="w-full px-7 py-3 h-auto" disabled={!code.trim()} onClick={() => setStep(1)}>Look Up</Button>
       </> :
         <>
@@ -806,7 +282,7 @@ function Prof0({ go, initialName, onSaveName }: Prof0Props) {
         </Avatar>
         <Button variant="outline" size="sm" className="px-4">Upload Photo</Button>
       </div>
-      <F l="Display Name"><Input placeholder="e.g. John D." value={name} onChange={e => setName(e.target.value)} /></F>
+      <FormField l="Display Name"><Input placeholder="e.g. John D." value={name} onChange={e => setName(e.target.value)} /></FormField>
       <Button className="w-full px-7 py-3 h-auto" disabled={!name.trim()} onClick={() => { onSaveName?.(name); go("prof-1"); }}>Next</Button>
     </div>
   </div>;
@@ -863,7 +339,7 @@ function Prof2({ go }: GoProps) {
         </div>
       </div>
       <p className="text-[13px] text-gray-500 mb-3">Click or drag to select available times.</p>
-      <TGrid sel={sched} set={setSched} label="When can you work on the project?" disabled={flexible} />
+      <ScheduleGrid sel={sched} set={setSched} label="When can you work on the project?" disabled={flexible} />
       <label className="flex items-center gap-2 -mt-4 mb-7 cursor-pointer">
         <Checkbox checked={flexible} onCheckedChange={(v) => setFlexible(v === true)} />
         <span className="text-[13px] text-gray-600">Flexible / Not sure</span>
@@ -891,10 +367,10 @@ function Prof3({ go }: GoProps) {
         <div className="flex flex-wrap gap-1.5">{plats.map(p => <button key={p} type="button" aria-pressed={sp.includes(p)} className={cn("inline-block py-1.5 px-3.5 rounded-full text-[13px] font-medium cursor-pointer border-[1.5px] transition-colors", sp.includes(p) ? "bg-primary text-primary-foreground border-primary" : "bg-gray-100 text-gray-600 border-gray-200 hover:border-gray-300")} onClick={() => tp(p)}>{p}</button>)}</div>
       </div>
       {sp.length > 0 && <div className={cn("grid gap-3 mb-5", sp.length > 1 ? "grid-cols-2" : "grid-cols-1")}>
-        {sp.map(p => <F key={p} l={`${p} handle`}><Input placeholder={`Your ${p} username`} /></F>)}
+        {sp.map(p => <FormField key={p} l={`${p} handle`}><Input placeholder={`Your ${p} username`} /></FormField>)}
       </div>}
       <Separator className="my-6 bg-gray-100" />
-      <F l="About You"><Textarea className="min-h-[100px] resize-y" placeholder="About you and your ideal group" value={bio} onChange={e => setBio(e.target.value.slice(0, 300))} /><div className={cn("text-[13px] leading-relaxed text-right mt-1", bio.length >= 300 ? "text-danger" : "text-gray-500")}>{bio.length}/300</div></F>
+      <FormField l="About You"><Textarea className="min-h-[100px] resize-y" placeholder="About you and your ideal group" value={bio} onChange={e => setBio(e.target.value.slice(0, 300))} /><div className={cn("text-[13px] leading-relaxed text-right mt-1", bio.length >= 300 ? "text-danger" : "text-gray-500")}>{bio.length}/300</div></FormField>
       <div className="mb-7">
         <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Links (optional)</Label>
         <p className="text-[13px] text-gray-500 mb-2">Add portfolio, GitHub, LinkedIn, or any relevant links.</p>
@@ -1277,10 +753,10 @@ function TACreate({ go, onCreateCourse, showToast }: GoProps & { onCreateCourse:
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Create a Course</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed">Students join with this code.</p>
       <div className="grid grid-cols-2 gap-3 mb-1">
-        <F l="University"><Input value="University of Toronto" readOnly /></F>
-        <F l="Department"><Input placeholder="e.g. Computer Science" /></F>
-        <F l="Course Code"><Input placeholder="e.g. CSC318" /></F>
-        <F l="Semester">
+        <FormField l="University"><Input value="University of Toronto" readOnly /></FormField>
+        <FormField l="Department"><Input placeholder="e.g. Computer Science" /></FormField>
+        <FormField l="Course Code"><Input placeholder="e.g. CSC318" /></FormField>
+        <FormField l="Semester">
           <Select defaultValue="winter-2026">
             <SelectTrigger className="w-full"><SelectValue placeholder="Select semester..." /></SelectTrigger>
             <SelectContent>
@@ -1288,13 +764,13 @@ function TACreate({ go, onCreateCourse, showToast }: GoProps & { onCreateCourse:
               <SelectItem value="fall-2026">Fall 2026</SelectItem>
             </SelectContent>
           </Select>
-        </F>
+        </FormField>
       </div>
-      <F l="Course Name"><Input placeholder="e.g. The Design of Interactive Computational Media" /></F>
+      <FormField l="Course Name"><Input placeholder="e.g. The Design of Interactive Computational Media" /></FormField>
       <div className="grid grid-cols-3 gap-3 mb-1">
-        <F l="Min Group Size"><Input placeholder="4" /></F>
-        <F l="Max Group Size"><Input placeholder="6" /></F>
-        <F l="Deadline"><Input type="date" /></F>
+        <FormField l="Min Group Size"><Input placeholder="4" /></FormField>
+        <FormField l="Max Group Size"><Input placeholder="6" /></FormField>
+        <FormField l="Deadline"><Input type="date" /></FormField>
       </div>
 
       <Separator className="my-6 bg-gray-100" />
@@ -1695,66 +1171,6 @@ const FORMING_GROUPS: FormingGroup[] = [
     ],
   },
 ];
-
-// ==================== CONFIRM DIALOG ====================
-interface ConfirmDialogProps {
-  open: boolean;
-  title: string;
-  body: string;
-  confirmLabel: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-}
-
-function ConfirmDialog({ open, title, body, confirmLabel, onConfirm, onCancel }: ConfirmDialogProps) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 bg-black/40 z-[300] flex items-center justify-center p-6">
-      <div className="bg-white rounded-[12px] p-6 w-full max-w-[400px] shadow-[0_8px_24px_rgba(0,0,0,0.15)]">
-        <h2 className="text-[18px] font-semibold text-[#111827] mb-2">{title}</h2>
-        <p className="text-[14px] text-[#374151] mb-5 leading-relaxed">{body}</p>
-        <div className="flex gap-2">
-          <button onClick={onCancel} className="flex-1 h-10 rounded-[8px] border border-[#D1D5DB] text-[#374151] text-[14px] hover:bg-gray-50 cursor-pointer">Cancel</button>
-          <button onClick={onConfirm} className="flex-1 h-10 rounded-[8px] bg-[#DC2626] text-white text-[14px] font-medium hover:bg-[#B91C1C] cursor-pointer">{confirmLabel}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ==================== SLIDE PANEL ====================
-interface SlidePanelProps {
-  open: boolean;
-  onClose: () => void;
-  children: ReactNode;
-  footer?: ReactNode;
-  title?: string;
-}
-
-function SlidePanel({ open, onClose, children, footer, title = "Details" }: SlidePanelProps) {
-  return (
-    <>
-      {open && (
-        <div className="fixed inset-0 bg-foreground/20 z-[150]" onClick={onClose} />
-      )}
-      <div className={cn(
-        "fixed top-0 right-0 h-full w-[480px] max-w-[95vw] bg-background border-l border-border z-[160]",
-        "flex flex-col overflow-hidden",
-        "transition-transform duration-300 ease-in-out",
-        open ? "translate-x-0" : "translate-x-full"
-      )}>
-        <div className="flex items-center justify-between h-14 px-5 border-b border-border shrink-0">
-          <span className="text-sm font-semibold text-gray-600">{title}</span>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 leading-none"><Icon.x size={18} color="#9CA3AF" /></button>
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          {children}
-        </div>
-        {footer && <div className="shrink-0">{footer}</div>}
-      </div>
-    </>
-  );
-}
 
 // ==================== GROUP COMPONENTS ====================
 interface GroupCardProps {
@@ -3461,8 +2877,8 @@ function Login({ go, onLogin, showToast }: LoginProps) {
     <div className="max-w-[500px] mx-auto py-14 px-6">
       <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">Welcome back</h1>
       <p className="text-base text-gray-600 mb-9 leading-relaxed">Log in with your university email.</p>
-      <F l="University Email" id="login-email"><Input id="login-email" placeholder="you@mail.utoronto.ca" value={email} onChange={e => setEmail(e.target.value)} /></F>
-      <F l="Password" id="login-password"><Input id="login-password" type="password" placeholder="Your password" value={password} onChange={e => setPassword(e.target.value)} /></F>
+      <FormField l="University Email" id="login-email"><Input id="login-email" placeholder="you@mail.utoronto.ca" value={email} onChange={e => setEmail(e.target.value)} /></FormField>
+      <FormField l="Password" id="login-password"><Input id="login-password" type="password" placeholder="Your password" value={password} onChange={e => setPassword(e.target.value)} /></FormField>
       <Button className="w-full px-7 py-3 h-auto" disabled={!canSubmit} onClick={handleLogin}>Log In</Button>
       <div className="mt-3.5 text-center"><Button variant="link" className="text-foreground" onClick={() => showToast?.("Check your email for password reset instructions")}>Forgot password?</Button></div>
       <div className="mt-5 text-center text-sm text-gray-500">Don't have an account? <Button variant="link" className="text-foreground p-0 h-auto" onClick={() => go("signup-role")}>Sign up</Button></div>
@@ -3611,14 +3027,14 @@ function ProfileEdit({ go: _go, showToast, userName = "" }: GoProps & { showToas
           <Button variant="ghost" className="text-gray-500 text-sm" onClick={handleCancel}>Cancel</Button>
         </div>
 
-        <F l="Bio">
+        <FormField l="Bio">
           <Textarea
             value={bio}
             onChange={e => setBio(e.target.value)}
             className="resize-none h-20 text-sm"
             placeholder="Tell teammates about yourself..."
           />
-        </F>
+        </FormField>
 
         <div className="mb-[18px]">
           <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">Skills</Label>
@@ -3689,7 +3105,7 @@ function ProfileEdit({ go: _go, showToast, userName = "" }: GoProps & { showToas
           </div>
         </div>
 
-        <TGrid sel={schedule} set={setSchedule} label="Weekly Availability" />
+        <ScheduleGrid sel={schedule} set={setSchedule} label="Weekly Availability" />
 
         <Button className="w-full" onClick={handleSave}>Save Profile</Button>
       </div>
@@ -4440,13 +3856,7 @@ export default function Unitor() {
   const [conversations, setConversations] = useLocalStorage<Conversation[]>("conversations", DEMO_CONVERSATIONS);
   const [initialSelectedConv, setInitialSelectedConv] = useState<string | null>(null);
   const [chatReactions, setChatReactions] = useLocalStorage<Record<string, string | null>>("chatReactions", {});
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const showToast = useCallback((message: string) => {
-    const id = ++toastId;
-    setToasts(prev => [...prev, { id, message }]);
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
-  }, []);
-  const removeToast = useCallback((id: number) => setToasts(prev => prev.filter(t => t.id !== id)), []);
+  const { toasts, showToast, removeToast } = useToasts();
 
   const addNotification = useCallback((type: NotificationType, title: string, body: string, actionTarget?: string) => {
     const n: AppNotification = {
