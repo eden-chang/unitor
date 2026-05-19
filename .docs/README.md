@@ -41,6 +41,16 @@ The nine ADRs in that folder cover multi-tenancy, the backend stack, hosting, th
 | [`easea-scenario-ux-flows.md`](./easea-scenario-ux-flows.md) | Source-of-truth scenario document driving the prototype UX. Useful for understanding intended user flows. |
 | [`evaluations.md`](./evaluations.md) | CSC318 design-alternatives evaluation. Background on why this product exists and what tradeoffs it makes. |
 
+## Session logs
+
+Chronological narratives of significant working sessions. Useful when you want the *why* behind a series of commits, not just the *what*.
+
+| File | Purpose |
+|------|---------|
+| [`session-logs/2026-05-17-backend-bringup.md`](./session-logs/2026-05-17-backend-bringup.md) | Single-session narrative of the backend bring-up: ADRs locked in, schema applied to live Supabase, auth/profile/discovery endpoints shipped, two senior audits absorbed. |
+
+For a forward-looking "what's done, what's next, gotchas, quick-start" document aimed at the next contributor, see [`../HANDOFF.md`](../HANDOFF.md) at the repo root.
+
 ## Archive
 
 [`archive/frontend-phases/`](./archive/frontend-phases/) — Korean-language implementation plans (phase-1 through phase-z) that were executed to build the current frontend prototype. Kept for traceability. **Do not treat as live work items.**
