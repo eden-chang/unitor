@@ -292,6 +292,14 @@ Before assuming the code is wrong:
 
 Append-only running log of what was just done and what's actively in progress. Newest entry on top. One short bullet per session — link to commits or session-log files for detail.
 
+- **2026-05-19** — **Stage 1 / Step B1-B5 — App.tsx component split (in-scope pages).**
+  App.tsx: **4655 → 3471 lines** (-25%). Pure refactor, no behavior change. Five substeps, one commit each:
+  - **B1** (`2c95eaf`) shared building blocks: `hooks/{useLocalStorage,useToasts}.ts`, `lib/{storage,avatar}.ts`, `types/ui.ts`, `components/shared/{icons,Toast,StudentAvatar,FormField,ScheduleGrid,ConfirmDialog,SlidePanel,NotificationBell,Nav,nav-config}.tsx`. Renames: `F`→`FormField`, `TGrid`→`ScheduleGrid`.
+  - **B2+B3** (`4fc0b60`) `components/landing/Landing.tsx`, `components/auth/{SignupRole,SignupForm,Verify,Login}.tsx`.
+  - **B4** (`bcfe0c9`) `components/dashboard/{DashEmpty,Dash,Join}.tsx`.
+  - **B5** (`e9714bc`) `components/profile/steps/Step{0..3}*.tsx`, `components/profile/{ProfileDone,ProfileEdit}.tsx`.
+  Still in App.tsx (out of scope for stage 1): MyGroup, ChatsPage, Urgent, TADash*, TACreate, GroupCard/View/DetailPanel, Sent, ApplicationCard, plus all mock-data constants (STU, COMPAT, SS, SCHEDULE_DATA, WORK_STYLE_DATA, FORMING_GROUPS, DEMO_*). Discovery extraction (**B6**) deferred — needs to also move the mock data to `lib/mock-data.ts` since both Discovery and the still-in-place MyGroup depend on it.
+  Each substep was typecheck-clean + lint-clean (new files) + build-clean. **Pre-existing eslint errors in the prototype's leftover App.tsx code** (cascading `setState` in effects, etc.) intentionally not fixed — they'll be addressed when each page is refactored in step C onward. Plan: [`.docs/frontend-stage1-plan.md`](./.docs/frontend-stage1-plan.md).
 - **2026-05-18** — **Stage 1 / Step A — Frontend foundation (no behavior change).**
   - `npm i @supabase/supabase-js @tanstack/react-query react-router-dom` (frontend/package.json).
   - `frontend/.env.example` with `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_BASE_URL`. **`frontend/.env` is required before `npm run dev`** — copy from `.env.example` and fill with the Supabase project's URL + anon key (same project as `backend/.env`).
