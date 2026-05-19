@@ -292,6 +292,13 @@ Before assuming the code is wrong:
 
 Append-only running log of what was just done and what's actively in progress. Newest entry on top. One short bullet per session — link to commits or session-log files for detail.
 
+- **2026-05-19** — **Stage 1 / Step B6 — Extract Discovery + groups + mock data. Step B complete.**
+  App.tsx: **3471 → 1986 lines** (-43% on top of B1-B5; -57% overall from 4655). Pure refactor, no behavior change.
+  - `lib/mock-data.ts` — STU, SS, COMPAT, PROFILE_TIERS, SCHEDULE_DATA, WORK_STYLE_DATA, CONTACT_STATUS_LABELS, FormingGroup, FORMING_GROUPS, parseActivityMinutes, isRecentlyActive.
+  - `components/discovery/` — FilterDropdown, FormingStudentPanel, ReceivedRequestPanel, ProfilePanel (was ProfilePanelContent), DiscoveryPage (was Discovery).
+  - `components/groups/` — GroupCard, GroupsView, GroupDetailPanel. Small scope expansion beyond the plan: these are used by both Discovery (in scope) and App.tsx top level via SlidePanel, so keeping them in App.tsx would have forced awkward back-imports. They form a coherent groups module.
+  - Commit `71a04c2`. Typecheck + lint (new files) + build clean. One pre-existing `react-hooks/set-state-in-effect` warning in DiscoveryPage.tsx is suppressed inline with a TODO to fix in step E.
+  - App.tsx is now: router + out-of-scope pages (MyGroup, ChatsPage, Urgent, TADash*, TACreate, ApplicationCard, Sent) + their exclusive mock data (DEMO_CONVERSATIONS, DEMO_NOTIFICATIONS, MOCK_REPLIES, DEADLINE_CONFIG). **Step B complete — Step C (auth wiring) is next.**
 - **2026-05-19** — **Stage 1 / Step B1-B5 — App.tsx component split (in-scope pages).**
   App.tsx: **4655 → 3471 lines** (-25%). Pure refactor, no behavior change. Five substeps, one commit each:
   - **B1** (`2c95eaf`) shared building blocks: `hooks/{useLocalStorage,useToasts}.ts`, `lib/{storage,avatar}.ts`, `types/ui.ts`, `components/shared/{icons,Toast,StudentAvatar,FormField,ScheduleGrid,ConfirmDialog,SlidePanel,NotificationBell,Nav,nav-config}.tsx`. Renames: `F`→`FormField`, `TGrid`→`ScheduleGrid`.
