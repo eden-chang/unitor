@@ -1,12 +1,14 @@
 /**
  * Profile wizard step 0 — name + photo.
  *
- * Step C wires the Next button to ``PATCH /api/v1/users/me`` so the
- * server-side display name updates as the wizard advances. Photo upload
- * lands in stage 2 (Cloudflare R2).
+ * On Next we PATCH `/api/v1/users/me` so the server-side display_name
+ * tracks what the user entered. Photo upload lands in stage 2.
+ *
+ * The display name is pre-filled from the bootstrap response so a user
+ * who already set their name doesn't have to re-type it.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -15,6 +17,9 @@ import { Progress } from "@/components/ui/progress";
 import { FormField } from "@/components/shared/FormField";
 import { Icon } from "@/components/shared/icons";
 import { Nav } from "@/components/shared/Nav";
+import * as apiAuth from "@/api/auth";
+import { ApiError } from "@/api/client";
+import { useAuth } from "@/context/auth-context";
 import type { GoProps } from "@/types/ui";
 
 interface Step0Props extends GoProps {
@@ -23,7 +28,40 @@ interface Step0Props extends GoProps {
 }
 
 export function Step0Name({ go, initialName, onSaveName }: Step0Props) {
-  const [name, setName] = useState(initialName ?? "");
+  const { user, refreshBootstrap } = useAuth();
+  const [name, setName] = useState(user?.display_name ?? initialName ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Once bootstrap lands after first render, pull the persisted name in.
+  useEffect(() => {
+    if (user?.display_name && name.trim() === "") {
+      setName(user.display_name);
+    }
+  }, [user?.display_name, name]);
+
+  const handleNext = async () => {
+    const trimmed = name.trim();
+    if (!trimmed || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await apiAuth.updateMe(trimmed);
+      onSaveName?.(trimmed);
+      // Refresh bootstrap so Nav + the rest of the app pick up the new name.
+      await refreshBootstrap();
+      go("prof-1");
+    } catch (e) {
+      if (e instanceof ApiError) {
+        setError(e.message);
+      } else {
+        setError("Couldn't save your name. Try again.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="bg-background min-h-screen pb-6">
       <Nav
@@ -61,26 +99,31 @@ export function Step0Name({ go, initialName, onSaveName }: Step0Props) {
               <Icon.camera size={28} color="var(--gray-300)" />
             </AvatarFallback>
           </Avatar>
-          <Button variant="outline" size="sm" className="px-4">
+          <Button variant="outline" size="sm" className="px-4" disabled>
             Upload Photo
           </Button>
+          <p className="text-[11px] text-gray-400 mt-2">
+            Photo upload arrives in stage 2.
+          </p>
         </div>
         <FormField l="Display Name">
           <Input
             placeholder="e.g. John D."
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value);
+              setError(null);
+            }}
+            className={error ? "border-danger" : ""}
           />
+          {error && <p className="text-[13px] text-danger mt-1.5">{error}</p>}
         </FormField>
         <Button
           className="w-full px-7 py-3 h-auto"
-          disabled={!name.trim()}
-          onClick={() => {
-            onSaveName?.(name);
-            go("prof-1");
-          }}
+          disabled={!name.trim() || busy}
+          onClick={() => void handleNext()}
         >
-          Next
+          {busy ? "Saving…" : "Next"}
         </Button>
       </div>
     </div>
