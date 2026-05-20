@@ -70,15 +70,33 @@ class EnrollmentRead(BaseModel):
 
 
 class BootstrapResponse(BaseModel):
-    """Result of binding an authenticated user's identity to their roster.
+    """Result of confirming an authenticated user's identity.
 
-    Idempotent. Calling twice returns the same shape — ``newly_enrolled``
-    counts only the enrollments created by *this* call.
+    Idempotent. Calling twice returns the same shape. Bootstrap does NOT
+    create enrollments — :func:`app.services.auth_join.join` is the only
+    way to enter a course (as of stage 1 step C, 2026-05-19).
     """
 
     user: UserRead
     enrollments: list[EnrollmentRead]
-    newly_enrolled_count: int = Field(
-        ge=0,
-        description="How many enrollments were created during this bootstrap call.",
-    )
+
+
+class JoinRequest(BaseModel):
+    """Body of ``POST /api/v1/auth/join``.
+
+    The invite code is the per-course shared secret printed on the TA's
+    course-management screen and handed to students out-of-band.
+    """
+
+    invite_code: str = Field(min_length=1, max_length=64)
+
+
+class UserUpdateRequest(BaseModel):
+    """Body of ``PATCH /api/v1/users/me``.
+
+    Today the only editable field on ``public.users`` is ``display_name``;
+    other identity-bearing fields come from Supabase Auth and are not
+    user-editable here.
+    """
+
+    display_name: str = Field(min_length=1, max_length=120)

@@ -2,24 +2,30 @@
 
 See `../07-auth-flows.md` for the end-to-end flow. This module owns:
 
-* :func:`precheck` — public lookup: "is this email on an active roster?"
-* :func:`bootstrap` — authenticated: link auth.users -> roster_entries +
-  create enrollments. Idempotent.
+* :func:`precheck` — public lookup: "is this email on any active roster?"
+* :func:`bootstrap` — authenticated: ensure the ``public.users`` row
+  exists and return the caller's current enrollments. Idempotent.
+
+Bootstrap **no longer** creates enrollments from ``roster_entries``. As
+of 2026-05-19 (stage 1 step C), enrollment requires an invite code; see
+:mod:`app.services.auth_join`. Rationale: TAs upload the roster (and pick
+the section) but the invite code is the gate that decides which course a
+logged-in student is allowed to join.
 
 Both functions take an :class:`AsyncSession` so callers control the
 session lifecycle (and we can test with an arbitrary session). Per ADR
 0002 + ADR 0009 §2, this service is one of the legal places where the
 session can be an ``admin_session`` (RLS-bypassing) — bootstrap creates
-the rows that *make* RLS visibility possible.
+the ``public.users`` row that *makes* RLS visibility possible elsewhere.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from uuid_utils.compat import uuid7
 
 from app.auth.jwt import CurrentUser
 from app.db.models import Course, Enrollment, RosterEntry, Section, User
@@ -61,84 +67,47 @@ async def precheck(session: AsyncSession, email: str) -> PrecheckResponse:
 # ---------------------------------------------------------------------------
 
 
-class RosterEmailNotFound(Exception):
-    """The signed-in user's email is not on any active roster."""
+class MissingEmailClaim(Exception):
+    """The verified JWT did not include an email claim."""
 
 
 async def bootstrap(
     session: AsyncSession,
     current_user: CurrentUser,
 ) -> BootstrapResponse:
-    """Link the authenticated user to their roster entries and create missing
-    enrollments.
+    """Ensure the caller's ``public.users`` row exists and return their state.
 
-    Idempotent. Safe to call on every login. On first call, it creates the
-    public.users row defensively (the auth.users trigger usually does this
-    already), links roster_entries.user_id, and inserts enrollments. On
-    subsequent calls, it returns the existing state with ``newly_enrolled_count = 0``.
+    Idempotent. Safe to call on every login. On first call, defensively
+    creates the ``public.users`` row (the ``tg_mirror_auth_user`` trigger
+    usually does this already). It does **not** create enrollments —
+    new enrollments now require :func:`app.services.auth_join.join`.
     """
     if not current_user.email:
         # Supabase JWTs from magic link include email; this is defensive.
-        raise RosterEmailNotFound("token has no email claim")
+        raise MissingEmailClaim("token has no email claim")
 
     email = current_user.email.lower()
-    user_id = current_user.id
+    user_id = UUID(current_user.id)
     now = datetime.now(UTC)
 
-    # 1. Make sure public.users row exists (the trigger usually does this,
-    #    but be defensive — e.g., if the trigger was disabled or this is
-    #    a re-bootstrap after manual cleanup).
     user = await _upsert_user(session, user_id=user_id, primary_email=email, now=now)
 
-    # 2. Find roster entries that match this user's email and aren't already
-    #    linked to a different user. Active rosters only (course not deleted,
-    #    roster row not removed).
-    match_stmt = (
-        select(RosterEntry, Course)
+    # Best-effort backfill: if a roster_entry exists for this email but
+    # isn't linked yet, claim it. This is a convenience for the TA-side
+    # roster view; it does NOT create enrollments. Bound to active courses
+    # so a stale roster row on an archived course is left alone.
+    link_stmt = (
+        select(RosterEntry)
         .join(Course, Course.id == RosterEntry.course_id)
         .where(func.lower(RosterEntry.email) == email)
+        .where(RosterEntry.user_id.is_(None))
         .where(RosterEntry.removed_at.is_(None))
         .where(Course.state == "active")
         .where(Course.deleted_at.is_(None))
-        .where((RosterEntry.user_id.is_(None)) | (RosterEntry.user_id == user_id))
     )
-    rows = (await session.execute(match_stmt)).all()
-    if not rows:
-        raise RosterEmailNotFound(email)
+    for roster in (await session.execute(link_stmt)).scalars():
+        roster.user_id = user_id
 
-    newly_enrolled = 0
-    for roster, course in rows:
-        # 3a. Link the roster entry if it isn't yet.
-        if roster.user_id is None:
-            roster.user_id = user_id
-
-        # 3b. Create an active enrollment if one doesn't already exist.
-        existing_enrollment = await session.execute(
-            select(Enrollment.id)
-            .where(Enrollment.user_id == user_id)
-            .where(Enrollment.course_id == course.id)
-            .where(Enrollment.deleted_at.is_(None))
-        )
-        if existing_enrollment.scalar_one_or_none() is None:
-            session.add(
-                Enrollment(
-                    id=uuid7(),
-                    user_id=user_id,
-                    course_id=course.id,
-                    section_id=roster.section_id,
-                    role="student",
-                    status="active",
-                    joined_at=now,
-                    created_at=now,
-                    updated_at=now,
-                )
-            )
-            newly_enrolled += 1
-
-    await session.flush()
-
-    # 4. Build the response from the current state (covers both newly-created
-    #    and pre-existing enrollments).
     enrollments_stmt = (
         select(Enrollment, Course, Section.code)
         .join(Course, Course.id == Enrollment.course_id)
@@ -175,14 +144,13 @@ async def bootstrap(
             )
             for enrollment, course, section_code in enrollment_rows
         ],
-        newly_enrolled_count=newly_enrolled,
     )
 
 
 async def _upsert_user(
     session: AsyncSession,
     *,
-    user_id: str,
+    user_id: UUID,
     primary_email: str,
     now: datetime,
 ) -> User:
