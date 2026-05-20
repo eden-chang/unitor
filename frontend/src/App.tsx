@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, Fragment, type ReactNode, type ReactElement } from "react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/context/auth-context";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,7 +24,8 @@ import { SlidePanel } from "@/components/shared/SlidePanel";
 import { StudentAvatar } from "@/components/shared/StudentAvatar";
 import { ToastContainer } from "@/components/shared/Toast";
 import { Landing } from "@/components/landing/Landing";
-import { Login } from "@/components/auth/Login";
+import { MagicLinkCallback } from "@/components/auth/MagicLinkCallback";
+import { MagicLinkRequest } from "@/components/auth/MagicLinkRequest";
 import { SignupForm } from "@/components/auth/SignupForm";
 import { SignupRole } from "@/components/auth/SignupRole";
 import { Verify } from "@/components/auth/Verify";
@@ -1755,10 +1757,20 @@ const DEFAULT_CHAT_MSGS: ChatMessages = {
   ],
 };
 
+function getInitialPage(): string {
+  // Magic-link return URL — detect the callback path so a deep-link
+  // reload doesn't drop the user on the landing page mid-auth.
+  if (typeof window !== "undefined" && window.location.pathname.endsWith("/auth/callback")) {
+    return "callback";
+  }
+  return "landing";
+}
+
 export default function Unitor() {
-  const [pg, setPg] = useState("landing");
+  const [pg, setPg] = useState(getInitialPage);
   const [role, setRole] = useState("s");
   const [showDemoBar, setShowDemoBar] = useState(false);
+  const auth = useAuth();
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === "d") { e.preventDefault(); setShowDemoBar(v => !v); }
@@ -1828,8 +1840,29 @@ export default function Unitor() {
     if (p === "signup-s") { setRole("s"); setPg("signup") }
     else if (p === "signup-t") { setRole("t"); setPg("signup") }
     else setPg(p);
+    // If we landed via /auth/callback, normalize the URL once we navigate
+    // away so a reload doesn't re-trigger the callback flow.
+    if (typeof window !== "undefined" && window.location.pathname.endsWith("/auth/callback") && p !== "callback") {
+      const base = import.meta.env.BASE_URL.replace(/\/$/, "") || "/";
+      window.history.replaceState(null, "", base);
+    }
     window.scrollTo(0, 0);
   };
+
+  // Sync the bootstrap's display_name into the local-storage shim once
+  // it lands, so the existing prototype components that read `userName`
+  // still see the real name.
+  useEffect(() => {
+    if (auth.user?.display_name && auth.user.display_name !== userName) {
+      setUserName(auth.user.display_name);
+    }
+    if (auth.user?.primary_email && auth.user.primary_email !== userEmail) {
+      setUserEmail(auth.user.primary_email);
+    }
+    if (auth.enrollments.length > 0 && !hasJoinedCourse) {
+      setHasJoinedCourse(true);
+    }
+  }, [auth.user, auth.enrollments, userName, userEmail, hasJoinedCourse, setUserName, setUserEmail, setHasJoinedCourse]);
 
 
 
@@ -1851,9 +1884,19 @@ export default function Unitor() {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   };
   const P: Record<string, ReactNode> = {
-    landing: <Landing go={go} />, "signup-role": <SignupRole go={go} />, signup: <SignupForm role={role} go={go} onSetName={setUserName} onSetEmail={setUserEmail} />, verify: <Verify role={role} go={go} userEmail={userEmail} />,
-    login: <Login go={go} onLogin={() => go(hasJoinedCourse ? "dash" : "dash-empty")} showToast={showToast} />,
-    "dash-empty": <DashEmpty go={go} />, dash: <Dash go={go} userName={userName} />, join: <Join go={go} />,
+    landing: <Landing go={go} />, "signup-role": <SignupRole go={go} />,
+    signup: role === "t"
+      ? <SignupForm role={role} go={go} onSetName={setUserName} onSetEmail={setUserEmail} />
+      : <MagicLinkRequest go={go} heading="Create your account" onSubmitEmail={setUserEmail} />,
+    verify: <Verify go={go} userEmail={userEmail} />,
+    login: <MagicLinkRequest go={go} heading="Welcome back" onSubmitEmail={setUserEmail} />,
+    callback: <MagicLinkCallback
+      go={go}
+      onUserResolved={(name) => { if (name) setUserName(name); }}
+      onHasEnrollments={() => setHasJoinedCourse(true)}
+    />,
+    "dash-empty": <DashEmpty go={go} />, dash: <Dash go={go} userName={userName} />,
+    join: <Join go={go} onJoined={() => setHasJoinedCourse(true)} />,
     "prof-0": <Step0Name go={go} initialName={userName} onSaveName={setUserName} />, "prof-1": <Step1Skills go={go} />, "prof-2": <Step2Schedule go={go} />, "prof-3": <Step3CommBio go={go} />, "prof-done": <ProfileDone go={go} onJoinCourse={() => setHasJoinedCourse(true)} />,
     "ta-dash-empty": <TADashEmpty go={go} />, "ta-dash": <TADash go={go} />, "ta-course-dash": <TACourseDash go={go} showToast={showToast} />, "ta-create": <TACreate go={go} onCreateCourse={() => setHasCreatedCourse(true)} showToast={showToast} />,
     board: <Discovery go={go} onSelectStudent={(name) => {
@@ -1880,7 +1923,7 @@ export default function Unitor() {
 
   return <div className="flex flex-col h-screen">
     {APP_PAGES.has(pg) && (
-      <Nav go={go} activePage={pg} studentStatus={studentStatus} notifications={notifications} onNotificationClick={handleNotificationClick} onMarkAllRead={handleMarkAllRead} userName={userName} />
+      <Nav go={go} activePage={pg} studentStatus={studentStatus} notifications={notifications} onNotificationClick={handleNotificationClick} onMarkAllRead={handleMarkAllRead} userName={userName} onSignOut={() => clearAllLocalStorage()} />
     )}
     <div className="flex-1 overflow-y-auto">
       {P[pg]}

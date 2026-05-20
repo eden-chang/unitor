@@ -1,31 +1,45 @@
 /**
- * Mock "check your inbox" screen. Replaced by ``MagicLinkSent`` in
- * step C, which displays the same content but consumes the real
- * Supabase ``signInWithOtp`` ack.
+ * "Check your inbox" screen shown after a magic link is sent.
+ *
+ * Kept under the existing `Verify` name to avoid churn in App.tsx's
+ * page map. There's no fake "I've verified" button — the only way
+ * forward is the link in the user's email, which redirects to
+ * `/auth/callback` and runs the bootstrap.
  */
 
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { Icon } from "@/components/shared/icons";
 import { Nav } from "@/components/shared/Nav";
-import type { RoleGoProps } from "@/types/ui";
+import { useAuth } from "@/context/auth-context";
+import type { GoProps } from "@/types/ui";
 
-interface VerifyProps extends RoleGoProps {
+interface VerifyProps extends GoProps {
   userEmail?: string;
+  /** Optional: resend the magic link to the same address. */
+  onResend?: () => void;
 }
 
-export function Verify({ role, go, userEmail }: VerifyProps) {
+export function Verify({ go, userEmail, onResend }: VerifyProps) {
+  const { signIn } = useAuth();
+
+  const handleResend = async () => {
+    if (onResend) {
+      onResend();
+      return;
+    }
+    if (!userEmail) return;
+    try {
+      await signIn(userEmail);
+    } catch {
+      // Swallow — the user is already on the "check inbox" screen and
+      // the request will be retried by clicking again.
+    }
+  };
+
   return (
     <div className="bg-background min-h-screen pb-6">
       <Nav go={go} />
       <div className="max-w-[500px] mx-auto pt-20 px-6 text-center">
-        <div className="text-[11px] text-gray-400 mb-1.5 uppercase tracking-[1px]">
-          Step 2 of 2
-        </div>
-        <Progress
-          value={(2 / 2) * 100}
-          className="h-[3px] bg-gray-100 rounded-sm mb-8"
-        />
         <div className="mb-5 flex justify-center">
           <Icon.email size={48} />
         </div>
@@ -33,17 +47,24 @@ export function Verify({ role, go, userEmail }: VerifyProps) {
           Check your inbox
         </h1>
         <p className="text-base text-gray-600 mb-9 leading-relaxed text-center">
-          We sent a link to <strong>{userEmail || "j.doe@mail.utoronto.ca"}</strong>
+          We sent a sign-in link to{" "}
+          <strong>{userEmail || "your university email"}</strong>. Open it on
+          this device to finish signing in.
         </p>
         <Button
+          variant="outline"
           className="w-full px-7 py-3 h-auto"
-          onClick={() => go(role === "t" ? "ta-dash-empty" : "dash-empty")}
+          onClick={() => go("landing")}
         >
-          I've Verified My Email
+          Back to Home
         </Button>
         <div className="mt-3.5">
-          <Button variant="link" className="text-foreground">
-            Resend email
+          <Button
+            variant="link"
+            className="text-foreground"
+            onClick={() => void handleResend()}
+          >
+            Resend link
           </Button>
         </div>
       </div>

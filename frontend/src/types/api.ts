@@ -47,7 +47,14 @@ export interface EnrollmentRead {
 export interface BootstrapResponse {
   user: UserRead;
   enrollments: EnrollmentRead[];
-  newly_enrolled_count: number;
+}
+
+export interface JoinRequest {
+  invite_code: string;
+}
+
+export interface UserUpdateRequest {
+  display_name: string;
 }
 
 // ---------------------------------------------------------------------------
