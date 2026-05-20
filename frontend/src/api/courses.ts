@@ -1,9 +1,9 @@
 /**
  * Course endpoint wrappers.
  *
- * NOTE: these endpoints don't exist on the backend yet — they're added
- * in step D of stage 1. Calls will fail with 404 until then. We declare
- * the wrappers now so the rest of step A can compile against them.
+ * Three read-only header lookups used by the profile wizard + Discovery
+ * filter bar. All routes are course-scoped under `/courses/{id}/*` and
+ * already RLS-respecting on the backend.
  */
 
 import { apiFetch } from "@/api/client";
@@ -11,13 +11,11 @@ import type { CourseSummary } from "@/types/api";
 
 export interface SectionRead {
   id: string;
-  course_id: string;
   code: string;
 }
 
 export interface CourseSkillRead {
   id: string;
-  course_id: string;
   skill_name: string;
   display_order: number;
 }
