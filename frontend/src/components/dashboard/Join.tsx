@@ -1,28 +1,78 @@
 /**
  * Invite-code course-join flow.
  *
- * Two steps:
- *   0. Enter course code → look up the course.
- *   1. Confirm the matched course → call ``POST /auth/join`` (step C).
+ * Single screen: the user enters an invite code → we POST to
+ * `/api/v1/auth/join` and route to the profile wizard on success.
  *
- * Stays in the prototype's mock state until step C. The look-up step
- * currently advances unconditionally to a hardcoded CSC318 confirmation;
- * the real call will surface ``INVITE_CODE_NOT_FOUND`` inline.
+ * The backend returns one of three error codes that we surface inline:
+ *   - `INVITE_CODE_NOT_FOUND` — the code didn't match any active course.
+ *   - `NOT_IN_ROSTER`         — code matched, but the caller's email isn't on the roster.
+ *   - `ALREADY_ENROLLED`      — code matched and the caller is already in.
+ *
+ * The two-step "look up → confirm" prototype is gone: the look-up
+ * endpoint doesn't exist (it would leak invite-code → course-name
+ * mapping to anyone who can guess codes), and the post-Join confirmation
+ * lives in the response itself.
  */
 
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import { FormField } from "@/components/shared/FormField";
 import { Nav } from "@/components/shared/Nav";
+import { ApiError } from "@/api/client";
+import { useAuth } from "@/context/auth-context";
 import type { GoProps } from "@/types/ui";
 
-export function Join({ go }: GoProps) {
-  const [step, setStep] = useState(0);
+interface JoinProps extends GoProps {
+  /** Flips the demo "joined a course" flag in App.tsx local storage. */
+  onJoined?: () => void;
+}
+
+const ERROR_COPY: Record<string, string> = {
+  INVITE_CODE_NOT_FOUND: "We couldn't find an active course with that code. Double-check with your TA.",
+  NOT_IN_ROSTER: "Your email isn't on this course's roster. Contact your TA to be added.",
+  ALREADY_ENROLLED: "You're already enrolled in this course.",
+};
+
+export function Join({ go, onJoined }: JoinProps) {
+  const { joinCourse } = useAuth();
   const [code, setCode] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const trimmed = code.trim();
+  const canSubmit = trimmed.length > 0 && !busy;
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await joinCourse(trimmed);
+      onJoined?.();
+      go("prof-0");
+    } catch (e) {
+      if (e instanceof ApiError && e.code in ERROR_COPY) {
+        setError(ERROR_COPY[e.code]);
+        // `ALREADY_ENROLLED` is the only case where we'd want to route
+        // forward instead of asking the user to re-type — they're already
+        // in, just send them to the dashboard.
+        if (e.code === "ALREADY_ENROLLED") {
+          onJoined?.();
+          window.setTimeout(() => go("dash"), 1200);
+        }
+      } else if (e instanceof ApiError) {
+        setError(e.message);
+      } else {
+        setError("Something went wrong joining the course. Try again.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="bg-background min-h-screen pb-6">
       <Nav go={go} />
@@ -30,75 +80,42 @@ export function Join({ go }: GoProps) {
         <Button
           variant="ghost"
           className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm"
-          onClick={() => go("dash")}
+          onClick={() => go("dash-empty")}
         >
           ← Back to Dashboard
         </Button>
-        {step === 0 ? (
-          <>
-            <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">
-              Join a Course
-            </h1>
-            <p className="text-base text-gray-600 mb-9 leading-relaxed">
-              Enter course code from your TA.
-            </p>
-            <FormField l="Course Code">
-              <Input
-                className="text-[22px] font-bold tracking-[6px] text-center py-[18px] h-auto"
-                placeholder="ABC123"
-                value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
-              />
-            </FormField>
-            <Button
-              className="w-full px-7 py-3 h-auto"
-              disabled={!code.trim()}
-              onClick={() => setStep(1)}
-            >
-              Look Up
-            </Button>
-          </>
-        ) : (
-          <>
-            <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">
-              Confirm Course
-            </h1>
-            <p className="text-base text-gray-600 mb-9 leading-relaxed">
-              Is this the right one?
-            </p>
-            <Card className="p-5 gap-0 shadow-none bg-gray-50">
-              <div className="text-[22px] font-bold mb-1">CSC318</div>
-              <div className="text-[15px] text-gray-600">
-                The Design of Interactive Computational Media
-              </div>
-              <div className="text-sm text-gray-400 mb-3">
-                Winter 2026 · University of Toronto
-              </div>
-              <Separator className="my-3 bg-gray-100" />
-              <div className="grid grid-cols-2 gap-1.5 text-[13px] text-gray-500">
-                <span>Sections: 201, 202, 203</span>
-                <span>Group size: 4-6</span>
-                <span>Deadline: Mar 15, 2026</span>
-                <span>Code: W543M7</span>
-              </div>
-            </Card>
-            <div className="flex gap-3 mt-6">
-              <Button
-                variant="outline"
-                className="flex-1 px-7 py-3 h-auto"
-                onClick={() => setStep(0)}
-              >
-                Back
-              </Button>
-              <Button
-                className="flex-1 px-7 py-3 h-auto"
-                onClick={() => go("prof-0")}
-              >
-                Join &amp; Set Up Profile
-              </Button>
-            </div>
-          </>
-        )}
+        <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">
+          Join a Course
+        </h1>
+        <p className="text-base text-gray-600 mb-9 leading-relaxed">
+          Enter the invite code from your TA.
+        </p>
+        <FormField l="Invite Code">
+          <Input
+            className={
+              "text-[22px] font-bold tracking-[6px] text-center py-[18px] h-auto " +
+              (error ? "border-danger" : "")
+            }
+            placeholder="ABC123"
+            value={code}
+            onChange={(e) => {
+              setCode(e.target.value.toUpperCase());
+              setError(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void handleSubmit();
+            }}
+            autoFocus
+          />
+          {error && <p className="text-[13px] text-danger mt-1.5">{error}</p>}
+        </FormField>
+        <Button
+          className="w-full px-7 py-3 h-auto"
+          disabled={!canSubmit}
+          onClick={() => void handleSubmit()}
+        >
+          {busy ? "Joining…" : "Join Course"}
+        </Button>
       </div>
     </div>
   );

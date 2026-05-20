@@ -20,6 +20,7 @@ import { NotificationBell } from "@/components/shared/NotificationBell";
 import { APP_PAGES, PAGE_TO_TAB } from "@/components/shared/nav-config";
 import { cn } from "@/lib/utils";
 import { getInitials } from "@/lib/avatar";
+import { useAuth } from "@/context/auth-context";
 import type { AppNotification, StudentStatus } from "@/types/ui";
 
 interface NavProps {
@@ -31,6 +32,8 @@ interface NavProps {
   onMarkAllRead?: () => void;
   right?: ReactNode;
   userName?: string;
+  /** Hook for the parent shell to clear demo-state on sign out. */
+  onSignOut?: () => void;
 }
 
 export function Nav({
@@ -42,7 +45,13 @@ export function Nav({
   onMarkAllRead = () => {},
   right,
   userName = "",
+  onSignOut,
 }: NavProps) {
+  const { user, isAuthenticated, signOut } = useAuth();
+  // Real name from the backend wins over the demo-bar shim. Falling back
+  // to `userName` keeps the ctrl+d flow + the not-yet-signed-in prototype
+  // pages rendering with whatever the local-storage shim has.
+  const displayName = user?.display_name || userName;
   const isAppPage = APP_PAGES.has(activePage);
   const [avatarOpen, setAvatarOpen] = useState(false);
 
@@ -112,12 +121,17 @@ export function Nav({
           >
             <Avatar className="size-8">
               <AvatarFallback className="bg-gray-200 text-gray-500 text-xs font-bold">
-                {getInitials(userName)}
+                {getInitials(displayName)}
               </AvatarFallback>
             </Avatar>
           </button>
           {avatarOpen && (
-            <div className="absolute right-0 top-full mt-2 w-40 bg-background border border-border rounded-xl shadow-lg z-[200] overflow-hidden py-1">
+            <div className="absolute right-0 top-full mt-2 w-48 bg-background border border-border rounded-xl shadow-lg z-[200] overflow-hidden py-1">
+              {displayName && (
+                <div className="px-4 py-2 text-[12px] text-gray-500 border-b border-gray-100 truncate">
+                  {displayName}
+                </div>
+              )}
               <button
                 onClick={() => {
                   go("profile-edit");
@@ -128,9 +142,13 @@ export function Nav({
                 Edit Profile
               </button>
               <button
-                onClick={() => {
-                  go("landing");
+                onClick={async () => {
                   setAvatarOpen(false);
+                  if (isAuthenticated) {
+                    await signOut();
+                  }
+                  onSignOut?.();
+                  go("landing");
                 }}
                 className="w-full text-left px-4 py-2.5 text-[13px] text-[#374151] hover:bg-gray-50"
               >
