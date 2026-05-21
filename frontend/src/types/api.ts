@@ -227,6 +227,98 @@ export interface GroupListResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Group lifecycle (writable surface)
+// ---------------------------------------------------------------------------
+
+export type ApplicationStatus = "pending" | "accepted" | "declined" | "withdrawn";
+
+export interface GroupApplicationQuestionEntry {
+  /** Pass an existing id to keep the row; omit to create a new question. */
+  id?: string;
+  question_text: string;
+  display_order?: number;
+}
+
+export interface GroupCreatePayload {
+  enrollment_id: string;
+  name?: string | null;
+  description?: string | null;
+  recruiting?: boolean;
+  application_questions?: GroupApplicationQuestionEntry[];
+}
+
+export interface GroupUpdatePayload {
+  name?: string | null;
+  description?: string | null;
+  recruiting?: boolean | null;
+  /** Pass to atomically replace the question set; omit to leave unchanged. */
+  application_questions?: GroupApplicationQuestionEntry[] | null;
+}
+
+export interface GroupMemberDetail {
+  membership_id: string;
+  user_id: string;
+  display_name: string | null;
+  role: "leader" | "member";
+  joined_at: string;
+  confirmed_at: string | null;
+}
+
+export interface GroupApplicationQuestionRead {
+  id: string;
+  question_text: string;
+  display_order: number;
+}
+
+export interface GroupDetailRead {
+  id: string;
+  course_id: string;
+  name: string | null;
+  description: string | null;
+  state: GroupSortableState;
+  recruiting: boolean;
+  members: GroupMemberDetail[];
+  application_questions: GroupApplicationQuestionRead[];
+  confirmation_initiated_at: string | null;
+  confirmation_deadline_at: string | null;
+  confirmed_at: string | null;
+  created_at: string;
+}
+
+export interface ApplicationAnswerEntry {
+  question_id: string;
+  answer_text: string;
+}
+
+export interface ApplicationCreatePayload {
+  answers: ApplicationAnswerEntry[];
+}
+
+export interface ApplicationAnswerRead {
+  id: string;
+  question_id: string | null;
+  question_text_snapshot: string;
+  answer_text: string;
+}
+
+export interface ApplicationRead {
+  id: string;
+  course_id: string;
+  group_id: string;
+  applicant_user_id: string;
+  applicant_display_name: string | null;
+  status: ApplicationStatus;
+  created_at: string;
+  responded_at: string | null;
+  responded_by_user_id: string | null;
+  answers: ApplicationAnswerRead[];
+}
+
+export interface ApplicationListResponse {
+  items: ApplicationRead[];
+}
+
+// ---------------------------------------------------------------------------
 // Compatibility
 // ---------------------------------------------------------------------------
 

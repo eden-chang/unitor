@@ -564,17 +564,12 @@ export function Discovery({
         />
 
         {view === "groups" ? (
-          <>
-            <div className="px-5 py-3 mt-3 bg-caution-bg border border-caution-border rounded-xl text-[13px] text-caution-dark">
-              <strong className="text-caution">Stage 2 preview.</strong> Group
-              data below is mock — the live group endpoints arrive in stage 2.
-            </div>
-            <GroupsView
-              onSelectGroup={onSelectGroup ?? (() => {})}
-              appliedGroups={appliedGroups}
-              filterRecruiting={filterRecruiting}
-            />
-          </>
+          <GroupsView
+            onSelectGroup={onSelectGroup ?? (() => {})}
+            appliedGroups={appliedGroups}
+            filterRecruiting={filterRecruiting}
+            sectionId={secFilter !== "all" ? secFilter : undefined}
+          />
         ) : (
           <>
             <div className="flex justify-end items-center py-2">
