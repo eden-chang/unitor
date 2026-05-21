@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import auth as auth_routes
-from app.api.v1 import compatibility, courses, discovery, health, profiles, users
+from app.api.v1 import compatibility, courses, discovery, groups, health, profiles, users
 from app.config import build_cors_origin_regex, get_settings
 from app.middleware.request_id import RequestIDMiddleware
 from app.observability import configure_logging, configure_sentry
@@ -75,6 +75,8 @@ def create_app() -> FastAPI:
     app.include_router(courses.router, prefix="/api/v1")
     app.include_router(discovery.router, prefix="/api/v1")
     app.include_router(compatibility.router, prefix="/api/v1")
+    app.include_router(groups.router, prefix="/api/v1")
+    app.include_router(groups.applications_router, prefix="/api/v1")
 
     return app
 

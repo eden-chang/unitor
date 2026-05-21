@@ -10,6 +10,12 @@ Re-exports make ``from app.db.models import User, Enrollment`` work.
 
 from __future__ import annotations
 
+from app.db.models.application import (
+    Application,
+    ApplicationAnswer,
+    ApplicationVote,
+    Request,
+)
 from app.db.models.base import Base
 from app.db.models.compatibility import CompatibilityCache
 from app.db.models.enrollment import Enrollment, RosterEntry
@@ -19,6 +25,9 @@ from app.db.models.tenancy import Course, CourseSkill, Section, University
 from app.db.models.user import User
 
 __all__ = [
+    "Application",
+    "ApplicationAnswer",
+    "ApplicationVote",
     "Base",
     "CompatibilityCache",
     "Course",
@@ -31,6 +40,7 @@ __all__ = [
     "ProfileLink",
     "ProfileScheduleSlot",
     "ProfileSkill",
+    "Request",
     "RosterEntry",
     "Section",
     "University",
