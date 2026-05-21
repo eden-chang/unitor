@@ -1,13 +1,20 @@
 /**
- * Discovery board — the People and Groups tabs.
+ * Discovery board — People and Groups tabs.
  *
- * Reads from the mock-data constants in ``@/lib/mock-data`` for now.
- * Stage 1 step E replaces ``STU`` with
- * ``GET /api/v1/courses/{course_id}/students`` and the per-card score
- * with the merged ``POST /api/v1/compatibility/batch`` result.
+ * **People** is live as of stage 1 step E: `GET /courses/{id}/students`
+ * paginated via `useInfiniteQuery`, scores merged in from
+ * `POST /compatibility/batch`, filters wired to the section + skill
+ * catalogs. Local-only state (favorites, hidden, contact-status chips)
+ * stays in `localStorage` keyed by user_id.
+ *
+ * **Groups** is still on mock `FORMING_GROUPS` for stage 1 with a banner
+ * pointing at stage 2. The group flow needs more endpoints landing
+ * first (membership, application questions, etc.) and falls outside
+ * the live slice.
  */
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -23,25 +30,30 @@ import { Icon } from "@/components/shared/icons";
 import { StudentAvatar } from "@/components/shared/StudentAvatar";
 import { FilterDropdown } from "@/components/discovery/FilterDropdown";
 import { GroupsView } from "@/components/groups/GroupsView";
+import * as apiCourses from "@/api/courses";
+import { useAuth } from "@/context/auth-context";
+import { useCourseSkills } from "@/hooks/useCourseSkills";
+import { useDebounce } from "@/hooks/useDebounce";
+import {
+  useDiscoveryStudents,
+  type MergedStudent,
+} from "@/hooks/useDiscovery";
 import { LS_PREFIX } from "@/hooks/useLocalStorage";
 import { cn } from "@/lib/utils";
 import {
   CONTACT_STATUS_LABELS,
   FORMING_GROUPS,
-  STU,
-  isRecentlyActive,
-  parseActivityMinutes,
 } from "@/lib/mock-data";
 import type { GoProps } from "@/types/ui";
 
 interface DiscoveryProps extends GoProps {
-  onSelectStudent: (name: string) => void;
+  onSelectStudent: (student: MergedStudent) => void;
   urgentMode?: boolean;
   onSelectGroup?: (id: string) => void;
   appliedGroups?: Record<string, string>;
   contactStatuses?: Record<string, string>;
-  onContactStatusChange?: (name: string, status: string) => void;
-  onOpenChat?: (name: string) => void;
+  onContactStatusChange?: (userId: string, status: string) => void;
+  onOpenChat?: (userId: string) => void;
 }
 
 export function Discovery({
@@ -52,28 +64,22 @@ export function Discovery({
   appliedGroups = {},
   contactStatuses = {},
 }: DiscoveryProps) {
+  const { enrollments } = useAuth();
+  const enrollment = enrollments[0];
+  const courseId = enrollment?.course.id;
+  const viewerName = enrollment?.course.code ?? "Discovery";
+
   const [view, setView] = useState<"people" | "groups">("people");
   const [urgentDismissed, setUrgentDismissed] = useState(false);
-  const [secFilter, setSecFilter] = useState("all");
-  const [skillFilter, setSkillFilter] = useState("any");
-  const [sortBy, setSortBy] = useState("best");
-  const [searchQuery] = useState("");
-  const [hiddenStudents, setHiddenStudents] = useState<Set<string>>(() => {
-    try {
-      const s = localStorage.getItem(LS_PREFIX + "hidden");
-      return s ? new Set(JSON.parse(s)) : new Set();
-    } catch {
-      return new Set();
-    }
-  });
-  const [starredStudents, setStarredStudents] = useState<Set<string>>(() => {
-    try {
-      const s = localStorage.getItem(LS_PREFIX + "starred");
-      return s ? new Set(JSON.parse(s)) : new Set();
-    } catch {
-      return new Set();
-    }
-  });
+  const [secFilter, setSecFilter] = useState<string>("all");
+  const [skillFilter, setSkillFilter] = useState<string>("any");
+  const [sortBy, setSortBy] = useState<SortKey>("best");
+  const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebounce(searchQuery.trim(), 250);
+
+  // Local-only state keyed by user_id (uuid string).
+  const [hiddenIds, setHiddenIds] = usePersistentSet("hiddenIds");
+  const [starredIds, setStarredIds] = usePersistentSet("starredIds");
   const [filterSolo, setFilterSolo] = useState(false);
   const [filterOpenGroup, setFilterOpenGroup] = useState(false);
   const [filterFavorites, setFilterFavorites] = useState(false);
@@ -85,102 +91,89 @@ export function Discovery({
   const [overlapPopover, setOverlapPopover] = useState(false);
   const [activityPopover, setActivityPopover] = useState(false);
   const [spotsPopover, setSpotsPopover] = useState(false);
-  const [minOverlapPct, setMinOverlapPct] = useState(0);
-  const [activityFilter2, setActivityFilter2] = useState("all");
-  const [spotsFilter, setSpotsFilter] = useState("any");
+  const [minOverlapHrs, setMinOverlapHrs] = useState(0);
+  const [activityFilter, setActivityFilter] = useState<string>("all");
+  const [spotsFilter, setSpotsFilter] = useState<string>("any");
 
-  useEffect(() => {
-    localStorage.setItem(LS_PREFIX + "starred", JSON.stringify([...starredStudents]));
-  }, [starredStudents]);
-  useEffect(() => {
-    localStorage.setItem(LS_PREFIX + "hidden", JSON.stringify([...hiddenStudents]));
-  }, [hiddenStudents]);
+  // Derived (no useEffect): when the urgentMode prop is on, force Solo and
+  // clear Open Group. The local toggles still operate; once urgentMode
+  // turns off, they take effect again. This replaces the prototype's
+  // `useEffect` -> `setState` sync that previously tripped the
+  // react-hooks/set-state-in-effect rule.
+  const effectiveFilterSolo = urgentMode ? true : filterSolo;
+  const effectiveFilterOpenGroup = urgentMode ? false : filterOpenGroup;
 
-  useEffect(() => {
-    if (urgentMode) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- pre-existing prototype pattern, fixed during stage 1 step E (Discovery wiring)
-      setFilterSolo(true);
-      setFilterOpenGroup(false);
-    } else {
-      setFilterSolo(false);
-    }
-  }, [urgentMode]);
-
-  const toggleStar = (name: string) =>
-    setStarredStudents((prev) => {
-      const n = new Set(prev);
-      if (n.has(name)) n.delete(name);
-      else n.add(name);
-      return n;
-    });
-
-  const filteredStudents = STU.filter((st) => {
-    if (st.status === "closed") return false;
-    const cs = contactStatuses[st.name] || "none";
-    if (cs === "accepted") return false;
-    if (secFilter !== "all" && st.sec !== secFilter) return false;
-    if (skillFilter !== "any") {
-      const target =
-        skillFilter === "frontend"
-          ? "Frontend Dev"
-          : skillFilter === "backend"
-          ? "Backend"
-          : skillFilter === "ui"
-          ? "UI Design"
-          : skillFilter === "research"
-          ? "User Research"
-          : skillFilter === "proto"
-          ? "Prototyping"
-          : skillFilter === "data"
-          ? "Data Analysis"
-          : skillFilter === "ux"
-          ? "UX Writing"
-          : "Project Mgmt";
-      if (!st.skills.includes(target)) return false;
-    }
-    if (minOverlapPct > 0 && (st.scheduleOverlapHrs / 10) * 100 < minOverlapPct)
-      return false;
-    if (filterSolo && !filterOpenGroup && st.status !== "solo") return false;
-    if (filterOpenGroup && !filterSolo && st.status !== "open-group") return false;
-    if (filterSolo && filterOpenGroup && st.status !== "solo" && st.status !== "open-group")
-      return false;
-    if (filterFavorites && !starredStudents.has(st.name)) return false;
-    if (activityFilter2 !== "all") {
-      const cs2 = contactStatuses[st.name] || "none";
-      if (cs2 !== activityFilter2) return false;
-    }
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      if (
-        !st.name.toLowerCase().includes(q) &&
-        !st.skills.some((sk) => sk.toLowerCase().includes(q)) &&
-        !st.bio.toLowerCase().includes(q)
-      )
-        return false;
-    }
-    return true;
-  }).sort((a, b) => {
-    const hidA = hiddenStudents.has(a.name) ? 1 : 0;
-    const hidB = hiddenStudents.has(b.name) ? 1 : 0;
-    if (hidA !== hidB) return hidA - hidB;
-    const aS = starredStudents.has(a.name) ? 1 : 0;
-    const bS = starredStudents.has(b.name) ? 1 : 0;
-    if (bS !== aS) return bS - aS;
-    switch (sortBy) {
-      case "best":
-        return b.compatScore - a.compatScore;
-      case "overlap":
-        return b.scheduleOverlapHrs - a.scheduleOverlapHrs;
-      case "active":
-        return parseActivityMinutes(a.lastActive) - parseActivityMinutes(b.lastActive);
-      case "name":
-        return a.name.localeCompare(b.name);
-      case "newest":
-        return STU.indexOf(b) - STU.indexOf(a);
-      default:
-        return 0;
-    }
+  const sectionsQuery = useQuery({
+    queryKey: ["courses", courseId, "sections"],
+    enabled: !!courseId,
+    staleTime: Infinity,
+    queryFn: () => apiCourses.listSections(courseId as string),
   });
+  const skillCatalog = useCourseSkills(courseId);
+
+  const discovery = useDiscoveryStudents(courseId, {
+    section_id: secFilter !== "all" ? secFilter : undefined,
+    skill_id: skillFilter !== "any" ? skillFilter : undefined,
+    search: debouncedSearch || undefined,
+  });
+
+  const visibleStudents = useMemo(() => {
+    const arr = discovery.items.filter((st) => {
+      if (effectiveFilterSolo && !effectiveFilterOpenGroup && st.group_status !== "solo")
+        return false;
+      if (effectiveFilterOpenGroup && !effectiveFilterSolo && st.group_status !== "in_group")
+        return false;
+      if (filterFavorites && !starredIds.has(st.user_id)) return false;
+      if (minOverlapHrs > 0) {
+        const hrs = st.score?.schedule_overlap_hours ?? 0;
+        if (hrs < minOverlapHrs) return false;
+      }
+      if (activityFilter !== "all") {
+        const cs = contactStatuses[st.user_id] || "none";
+        if (cs !== activityFilter) return false;
+      }
+      return true;
+    });
+    return arr.sort((a, b) => {
+      const hidA = hiddenIds.has(a.user_id) ? 1 : 0;
+      const hidB = hiddenIds.has(b.user_id) ? 1 : 0;
+      if (hidA !== hidB) return hidA - hidB;
+      const aS = starredIds.has(a.user_id) ? 1 : 0;
+      const bS = starredIds.has(b.user_id) ? 1 : 0;
+      if (bS !== aS) return bS - aS;
+      switch (sortBy) {
+        case "best":
+          return (b.score?.overall_score ?? -1) - (a.score?.overall_score ?? -1);
+        case "overlap":
+          return (
+            (b.score?.schedule_overlap_hours ?? -1) -
+            (a.score?.schedule_overlap_hours ?? -1)
+          );
+        case "active":
+          return (
+            new Date(b.profile?.last_active_at ?? 0).getTime() -
+            new Date(a.profile?.last_active_at ?? 0).getTime()
+          );
+        case "name":
+          return (a.display_name ?? "").localeCompare(b.display_name ?? "");
+        case "newest":
+          return new Date(b.joined_at).getTime() - new Date(a.joined_at).getTime();
+        default:
+          return 0;
+      }
+    });
+  }, [
+    discovery.items,
+    effectiveFilterSolo,
+    effectiveFilterOpenGroup,
+    filterFavorites,
+    starredIds,
+    hiddenIds,
+    minOverlapHrs,
+    activityFilter,
+    contactStatuses,
+    sortBy,
+  ]);
 
   const clearFilters = () => {
     setSecFilter("all");
@@ -189,23 +182,45 @@ export function Discovery({
     setFilterSolo(false);
     setFilterOpenGroup(false);
     setFilterFavorites(false);
-    setMinOverlapPct(0);
-    setActivityFilter2("all");
+    setMinOverlapHrs(0);
+    setActivityFilter("all");
+    setSearchQuery("");
   };
+
+  const skillsById = useMemo(() => {
+    const map = new Map<string, string>();
+    if (skillCatalog.data) {
+      for (const s of skillCatalog.data) {
+        map.set(s.id, s.skill_name);
+      }
+    }
+    return map;
+  }, [skillCatalog.data]);
+
+  if (!enrollment) {
+    return (
+      <DiscoveryShell heading="Join a course first" body="You don't have any active enrollments yet." />
+    );
+  }
 
   return (
     <div className="bg-background min-h-screen pb-6">
       <div className="max-w-[1120px] mx-auto py-10 px-12">
         <div className="flex justify-between items-end mb-4">
           <div>
-            <div className="text-[13px] text-gray-500">CSC318 · Section 201</div>
+            <div className="text-[13px] text-gray-500">
+              {viewerName}
+              {enrollment.section_code ? ` · Section ${enrollment.section_code}` : ""}
+            </div>
             <h1 className="text-[28px] font-bold text-foreground -tracking-[0.5px]">
               Find Teammates
             </h1>
           </div>
           {view === "people" ? (
             <span className="text-[13px] text-gray-500">
-              {filteredStudents.length} student{filteredStudents.length !== 1 ? "s" : ""} found
+              {discovery.isLoading
+                ? "Loading…"
+                : `${visibleStudents.length} student${visibleStudents.length !== 1 ? "s" : ""}`}
             </span>
           ) : (
             <span className="text-[13px] text-gray-500">
@@ -215,28 +230,29 @@ export function Discovery({
         </div>
 
         {urgentMode && !urgentDismissed && (
-          <div className="flex items-center gap-3 px-5 py-3 bg-danger-bg border border-danger-border rounded-xl mb-5">
-            <span className="text-danger text-lg">⚠</span>
+          <UrgentBanner go={go} onDismiss={() => setUrgentDismissed(true)} />
+        )}
+
+        {discovery.viewerProfileIncomplete && (
+          <div className="flex items-center gap-3 px-5 py-3 bg-caution-bg border border-caution-border rounded-xl mb-5">
+            <span className="text-caution text-lg">!</span>
             <div className="flex-1">
-              <div className="text-[13px] font-bold text-danger">Deadline in 3 days</div>
-              <div className="text-[12px] text-danger">
-                12 students still ungrouped. Respond quickly — No Response triggers after 24h.
+              <div className="text-[13px] font-bold text-caution">
+                Your profile is incomplete
+              </div>
+              <div className="text-[12px] text-caution-dark">
+                Finish setting up to see compatibility scores.
               </div>
             </div>
-            <Button
-              size="sm"
-              variant="destructive"
-              className="text-xs px-3"
-              onClick={() => go("urgent")}
-            >
-              View Details
+            <Button size="sm" variant="outline" onClick={() => go("profile-edit")}>
+              Edit Profile
             </Button>
-            <button
-              onClick={() => setUrgentDismissed(true)}
-              className="text-[12px] text-[#6B7280] hover:underline cursor-pointer shrink-0"
-            >
-              Dismiss
-            </button>
+          </div>
+        )}
+
+        {discovery.error && (
+          <div className="px-5 py-3 bg-danger-bg border border-danger-border rounded-xl mb-5 text-[13px] text-danger">
+            Couldn&apos;t load the board: {discovery.error.message}
           </div>
         )}
 
@@ -263,26 +279,35 @@ export function Discovery({
           {view === "people" ? (
             <>
               {[
-                { label: "Solo", active: filterSolo, toggle: () => setFilterSolo((v) => !v) },
+                {
+                  label: "Solo",
+                  active: effectiveFilterSolo,
+                  toggle: () => setFilterSolo((v) => !v),
+                  disabled: urgentMode,
+                },
                 {
                   label: "Open Group",
-                  active: filterOpenGroup,
+                  active: effectiveFilterOpenGroup,
                   toggle: () => setFilterOpenGroup((v) => !v),
+                  disabled: urgentMode,
                 },
                 {
                   label: "Favorites",
                   active: filterFavorites,
                   toggle: () => setFilterFavorites((v) => !v),
+                  disabled: false,
                 },
-              ].map(({ label, active, toggle }) => (
+              ].map(({ label, active, toggle, disabled }) => (
                 <button
                   key={label}
-                  onClick={toggle}
+                  onClick={disabled ? undefined : toggle}
+                  disabled={disabled}
                   className={cn(
                     "flex items-center gap-1.5 h-[34px] px-[14px] rounded-[20px] text-[13px] border shrink-0 transition-colors cursor-pointer whitespace-nowrap",
                     active
                       ? "bg-[#9652ca]/10 border-[#9652ca] text-[#9652ca]"
                       : "bg-white border-[#D1D5DB] text-[#374151] hover:border-gray-400",
+                    disabled && "opacity-60 cursor-not-allowed",
                   )}
                 >
                   {active && <span className="text-[11px]">✓</span>}
@@ -291,108 +316,114 @@ export function Discovery({
               ))}
 
               <FilterDropdown
-                label={secFilter !== "all" ? secFilter : "Section"}
+                label={
+                  secFilter !== "all"
+                    ? sectionsQuery.data?.find((s) => s.id === secFilter)?.code ?? "Section"
+                    : "Section"
+                }
                 active={secFilter !== "all"}
                 open={sectionPopover}
                 onToggle={() => setSectionPopover((o) => !o)}
                 onClose={() => setSectionPopover(false)}
               >
-                <div className="py-1">
-                  {["all", "201", "202", "203"].map((s) => (
+                <div className="py-1 min-w-[180px]">
+                  <button
+                    onClick={() => {
+                      setSecFilter("all");
+                      setSectionPopover(false);
+                    }}
+                    className={cn(
+                      "w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50",
+                      secFilter === "all" && "text-[#9652ca] font-medium",
+                    )}
+                  >
+                    All Sections
+                  </button>
+                  {(sectionsQuery.data ?? []).map((s) => (
                     <button
-                      key={s}
+                      key={s.id}
                       onClick={() => {
-                        setSecFilter(s);
+                        setSecFilter(s.id);
                         setSectionPopover(false);
                       }}
                       className={cn(
                         "w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50",
-                        secFilter === s && "text-[#9652ca] font-medium",
+                        secFilter === s.id && "text-[#9652ca] font-medium",
                       )}
                     >
-                      {s === "all" ? "All Sections" : `Section ${s}`}
+                      Section {s.code}
                     </button>
                   ))}
                 </div>
               </FilterDropdown>
 
               <FilterDropdown
-                label={skillFilter !== "any" ? `Skills (1)` : "Skills"}
+                label={
+                  skillFilter !== "any"
+                    ? skillsById.get(skillFilter) ?? "Skill"
+                    : "Skills"
+                }
                 active={skillFilter !== "any"}
                 open={skillsPopover}
                 onToggle={() => setSkillsPopover((o) => !o)}
                 onClose={() => setSkillsPopover(false)}
               >
-                <div className="py-1 min-w-[200px]">
-                  {[
-                    "any",
-                    "frontend",
-                    "backend",
-                    "ui",
-                    "research",
-                    "proto",
-                    "data",
-                    "ux",
-                    "pm",
-                  ].map((s) => (
+                <div className="py-1 min-w-[200px] max-h-[260px] overflow-y-auto">
+                  <button
+                    onClick={() => {
+                      setSkillFilter("any");
+                      setSkillsPopover(false);
+                    }}
+                    className={cn(
+                      "w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50",
+                      skillFilter === "any" && "text-[#9652ca] font-medium",
+                    )}
+                  >
+                    Any skill
+                  </button>
+                  {(skillCatalog.data ?? []).map((sk) => (
                     <button
-                      key={s}
+                      key={sk.id}
                       onClick={() => {
-                        setSkillFilter(s);
+                        setSkillFilter(sk.id);
                         setSkillsPopover(false);
                       }}
                       className={cn(
                         "w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50",
-                        skillFilter === s && "text-[#9652ca] font-medium",
+                        skillFilter === sk.id && "text-[#9652ca] font-medium",
                       )}
                     >
-                      {s === "any"
-                        ? "Any skill"
-                        : s === "frontend"
-                        ? "Frontend Dev"
-                        : s === "backend"
-                        ? "Backend"
-                        : s === "ui"
-                        ? "UI Design"
-                        : s === "research"
-                        ? "User Research"
-                        : s === "proto"
-                        ? "Prototyping"
-                        : s === "data"
-                        ? "Data Analysis"
-                        : s === "ux"
-                        ? "UX Writing"
-                        : "Project Mgmt"}
+                      {sk.skill_name}
                     </button>
                   ))}
                 </div>
               </FilterDropdown>
 
               <FilterDropdown
-                label={minOverlapPct > 0 ? `Overlap ≥${minOverlapPct}%` : "Overlap"}
-                active={minOverlapPct > 0}
+                label={minOverlapHrs > 0 ? `Overlap ≥${minOverlapHrs}h` : "Overlap"}
+                active={minOverlapHrs > 0}
                 open={overlapPopover}
                 onToggle={() => setOverlapPopover((o) => !o)}
                 onClose={() => setOverlapPopover(false)}
               >
                 <div className="p-4 w-56">
                   <div className="flex justify-between text-[12px] text-[#6B7280] mb-2">
-                    <span>0%</span>
-                    <span className="font-semibold text-[#111827]">{minOverlapPct}%+</span>
-                    <span>100%</span>
+                    <span>0h</span>
+                    <span className="font-semibold text-[#111827]">{minOverlapHrs}h+</span>
+                    <span>20h</span>
                   </div>
                   <input
                     type="range"
                     min={0}
-                    max={100}
-                    step={10}
-                    value={minOverlapPct}
-                    onChange={(e) => setMinOverlapPct(Number(e.target.value))}
+                    max={20}
+                    step={1}
+                    value={minOverlapHrs}
+                    onChange={(e) => setMinOverlapHrs(Number(e.target.value))}
                     className="w-full accent-[#9652ca]"
                   />
-                  {minOverlapPct > 0 && (
+                  {minOverlapHrs > 0 && (
                     <button
-                      onClick={() => setMinOverlapPct(0)}
+                      onClick={() => setMinOverlapHrs(0)}
                       className="mt-2 text-[12px] text-[#9652ca] hover:underline"
                     >
                       Clear
@@ -403,17 +434,17 @@ export function Discovery({
 
               <FilterDropdown
                 label={
-                  activityFilter2 !== "all"
+                  activityFilter !== "all"
                     ? ({
                         none: "No contact yet",
                         "request-sent": "Request Sent",
                         replied: "Replied",
                         "no-response": "No Response",
                         declined: "Declined",
-                      } as Record<string, string>)[activityFilter2] ?? activityFilter2
+                      } as Record<string, string>)[activityFilter] ?? activityFilter
                     : "My Activity"
                 }
-                active={activityFilter2 !== "all"}
+                active={activityFilter !== "all"}
                 open={activityPopover}
                 onToggle={() => setActivityPopover((o) => !o)}
                 onClose={() => setActivityPopover(false)}
@@ -430,12 +461,12 @@ export function Discovery({
                     <button
                       key={v}
                       onClick={() => {
-                        setActivityFilter2(v);
+                        setActivityFilter(v);
                         setActivityPopover(false);
                       }}
                       className={cn(
                         "w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50 whitespace-nowrap",
-                        activityFilter2 === v && "text-[#9652ca] font-medium",
+                        activityFilter === v && "text-[#9652ca] font-medium",
                       )}
                     >
                       {l}
@@ -444,36 +475,44 @@ export function Discovery({
                 </div>
               </FilterDropdown>
 
-              {hiddenStudents.size > 0 && (
+              {hiddenIds.size > 0 && (
                 <FilterDropdown
-                  label={`Hidden (${hiddenStudents.size})`}
+                  label={`Hidden (${hiddenIds.size})`}
                   active={true}
                   open={hiddenPopover}
                   onToggle={() => setHiddenPopover((o) => !o)}
                   onClose={() => setHiddenPopover(false)}
                 >
                   <div className="py-1 min-w-[180px]">
-                    {[...hiddenStudents].map((name) => (
-                      <div key={name} className="flex items-center justify-between px-3 py-2">
-                        <span className="text-[13px]">{name}</span>
-                        <button
-                          onClick={() => {
-                            setHiddenStudents((prev) => {
-                              const n = new Set(prev);
-                              n.delete(name);
-                              return n;
-                            });
-                          }}
-                          className="text-[12px] text-[#9652ca] hover:underline cursor-pointer"
+                    {[...hiddenIds].map((id) => {
+                      const stu = discovery.items.find((s) => s.user_id === id);
+                      return (
+                        <div
+                          key={id}
+                          className="flex items-center justify-between px-3 py-2"
                         >
-                          Restore
-                        </button>
-                      </div>
-                    ))}
+                          <span className="text-[13px]">
+                            {stu?.display_name ?? "Hidden student"}
+                          </span>
+                          <button
+                            onClick={() => {
+                              setHiddenIds((prev) => {
+                                const n = new Set(prev);
+                                n.delete(id);
+                                return n;
+                              });
+                            }}
+                            className="text-[12px] text-[#9652ca] hover:underline cursor-pointer"
+                          >
+                            Restore
+                          </button>
+                        </div>
+                      );
+                    })}
                     <div className="border-t border-gray-100 mt-1 pt-1 px-3 pb-1">
                       <button
                         onClick={() => {
-                          setHiddenStudents(new Set());
+                          setHiddenIds(new Set());
                           setHiddenPopover(false);
                         }}
                         className="text-[12px] text-[#991B1B] hover:underline cursor-pointer"
@@ -484,79 +523,29 @@ export function Discovery({
                   </div>
                 </FilterDropdown>
               )}
+
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search name…"
+                className="ml-auto h-[34px] px-3 rounded-[20px] text-[13px] border border-[#D1D5DB] focus:outline-none focus:border-[#9652ca] w-[200px]"
+              />
             </>
           ) : (
-            <>
-              <button
-                onClick={() => setFilterRecruiting((v) => !v)}
-                className={cn(
-                  "flex items-center gap-1.5 h-[34px] px-[14px] rounded-[20px] text-[13px] border shrink-0 transition-colors cursor-pointer whitespace-nowrap",
-                  filterRecruiting
-                    ? "bg-[#9652ca]/10 border-[#9652ca] text-[#9652ca]"
-                    : "bg-white border-[#D1D5DB] text-[#374151] hover:border-gray-400",
-                )}
-              >
-                {filterRecruiting && <span className="text-[11px]">✓</span>}
-                Recruiting
-              </button>
-
-              <FilterDropdown
-                label={secFilter !== "all" ? secFilter : "Section"}
-                active={secFilter !== "all"}
-                open={sectionPopover}
-                onToggle={() => setSectionPopover((o) => !o)}
-                onClose={() => setSectionPopover(false)}
-              >
-                <div className="py-1">
-                  {["all", "201", "202", "203"].map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => {
-                        setSecFilter(s);
-                        setSectionPopover(false);
-                      }}
-                      className={cn(
-                        "w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50",
-                        secFilter === s && "text-[#9652ca] font-medium",
-                      )}
-                    >
-                      {s === "all" ? "All Sections" : `Section ${s}`}
-                    </button>
-                  ))}
-                </div>
-              </FilterDropdown>
-
-              <FilterDropdown
-                label="Spots Open"
-                active={spotsFilter !== "any"}
-                open={spotsPopover}
-                onToggle={() => setSpotsPopover((o) => !o)}
-                onClose={() => setSpotsPopover(false)}
-              >
-                <div className="py-1">
-                  {[
-                    ["any", "Any"],
-                    ["1+", "1+"],
-                    ["2+", "2+"],
-                    ["3+", "3+"],
-                  ].map(([v, l]) => (
-                    <button
-                      key={v}
-                      onClick={() => {
-                        setSpotsFilter(v);
-                        setSpotsPopover(false);
-                      }}
-                      className={cn(
-                        "w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50",
-                        spotsFilter === v && "text-[#9652ca] font-medium",
-                      )}
-                    >
-                      {l}
-                    </button>
-                  ))}
-                </div>
-              </FilterDropdown>
-            </>
+            <GroupsFilterBar
+              secFilter={secFilter}
+              setSecFilter={setSecFilter}
+              filterRecruiting={filterRecruiting}
+              setFilterRecruiting={setFilterRecruiting}
+              spotsFilter={spotsFilter}
+              setSpotsFilter={setSpotsFilter}
+              sectionPopover={sectionPopover}
+              setSectionPopover={setSectionPopover}
+              spotsPopover={spotsPopover}
+              setSpotsPopover={setSpotsPopover}
+              sections={sectionsQuery.data ?? []}
+            />
           )}
         </div>
 
@@ -567,7 +556,7 @@ export function Discovery({
           confirmLabel="Hide"
           onConfirm={() => {
             if (hideConfirmTarget) {
-              setHiddenStudents((prev) => new Set([...prev, hideConfirmTarget]));
+              setHiddenIds((prev) => new Set([...prev, hideConfirmTarget]));
             }
             setHideConfirmTarget(null);
           }}
@@ -575,17 +564,23 @@ export function Discovery({
         />
 
         {view === "groups" ? (
-          <GroupsView
-            onSelectGroup={onSelectGroup ?? (() => {})}
-            appliedGroups={appliedGroups}
-            filterRecruiting={filterRecruiting}
-          />
+          <>
+            <div className="px-5 py-3 mt-3 bg-caution-bg border border-caution-border rounded-xl text-[13px] text-caution-dark">
+              <strong className="text-caution">Stage 2 preview.</strong> Group
+              data below is mock — the live group endpoints arrive in stage 2.
+            </div>
+            <GroupsView
+              onSelectGroup={onSelectGroup ?? (() => {})}
+              appliedGroups={appliedGroups}
+              filterRecruiting={filterRecruiting}
+            />
+          </>
         ) : (
           <>
             <div className="flex justify-end items-center py-2">
               <div className="flex items-center gap-1 text-[13px] text-[#6B7280]">
                 <span>Sort:</span>
-                <Select value={sortBy} onValueChange={setSortBy}>
+                <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortKey)}>
                   <SelectTrigger className="h-7 border-none shadow-none text-[13px] text-[#6B7280] w-auto gap-1 px-1">
                     <SelectValue />
                   </SelectTrigger>
@@ -600,7 +595,11 @@ export function Discovery({
               </div>
             </div>
 
-            {filteredStudents.length === 0 ? (
+            {discovery.isLoading ? (
+              <div className="py-16 text-center text-[13px] text-gray-400">
+                Loading classmates…
+              </div>
+            ) : visibleStudents.length === 0 ? (
               <div className="py-16 text-center">
                 <div className="text-4xl mb-3">🔍</div>
                 <div className="text-[15px] font-semibold text-gray-500 mb-2">
@@ -615,140 +614,410 @@ export function Discovery({
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {filteredStudents.map((st, i) => {
-                  const cs = contactStatuses[st.name];
-                  return (
-                    <Card
-                      key={i}
-                      className={cn(
-                        "p-4 gap-0 bg-white border-0 rounded-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.08)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.12)] hover:-translate-y-0.5 transition-all duration-150 cursor-pointer relative group",
-                        hiddenStudents.has(st.name) &&
-                          "opacity-40 pointer-events-none select-none",
-                      )}
-                      onClick={() => !hiddenStudents.has(st.name) && onSelectStudent(st.name)}
-                    >
-                      <div className="flex items-center justify-between mb-1.5">
-                        <div className="flex items-center gap-2.5">
-                          <StudentAvatar
-                            name={st.name}
-                            size="size-9"
-                            textSize="text-[11px]"
-                          />
-                          <span className="text-[15px] font-semibold text-[#111827] leading-snug">
-                            {st.name}
-                          </span>
-                        </div>
-                        <div className="flex gap-1 ml-2 shrink-0 items-center pointer-events-auto relative z-10">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleStar(st.name);
-                            }}
-                            className="p-0.5 rounded transition-colors cursor-pointer"
-                            aria-label="Toggle favorite"
-                          >
-                            {starredStudents.has(st.name) ? (
-                              <Icon.starFilled size={14} color="#9652ca" />
-                            ) : (
-                              <Icon.star size={14} color="#D1D5DB" />
-                            )}
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setHideConfirmTarget(st.name);
-                            }}
-                            className="p-0.5 rounded transition-all cursor-pointer"
-                            aria-label="Toggle visibility"
-                          >
-                            {hiddenStudents.has(st.name) ? (
-                              <Icon.eyeOff size={14} color="#9CA3AF" />
-                            ) : (
-                              <Icon.eyeOpen size={14} color="#D1D5DB" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
+                {visibleStudents.map((st) => (
+                  <StudentCard
+                    key={st.user_id}
+                    student={st}
+                    skillsById={skillsById}
+                    starred={starredIds.has(st.user_id)}
+                    hidden={hiddenIds.has(st.user_id)}
+                    contactStatus={contactStatuses[st.user_id]}
+                    onClick={() => onSelectStudent(st)}
+                    onToggleStar={() =>
+                      setStarredIds((prev) => {
+                        const n = new Set(prev);
+                        if (n.has(st.user_id)) n.delete(st.user_id);
+                        else n.add(st.user_id);
+                        return n;
+                      })
+                    }
+                    onHide={() => setHideConfirmTarget(st.user_id)}
+                  />
+                ))}
+              </div>
+            )}
 
-                      <div className="flex items-center gap-1.5 mb-2.5">
-                        <span
-                          className={cn(
-                            "inline-flex items-center justify-center h-[22px] px-2 rounded-[12px] leading-none text-[11px] font-medium",
-                            st.status === "solo"
-                              ? "bg-[#DCFCE7] text-[#166534]"
-                              : "bg-[#FEF3C7] text-[#92400E]",
-                          )}
-                        >
-                          {st.status === "solo" ? "Solo" : "Open Group"}
-                        </span>
-                        {cs && cs !== "none" && CONTACT_STATUS_LABELS[cs] && (
-                          <span
-                            className={cn(
-                              "inline-flex items-center justify-center h-[22px] px-2 rounded-[12px] leading-none text-[11px] font-medium",
-                              CONTACT_STATUS_LABELS[cs].cls,
-                            )}
-                          >
-                            {CONTACT_STATUS_LABELS[cs].l}
-                          </span>
-                        )}
-                        <span className="text-[12px] text-[#6B7280]">{st.sec}</span>
-                        {isRecentlyActive(st.lastActive) && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-green-400 ml-auto" />
-                        )}
-                      </div>
-
-                      <div className="flex flex-wrap gap-1 mb-2.5">
-                        {st.skills.slice(0, 3).map((sk) => (
-                          <span
-                            key={sk}
-                            className="inline-flex items-center h-6 px-2 rounded-[6px] text-[12px] font-medium bg-[#9652ca]/10 text-[#9652ca]"
-                          >
-                            {sk}
-                          </span>
-                        ))}
-                        {st.skills.length > 3 && (
-                          <span className="text-[12px] text-[#6B7280]">
-                            +{st.skills.length - 3}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="mb-2">
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="text-[12px] text-[#6B7280]">Overlap</span>
-                          <span
-                            className={cn(
-                              "text-[13px] font-semibold",
-                              st.scheduleOverlapHrs >= 6
-                                ? "text-[#9652ca]"
-                                : "text-[#9CA3AF]",
-                            )}
-                          >
-                            {st.overlap}
-                          </span>
-                        </div>
-                        <div className="h-1 rounded-full bg-[#E5E7EB] overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all"
-                            style={{
-                              width: `${Math.min(100, (st.scheduleOverlapHrs / 10) * 100)}%`,
-                              backgroundColor:
-                                st.scheduleOverlapHrs >= 7
-                                  ? "#22C55E"
-                                  : st.scheduleOverlapHrs >= 4
-                                  ? "#9652ca"
-                                  : "#9CA3AF",
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </Card>
-                  );
-                })}
+            {discovery.hasMore && (
+              <div className="flex justify-center mt-6">
+                <Button
+                  variant="outline"
+                  disabled={discovery.isFetchingMore}
+                  onClick={() => discovery.loadMore()}
+                >
+                  {discovery.isFetchingMore ? "Loading…" : "Load more"}
+                </Button>
               </div>
             )}
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bits
+// ---------------------------------------------------------------------------
+
+type SortKey = "best" | "overlap" | "active" | "name" | "newest";
+
+interface StudentCardProps {
+  student: MergedStudent;
+  skillsById: Map<string, string>;
+  starred: boolean;
+  hidden: boolean;
+  contactStatus: string | undefined;
+  onClick: () => void;
+  onToggleStar: () => void;
+  onHide: () => void;
+}
+
+function StudentCard({
+  student,
+  skillsById,
+  starred,
+  hidden,
+  contactStatus,
+  onClick,
+  onToggleStar,
+  onHide,
+}: StudentCardProps) {
+  const name = student.display_name ?? "Pending name";
+  const skillNames = (student.profile?.skills ?? [])
+    .slice(0, 3)
+    .map((s) => skillsById.get(s.course_skill_id))
+    .filter((v): v is string => !!v);
+  const totalSkills = student.profile?.skills.length ?? 0;
+  const overlap = student.score?.schedule_overlap_hours ?? null;
+  const overall = student.score?.overall_score ?? null;
+
+  return (
+    <Card
+      className={cn(
+        "p-4 gap-0 bg-white border-0 rounded-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.08)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.12)] hover:-translate-y-0.5 transition-all duration-150 cursor-pointer relative group",
+        hidden && "opacity-40 pointer-events-none select-none",
+      )}
+      onClick={hidden ? undefined : onClick}
+    >
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="flex items-center gap-2.5">
+          <StudentAvatar name={name} size="size-9" textSize="text-[11px]" />
+          <span className="text-[15px] font-semibold text-[#111827] leading-snug">
+            {name}
+          </span>
+        </div>
+        <div className="flex gap-1 ml-2 shrink-0 items-center pointer-events-auto relative z-10">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleStar();
+            }}
+            className="p-0.5 rounded transition-colors cursor-pointer"
+            aria-label="Toggle favorite"
+          >
+            {starred ? (
+              <Icon.starFilled size={14} color="#9652ca" />
+            ) : (
+              <Icon.star size={14} color="#D1D5DB" />
+            )}
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onHide();
+            }}
+            className="p-0.5 rounded transition-all cursor-pointer"
+            aria-label="Toggle visibility"
+          >
+            {hidden ? (
+              <Icon.eyeOff size={14} color="#9CA3AF" />
+            ) : (
+              <Icon.eyeOpen size={14} color="#D1D5DB" />
+            )}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1.5 mb-2.5">
+        <span
+          className={cn(
+            "inline-flex items-center justify-center h-[22px] px-2 rounded-[12px] leading-none text-[11px] font-medium",
+            student.group_status === "solo"
+              ? "bg-[#DCFCE7] text-[#166534]"
+              : "bg-[#FEF3C7] text-[#92400E]",
+          )}
+        >
+          {student.group_status === "solo" ? "Solo" : "In Group"}
+        </span>
+        {contactStatus && contactStatus !== "none" && CONTACT_STATUS_LABELS[contactStatus] && (
+          <span
+            className={cn(
+              "inline-flex items-center justify-center h-[22px] px-2 rounded-[12px] leading-none text-[11px] font-medium",
+              CONTACT_STATUS_LABELS[contactStatus].cls,
+            )}
+          >
+            {CONTACT_STATUS_LABELS[contactStatus].l}
+          </span>
+        )}
+        {student.section_code && (
+          <span className="text-[12px] text-[#6B7280]">{student.section_code}</span>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-1 mb-2.5">
+        {skillNames.map((sk) => (
+          <span
+            key={sk}
+            className="inline-flex items-center h-6 px-2 rounded-[6px] text-[12px] font-medium bg-[#9652ca]/10 text-[#9652ca]"
+          >
+            {sk}
+          </span>
+        ))}
+        {totalSkills > 3 && (
+          <span className="text-[12px] text-[#6B7280]">+{totalSkills - 3}</span>
+        )}
+        {totalSkills === 0 && (
+          <span className="text-[12px] text-gray-400">No skills yet</span>
+        )}
+      </div>
+
+      {overall !== null ? (
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[12px] text-[#6B7280]">Compatibility</span>
+          <span
+            className={cn(
+              "text-[13px] font-semibold",
+              overall >= 80 ? "text-[#22C55E]" : overall >= 50 ? "text-[#9652ca]" : "text-[#9CA3AF]",
+            )}
+          >
+            {overall}%
+          </span>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[12px] text-[#6B7280]">Compatibility</span>
+          <span className="text-[12px] text-gray-400">
+            {student.skipped_reason === "target_profile_incomplete"
+              ? "Profile incomplete"
+              : student.skipped_reason === "viewer_profile_incomplete"
+                ? "Finish yours first"
+                : "…"}
+          </span>
+        </div>
+      )}
+
+      {overlap !== null && (
+        <div>
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-[12px] text-[#6B7280]">Overlap</span>
+            <span
+              className={cn(
+                "text-[13px] font-semibold",
+                overlap >= 6 ? "text-[#9652ca]" : "text-[#9CA3AF]",
+              )}
+            >
+              {overlap}h/wk
+            </span>
+          </div>
+          <div className="h-1 rounded-full bg-[#E5E7EB] overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all"
+              style={{
+                width: `${Math.min(100, (overlap / 10) * 100)}%`,
+                backgroundColor:
+                  overlap >= 7 ? "#22C55E" : overlap >= 4 ? "#9652ca" : "#9CA3AF",
+              }}
+            />
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function usePersistentSet(key: string): [Set<string>, (next: Set<string> | ((prev: Set<string>) => Set<string>)) => void] {
+  const [state, setState] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem(LS_PREFIX + key);
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  const setPersisted = (next: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    setState((prev) => {
+      const v = typeof next === "function" ? next(prev) : next;
+      try {
+        localStorage.setItem(LS_PREFIX + key, JSON.stringify([...v]));
+      } catch {
+        /* ignore */
+      }
+      return v;
+    });
+  };
+
+  return [state, setPersisted];
+}
+
+function UrgentBanner({ go, onDismiss }: { go: (p: string) => void; onDismiss: () => void }) {
+  return (
+    <div className="flex items-center gap-3 px-5 py-3 bg-danger-bg border border-danger-border rounded-xl mb-5">
+      <span className="text-danger text-lg">⚠</span>
+      <div className="flex-1">
+        <div className="text-[13px] font-bold text-danger">Deadline approaching</div>
+        <div className="text-[12px] text-danger">
+          Respond quickly — No Response triggers after 24h.
+        </div>
+      </div>
+      <Button
+        size="sm"
+        variant="destructive"
+        className="text-xs px-3"
+        onClick={() => go("urgent")}
+      >
+        View Details
+      </Button>
+      <button
+        onClick={onDismiss}
+        className="text-[12px] text-[#6B7280] hover:underline cursor-pointer shrink-0"
+      >
+        Dismiss
+      </button>
+    </div>
+  );
+}
+
+interface GroupsFilterBarProps {
+  secFilter: string;
+  setSecFilter: (v: string) => void;
+  filterRecruiting: boolean;
+  setFilterRecruiting: (v: boolean | ((prev: boolean) => boolean)) => void;
+  spotsFilter: string;
+  setSpotsFilter: (v: string) => void;
+  sectionPopover: boolean;
+  setSectionPopover: (v: boolean | ((prev: boolean) => boolean)) => void;
+  spotsPopover: boolean;
+  setSpotsPopover: (v: boolean | ((prev: boolean) => boolean)) => void;
+  sections: { id: string; code: string }[];
+}
+
+function GroupsFilterBar({
+  secFilter,
+  setSecFilter,
+  filterRecruiting,
+  setFilterRecruiting,
+  spotsFilter,
+  setSpotsFilter,
+  sectionPopover,
+  setSectionPopover,
+  spotsPopover,
+  setSpotsPopover,
+  sections,
+}: GroupsFilterBarProps) {
+  return (
+    <>
+      <button
+        onClick={() => setFilterRecruiting((v) => !v)}
+        className={cn(
+          "flex items-center gap-1.5 h-[34px] px-[14px] rounded-[20px] text-[13px] border shrink-0 transition-colors cursor-pointer whitespace-nowrap",
+          filterRecruiting
+            ? "bg-[#9652ca]/10 border-[#9652ca] text-[#9652ca]"
+            : "bg-white border-[#D1D5DB] text-[#374151] hover:border-gray-400",
+        )}
+      >
+        {filterRecruiting && <span className="text-[11px]">✓</span>}
+        Recruiting
+      </button>
+
+      <FilterDropdown
+        label={
+          secFilter !== "all"
+            ? sections.find((s) => s.id === secFilter)?.code ?? "Section"
+            : "Section"
+        }
+        active={secFilter !== "all"}
+        open={sectionPopover}
+        onToggle={() => setSectionPopover((o) => !o)}
+        onClose={() => setSectionPopover(false)}
+      >
+        <div className="py-1">
+          <button
+            onClick={() => {
+              setSecFilter("all");
+              setSectionPopover(false);
+            }}
+            className={cn(
+              "w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50",
+              secFilter === "all" && "text-[#9652ca] font-medium",
+            )}
+          >
+            All Sections
+          </button>
+          {sections.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => {
+                setSecFilter(s.id);
+                setSectionPopover(false);
+              }}
+              className={cn(
+                "w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50",
+                secFilter === s.id && "text-[#9652ca] font-medium",
+              )}
+            >
+              Section {s.code}
+            </button>
+          ))}
+        </div>
+      </FilterDropdown>
+
+      <FilterDropdown
+        label="Spots Open"
+        active={spotsFilter !== "any"}
+        open={spotsPopover}
+        onToggle={() => setSpotsPopover((o) => !o)}
+        onClose={() => setSpotsPopover(false)}
+      >
+        <div className="py-1">
+          {[
+            ["any", "Any"],
+            ["1+", "1+"],
+            ["2+", "2+"],
+            ["3+", "3+"],
+          ].map(([v, l]) => (
+            <button
+              key={v}
+              onClick={() => {
+                setSpotsFilter(v);
+                setSpotsPopover(false);
+              }}
+              className={cn(
+                "w-full text-left px-3 py-2 text-[13px] rounded hover:bg-gray-50",
+                spotsFilter === v && "text-[#9652ca] font-medium",
+              )}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+      </FilterDropdown>
+    </>
+  );
+}
+
+function DiscoveryShell({ heading, body }: { heading: string; body: string }) {
+  return (
+    <div className="bg-background min-h-screen pb-6">
+      <div className="max-w-[500px] mx-auto pt-20 px-6 text-center">
+        <h1 className="text-[24px] font-bold text-foreground mb-2 -tracking-[0.5px]">
+          {heading}
+        </h1>
+        <p className="text-base text-gray-600 leading-relaxed">{body}</p>
       </div>
     </div>
   );

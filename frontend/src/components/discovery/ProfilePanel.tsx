@@ -2,17 +2,20 @@
  * Side-panel detail view shown when the viewer clicks a student card on
  * the Discovery board.
  *
- * Three branches based on the target student's status:
- *   - ``closed``        — read-only "already in a confirmed group" message.
- *   - ``open-group``    — defers to ``FormingStudentPanel``; if the viewer
- *     clicks "Join Their Group" the panel swaps to ``GroupDetailPanel``
- *     inline.
- *   - ``solo``          — the full compatibility breakdown + Group Request
- *     CTA.
+ * Lives on the merged data from `useDiscoveryStudents` — the caller
+ * passes the `MergedStudent` straight in, which carries both the
+ * profile summary (skills / schedule / bio) and the compatibility score
+ * from the batch call. The schedule grid renders directly from
+ * `profile.schedule_slots`; we don't refetch since the embedded shape
+ * is already complete enough for the panel.
  *
- * Stage 1 step E replaces the mock COMPAT / SCHEDULE_DATA / WORK_STYLE_DATA
- * with live data from ``GET /profiles/{id}`` plus the
- * ``POST /compatibility/batch`` payload already cached on the page.
+ * Three branches based on the target's `group_status` and (legacy) the
+ * mock `FORMING_GROUPS` membership lookup:
+ *   - `in_group` + matching forming-group row → defer to the
+ *     `FormingStudentPanel` view. Stage 2 will replace the group lookup
+ *     with the real `GET /groups` data.
+ *   - `in_group` without a matching row → fall back to the solo view.
+ *   - `solo` → full compatibility breakdown + Group Request CTA.
  */
 
 import { Fragment, useState } from "react";
@@ -26,31 +29,34 @@ import { Icon } from "@/components/shared/icons";
 import { StudentAvatar } from "@/components/shared/StudentAvatar";
 import { FormingStudentPanel } from "@/components/discovery/FormingStudentPanel";
 import { GroupDetailPanel } from "@/components/groups/GroupDetailPanel";
+import { useAuth } from "@/context/auth-context";
+import { useCourseSkills } from "@/hooks/useCourseSkills";
+import { useMyProfile } from "@/hooks/useProfile";
+import { scheduleSlotToCell } from "@/hooks/useWizardState";
 import { cn } from "@/lib/utils";
-import {
-  COMPAT,
-  FORMING_GROUPS,
-  PROFILE_TIERS,
-  SCHEDULE_DATA,
-  STU,
-  WORK_STYLE_DATA,
-} from "@/lib/mock-data";
+import { FORMING_GROUPS, PROFILE_TIERS } from "@/lib/mock-data";
+import type {
+  CompatibilityResult,
+  StudentListItem,
+} from "@/types/api";
+import type { Student } from "@/types/ui";
+import type { MergedStudent } from "@/hooks/useDiscovery";
 import type { GoProps } from "@/types/ui";
 
 interface ProfilePanelProps extends GoProps {
-  studentName: string;
+  student: MergedStudent;
   onClose: () => void;
-  onContactStatusChange: (name: string, status: string) => void;
+  onContactStatusChange: (userId: string, status: string) => void;
   urgentMode?: boolean;
   contactStatus?: string;
-  onOpenChat?: (name: string) => void;
+  onOpenChat?: (userId: string) => void;
   onSelectGroup?: (groupId: string) => void;
-  onSendRequest?: (name: string, why: string, question: string) => void;
+  onSendRequest?: (userId: string, why: string, question: string) => void;
 }
 
 export function ProfilePanelContent({
   go,
-  studentName,
+  student,
   onClose,
   onContactStatusChange,
   urgentMode = false,
@@ -59,179 +65,215 @@ export function ProfilePanelContent({
   onSelectGroup: _onSelectGroup,
   onSendRequest,
 }: ProfilePanelProps) {
+  const { enrollments } = useAuth();
+  const courseId = enrollments[0]?.course.id;
+  const { data: myProfile } = useMyProfile(courseId);
+  const skillCatalog = useCourseSkills(courseId);
   const [inlineGroupId, setInlineGroupId] = useState<string | null>(null);
   const [requestStep, setRequestStep] = useState<"view" | "confirm" | "form">("view");
   const [requestWhy, setRequestWhy] = useState("");
   const [requestQuestion, setRequestQuestion] = useState("");
   const [withdrawConfirm, setWithdrawConfirm] = useState(false);
-  const st = STU.find((s) => s.name === studentName);
 
-  if (!st) return null;
+  const name = student.display_name ?? "Pending name";
 
-  if (st.status === "closed") {
-    return (
-      <div className="p-6">
-        <div className="flex gap-4 items-center mb-5">
-          <StudentAvatar name={st.name} size="size-12" textSize="text-base" />
-          <div className="flex-1">
-            <div className="text-[18px] font-bold">{st.name}</div>
-            <div className="text-sm text-gray-500">Section {st.sec}</div>
-          </div>
-          <span className="py-1 px-3 bg-gray-100 text-gray-500 text-xs font-semibold rounded-full">
-            Grouped
-          </span>
-        </div>
-        <div className="py-4 px-5 bg-gray-50 rounded-xl border border-gray-200">
-          <div className="text-[13px] font-semibold mb-1">
-            {st.name.split(" ")[0]} is already in a confirmed group
-          </div>
-          <div className="text-[12px] text-gray-600">
-            They are no longer available for new group requests.
-          </div>
-        </div>
-      </div>
-    );
+  // Stage 2: replace this mock lookup with a real "is this student in a
+  // forming group?" call. For now the FORMING_GROUPS catalog is mock and
+  // keyed by name, so name-based lookup is the right shim.
+  const formingGroup =
+    student.group_status === "in_group"
+      ? FORMING_GROUPS.find(
+          (g) =>
+            g.leaderName === name ||
+            g.members.some((m) => m.name === name),
+        )
+      : undefined;
+
+  if (student.group_status === "in_group" && !formingGroup) {
+    // The target is in a group but no forming-group mock row matches —
+    // treat as "closed group" for the panel.
+    return ClosedGroupPanel({ name, sectionCode: student.section_code });
   }
 
-  if (st.status === "open-group") {
-    const studentGroup = FORMING_GROUPS.find(
-      (g) => g.members.some((m) => m.name === st.name) || g.leaderName === st.name,
-    );
-
+  if (student.group_status === "in_group" && formingGroup) {
     if (inlineGroupId) {
-      const groupExists = FORMING_GROUPS.find((g) => g.id === inlineGroupId);
-      if (groupExists) {
-        return (
-          <GroupDetailPanel
-            go={go}
-            groupId={inlineGroupId}
-            onClose={onClose}
-            onApplied={() => {}}
-            onOpenChat={(name) => {
-              onClose();
-              if (onOpenChat) onOpenChat(name);
-            }}
-            onBack={() => setInlineGroupId(null)}
-          />
-        );
-      }
+      return (
+        <GroupDetailPanel
+          go={go}
+          groupId={inlineGroupId}
+          onClose={onClose}
+          onApplied={() => {}}
+          onOpenChat={(targetName) => {
+            onClose();
+            if (onOpenChat) onOpenChat(targetName);
+          }}
+          onBack={() => setInlineGroupId(null)}
+        />
+      );
     }
-
+    // FormingStudentPanel expects the legacy `Student` mock shape with a
+    // computed `overlap` string. Build a minimal adapter from the live
+    // data so we can reuse the prototype's panel UI verbatim.
     return (
       <FormingStudentPanel
-        student={st}
-        hasGroup={!!studentGroup}
+        student={toLegacyStudent(student)}
+        hasGroup={!!formingGroup}
         onViewGroup={() => {
-          if (studentGroup) {
-            setInlineGroupId(studentGroup.id);
-          }
+          if (formingGroup) setInlineGroupId(formingGroup.id);
         }}
         onChat={() => {
-          if (onOpenChat) onOpenChat(st.name);
+          if (onOpenChat) onOpenChat(student.user_id);
           onClose();
         }}
       />
     );
   }
 
-  const c = COMPAT[studentName];
-  const sched = SCHEDULE_DATA[studentName];
-  const workRows = WORK_STYLE_DATA[studentName];
+  // Solo branch.
+  const score = student.score;
+  const overall = score?.overall_score ?? null;
+  const hasScore = overall !== null;
+  const tier: "good" | "normal" | "bad" = !hasScore
+    ? "normal"
+    : overall >= 80
+      ? "good"
+      : overall >= 50
+        ? "normal"
+        : "bad";
+  const t = PROFILE_TIERS[tier];
+  const hasWarnings = (score?.warnings.length ?? 0) > 0;
+  const needsAck = tier === "bad" || tier === "normal";
 
-  if (!c || !sched || !workRows) {
-    return (
-      <div className="p-6 flex flex-col items-center justify-center min-h-[200px] text-gray-400">
-        <div className="text-[13px]">No compatibility data available.</div>
-      </div>
-    );
-  }
+  const skillsById = new Map((skillCatalog.data ?? []).map((s) => [s.id, s.skill_name]));
+  const myScheduleSet = new Set(
+    (myProfile?.schedule_slots ?? []).map(scheduleSlotToCell),
+  );
+  const theirScheduleSet = new Set(
+    (student.profile?.schedule_slots ?? []).map(scheduleSlotToCell),
+  );
 
   const ds = ["Mon", "Tue", "Wed", "Thu", "Fri"];
   const ts = ["9am-12pm", "12-4pm", "4-8pm", "8-11pm"];
-  const firstName = studentName.split(" ")[0];
-  const tier: "good" | "normal" | "bad" =
-    c.overall >= 80 ? "good" : c.overall >= 50 ? "normal" : "bad";
-  const t = PROFILE_TIERS[tier];
-  const hasWarnings = c.warnings.length > 0;
-  const needsAck = tier === "bad" || tier === "normal";
+  const initials = name
+    .split(" ")
+    .map((w) => w[0] ?? "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  const firstName = name.split(" ")[0];
 
   return (
     <div>
       <div className="p-6 pb-2">
         <div className="flex gap-4 items-center mb-4">
-          <StudentAvatar name={st.name} size="size-14" textSize="text-lg" />
+          <StudentAvatar name={name} size="size-14" textSize="text-lg" />
           <div className="flex-1">
-            <div className="text-[22px] font-bold">{st.name}</div>
+            <div className="text-[22px] font-bold">{name}</div>
             <div className="flex items-center gap-2 mt-1">
               <span
                 className={cn(
                   "inline-flex items-center justify-center h-[26px] px-2.5 rounded-[12px] leading-none text-[12px] font-medium",
-                  st.status === "solo"
+                  student.group_status === "solo"
                     ? "bg-[#DCFCE7] text-[#166534]"
                     : "bg-gray-100 text-gray-500",
                 )}
               >
-                {st.status === "solo" ? "Solo" : "Closed"}
+                {student.group_status === "solo" ? "Solo" : "In Group"}
               </span>
-              <span className="text-[14px] text-[#6B7280]">Section {st.sec}</span>
-            </div>
-          </div>
-        </div>
-        <Card className={cn("p-5 mb-5 gap-0 shadow-none", t.bg, t.border)}>
-          <div className="flex items-center gap-5 mb-3">
-            <div className={cn("text-[42px] font-extrabold", t.text)}>{c.overall}%</div>
-            <div>
-              <div className={cn("text-[15px] font-bold", t.text)}>{t.label}</div>
-              {t.subtitle && (
-                <div className={cn("text-[13px]", t.darkText)}>{t.subtitle}</div>
+              {student.section_code && (
+                <span className="text-[14px] text-[#6B7280]">
+                  Section {student.section_code}
+                </span>
               )}
             </div>
           </div>
-          {(
-            [
-              ["Schedule", c.scheduleScore],
-              ["Skills", c.skillScore],
-              ["Work Style", c.workStyleScore],
-            ] as const
-          ).map(([label, score]) => (
-            <div key={label} className="flex items-center gap-2 mb-1">
-              <span className={cn("text-[11px] w-16", t.darkText)}>{label}</span>
-              <div className={cn("flex-1 h-2 rounded-full overflow-hidden", t.trackBg)}>
-                <div
-                  className={cn(
-                    "h-full rounded-full",
-                    score >= 80 ? "bg-success" : score >= 50 ? "bg-warning" : "bg-danger",
-                  )}
-                  style={{ width: `${Math.max(score, 3)}%` }}
-                />
-              </div>
-              <span
-                className={cn("text-[11px] font-semibold w-8 text-right", t.darkText)}
-              >
-                {score}%
-              </span>
-            </div>
-          ))}
-        </Card>
+        </div>
 
-        {!hasWarnings ? (
-          <div className="py-3.5 px-[18px] bg-success-bg rounded-[10px] border border-success-border mb-7">
+        {hasScore && score ? (
+          <Card className={cn("p-5 mb-5 gap-0 shadow-none", t.bg, t.border)}>
+            <div className="flex items-center gap-5 mb-3">
+              <div className={cn("text-[42px] font-extrabold", t.text)}>
+                {Math.round(score.overall_score)}%
+              </div>
+              <div>
+                <div className={cn("text-[15px] font-bold", t.text)}>{t.label}</div>
+                {t.subtitle && (
+                  <div className={cn("text-[13px]", t.darkText)}>{t.subtitle}</div>
+                )}
+              </div>
+            </div>
+            {(
+              [
+                ["Schedule", Math.round(score.schedule_score)],
+                ["Skills", Math.round(score.skill_score)],
+                ["Work Style", Math.round(score.work_style_score)],
+              ] as const
+            ).map(([label, value]) => (
+              <div key={label} className="flex items-center gap-2 mb-1">
+                <span className={cn("text-[11px] w-16", t.darkText)}>{label}</span>
+                <div className={cn("flex-1 h-2 rounded-full overflow-hidden", t.trackBg)}>
+                  <div
+                    className={cn(
+                      "h-full rounded-full",
+                      value >= 80 ? "bg-success" : value >= 50 ? "bg-warning" : "bg-danger",
+                    )}
+                    style={{ width: `${Math.max(value, 3)}%` }}
+                  />
+                </div>
+                <span
+                  className={cn("text-[11px] font-semibold w-8 text-right", t.darkText)}
+                >
+                  {value}%
+                </span>
+              </div>
+            ))}
+          </Card>
+        ) : (
+          <div className="py-3.5 px-[18px] rounded-[10px] border bg-gray-50 border-gray-200 mb-5">
+            <div className="text-[13px] font-semibold text-gray-700 mb-0.5">
+              No compatibility score
+            </div>
+            <div className="text-[12px] text-gray-500">
+              {student.skipped_reason === "viewer_profile_incomplete"
+                ? "Finish your profile to see compatibility scores."
+                : student.skipped_reason === "target_profile_incomplete"
+                  ? `${firstName} hasn't finished their profile yet.`
+                  : "Score will appear once both profiles are complete."}
+            </div>
+          </div>
+        )}
+
+        {score?.reasons && score.reasons.length > 0 && (
+          <div className="py-3.5 px-[18px] bg-success-bg rounded-[10px] border border-success-border mb-5">
             <div className="text-[15px] font-bold text-success mb-1">
-              Strong compatibility
+              Why this match works
             </div>
             <div className="text-[13px] text-success leading-relaxed">
-              No warnings — schedules, skills, and work styles align well.
+              {score.reasons.join(". ")}.
+            </div>
+          </div>
+        )}
+
+        {hasWarnings ? (
+          <div className="py-3.5 px-[18px] rounded-[10px] border bg-caution-bg border-caution-border mb-7">
+            <div className="text-[15px] font-bold text-caution mb-1">
+              ⚠ Compatibility warnings
+            </div>
+            <div className="text-[13px] text-caution-dark leading-relaxed">
+              {score?.warnings.join(". ")}.
             </div>
           </div>
         ) : (
-          <div className="py-3.5 px-[18px] rounded-[10px] border bg-caution-bg border-caution-border mb-7">
-            <div className="text-[15px] font-bold text-caution mb-1">
-              ⚠ Compatibility warnings found
+          hasScore && (
+            <div className="py-3.5 px-[18px] bg-success-bg rounded-[10px] border border-success-border mb-7">
+              <div className="text-[15px] font-bold text-success mb-1">
+                Strong compatibility
+              </div>
+              <div className="text-[13px] text-success leading-relaxed">
+                No warnings — schedules, skills, and work styles align well.
+              </div>
             </div>
-            <div className="text-[13px] text-caution-dark leading-relaxed">
-              {c.warnings.join(". ")}.
-            </div>
-          </div>
+          )
         )}
 
         <div className="mb-5">
@@ -239,14 +281,21 @@ export function ProfilePanelContent({
             Skills
           </Label>
           <div className="flex flex-wrap gap-1">
-            {st.skills.map((sk) => (
-              <span
-                key={sk}
-                className="inline-flex items-center h-6 px-2 rounded-[6px] text-[12px] font-medium bg-[#9652ca]/10 text-[#9652ca]"
-              >
-                {sk}
-              </span>
-            ))}
+            {(student.profile?.skills ?? []).map((s) => {
+              const skName = skillsById.get(s.course_skill_id);
+              if (!skName) return null;
+              return (
+                <span
+                  key={s.course_skill_id}
+                  className="inline-flex items-center h-6 px-2 rounded-[6px] text-[12px] font-medium bg-[#9652ca]/10 text-[#9652ca]"
+                >
+                  {skName}
+                </span>
+              );
+            })}
+            {(student.profile?.skills.length ?? 0) === 0 && (
+              <span className="text-[13px] text-gray-400">No skills selected yet.</span>
+            )}
           </div>
         </div>
 
@@ -255,7 +304,7 @@ export function ProfilePanelContent({
             About
           </Label>
           <p className="text-[13px] text-gray-600 leading-relaxed">
-            {st.bio || "No bio yet."}
+            {student.profile?.bio || "No bio yet."}
           </p>
         </div>
 
@@ -278,8 +327,8 @@ export function ProfilePanelContent({
                 <div className="text-[11px] text-gray-500 flex items-center">{t2}</div>
                 {ds.map((d) => {
                   const k = `${d}-${ti}`;
-                  const m = sched.my.has(k);
-                  const h = sched.theirs.has(k);
+                  const m = myScheduleSet.has(k);
+                  const h = theirScheduleSet.has(k);
                   const b = m && h;
                   return (
                     <div
@@ -289,122 +338,102 @@ export function ProfilePanelContent({
                         b
                           ? "bg-primary text-primary-foreground"
                           : m
-                          ? "bg-schedule-self text-gray-500"
-                          : h
-                          ? "bg-schedule-other text-gray-400"
-                          : "bg-gray-50 text-gray-300",
+                            ? "bg-schedule-self text-gray-500"
+                            : h
+                              ? "bg-schedule-other text-gray-400"
+                              : "bg-gray-50 text-gray-300",
                       )}
                     >
-                      {b ? "✓" : m ? "You" : h ? st.init : ""}
+                      {b ? "✓" : m ? "You" : h ? initials : ""}
                     </div>
                   );
                 })}
               </Fragment>
             ))}
           </div>
-          <div className="flex justify-between items-center mt-2.5">
-            <div className="text-xs text-gray-500">
-              <span className="text-gray-400">◼ You</span> ·{" "}
-              <span className="text-gray-300">◼ {firstName}</span>
-            </div>
-            <div
-              className={cn(
-                "py-1 px-3 rounded-md border",
-                sched.overlapHrs > 0
-                  ? "bg-success-bg border-success-border"
-                  : "bg-danger-bg border-danger-border",
-              )}
-            >
-              <span
+          {score && (
+            <div className="flex justify-between items-center mt-2.5">
+              <div className="text-xs text-gray-500">
+                <span className="text-gray-400">◼ You</span> ·{" "}
+                <span className="text-gray-300">◼ {firstName}</span>
+              </div>
+              <div
                 className={cn(
-                  "text-[13px] font-bold",
-                  sched.overlapHrs > 0 ? "text-success" : "text-danger",
+                  "py-1 px-3 rounded-md border",
+                  score.schedule_overlap_hours > 0
+                    ? "bg-success-bg border-success-border"
+                    : "bg-danger-bg border-danger-border",
                 )}
               >
-                {sched.overlapHrs}h/wk overlap
-              </span>
+                <span
+                  className={cn(
+                    "text-[13px] font-bold",
+                    score.schedule_overlap_hours > 0 ? "text-success" : "text-danger",
+                  )}
+                >
+                  {score.schedule_overlap_hours}h/wk overlap
+                </span>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
-        <div className="mb-7">
-          <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">
-            Skills Comparison
-          </Label>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-4 bg-gray-50 rounded-[10px]">
-              <div className="text-xs font-semibold mb-2">You</div>
-              <div className="text-sm mb-1">UI Design</div>
-              <div className="text-sm">User Research</div>
-            </div>
-            <div className="p-4 bg-gray-50 rounded-[10px]">
-              <div className="text-xs font-semibold mb-2">{firstName}</div>
-              {st.skills.map((sk) => (
-                <div key={sk} className="text-sm mb-1">
-                  {sk}
+        {score?.skill_complementarity && score.skill_complementarity.length > 0 && (
+          <div className="mb-7">
+            <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">
+              Skill Coverage Map
+            </Label>
+            <div className="grid grid-cols-4 gap-2">
+              {score.skill_complementarity.map(({ skill_name, covered_by }) => (
+                <div
+                  key={skill_name}
+                  className={cn(
+                    "p-2.5 rounded-lg text-center text-[12px] font-medium border",
+                    covered_by === "you"
+                      ? "bg-secondary border-border text-foreground"
+                      : covered_by === "them"
+                        ? "bg-success-bg border-success-border text-success"
+                        : covered_by === "both"
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-gray-50 border-dashed border-gray-300 text-gray-400",
+                  )}
+                >
+                  <div className="text-[11px] mb-0.5">{skill_name}</div>
+                  <div className="text-[10px] opacity-75">({covered_by})</div>
                 </div>
               ))}
             </div>
           </div>
-          <div className="py-2 px-3 bg-success-bg rounded-lg text-[13px] text-success mt-2.5">
-            ✓ Complementary skills
-          </div>
-        </div>
-
-        <div className="mb-7">
-          <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">
-            Skill Coverage Map
-          </Label>
-          <div className="grid grid-cols-4 gap-2">
-            {c.skillComplementarity.map(({ skill, coveredBy }) => (
-              <div
-                key={skill}
-                className={cn(
-                  "p-2.5 rounded-lg text-center text-[12px] font-medium border",
-                  coveredBy === "you"
-                    ? "bg-secondary border-border text-foreground"
-                    : coveredBy === "them"
-                    ? "bg-success-bg border-success-border text-success"
-                    : coveredBy === "both"
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-gray-50 border-dashed border-gray-300 text-gray-400",
-                )}
-              >
-                <div className="text-[11px] mb-0.5">{skill}</div>
-                <div className="text-[10px] opacity-75">({coveredBy})</div>
-              </div>
-            ))}
-          </div>
-        </div>
+        )}
 
         <div className="mb-7">
           <Label className="text-[11px] font-bold text-gray-600 mb-[7px] block uppercase tracking-[1px]">
             Work Style
           </Label>
           <Card className="p-0 gap-0 shadow-none overflow-hidden">
-            {workRows.map(([l, y, t2, ok], i) => (
+            {workStyleRows(myProfile, student.profile).map((row, i, arr) => (
               <div
-                key={l}
+                key={row.label}
                 className={cn(
                   "flex justify-between items-center px-4 py-3",
-                  i < workRows.length - 1 && "border-b border-gray-100",
-                  !ok && "bg-danger-bg",
+                  i < arr.length - 1 && "border-b border-gray-100",
+                  !row.ok && "bg-danger-bg",
                 )}
               >
                 <span
                   className={cn(
                     "text-[13px]",
-                    ok ? "text-gray-500" : "text-danger font-semibold",
+                    row.ok ? "text-gray-500" : "text-danger font-semibold",
                   )}
                 >
-                  {l}
+                  {row.label}
                 </span>
                 <div className="flex gap-3 items-center text-[13px]">
-                  <span>{y}</span>
+                  <span>{row.you || "—"}</span>
                   <span className="text-gray-400 text-[11px]">vs</span>
-                  <span>{t2}</span>
-                  <span className={cn("text-base", ok ? "text-success" : "text-danger")}>
-                    {ok ? "✓" : "✗"}
+                  <span>{row.them || "—"}</span>
+                  <span className={cn("text-base", row.ok ? "text-success" : "text-danger")}>
+                    {row.ok ? "✓" : "✗"}
                   </span>
                 </div>
               </div>
@@ -445,7 +474,7 @@ export function ProfilePanelContent({
             <div className="text-[11px] font-bold text-primary uppercase tracking-wide mb-1">
               {urgentMode ? "Quick Request" : "Group Request"}
             </div>
-            <div className="text-lg font-bold mb-1">To {st.name}</div>
+            <div className="text-lg font-bold mb-1">To {name}</div>
             <p className="text-[13px] text-gray-500 mb-5">
               Introduce yourself and give them a reason to say yes.
             </p>
@@ -457,7 +486,7 @@ export function ProfilePanelContent({
                 value={requestWhy}
                 onChange={(e) => setRequestWhy(e.target.value)}
                 className="resize-none h-20 text-sm"
-                placeholder={`Explain why you and ${st.name.split(" ")[0]} would make a strong team...`}
+                placeholder={`Explain why you and ${firstName} would make a strong team...`}
               />
             </div>
             {!urgentMode && (
@@ -488,8 +517,9 @@ export function ProfilePanelContent({
                     : requestWhy.trim() === "" || requestQuestion.trim() === ""
                 }
                 onClick={() => {
-                  onContactStatusChange(studentName, "request-sent");
-                  if (onSendRequest) onSendRequest(studentName, requestWhy, requestQuestion);
+                  onContactStatusChange(student.user_id, "request-sent");
+                  if (onSendRequest)
+                    onSendRequest(student.user_id, requestWhy, requestQuestion);
                   onClose();
                 }}
               >
@@ -527,7 +557,7 @@ export function ProfilePanelContent({
                     size="sm"
                     className="text-xs bg-danger hover:bg-danger/90 text-white"
                     onClick={() => {
-                      onContactStatusChange(studentName, "none");
+                      onContactStatusChange(student.user_id, "none");
                       setWithdrawConfirm(false);
                     }}
                   >
@@ -546,7 +576,7 @@ export function ProfilePanelContent({
               variant="outline"
               className="flex-1 border-[#9652ca] text-[#9652ca] hover:bg-[#9652ca]/5 gap-1.5"
               onClick={() => {
-                if (onOpenChat) onOpenChat(studentName);
+                if (onOpenChat) onOpenChat(student.user_id);
                 onClose();
               }}
             >
@@ -554,6 +584,7 @@ export function ProfilePanelContent({
             </Button>
             <Button
               className="flex-1"
+              disabled={!hasScore}
               onClick={() =>
                 needsAck ? setRequestStep("confirm") : setRequestStep("form")
               }
@@ -562,6 +593,94 @@ export function ProfilePanelContent({
             </Button>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Adapters
+// ---------------------------------------------------------------------------
+
+function toLegacyStudent(s: StudentListItem & { score: CompatibilityResult | null }): Student {
+  const name = s.display_name ?? "Pending name";
+  const initials = name
+    .split(" ")
+    .map((w) => w[0] ?? "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  const overlapHrs = s.score?.schedule_overlap_hours ?? 0;
+  return {
+    name,
+    sec: s.section_code ?? "",
+    init: initials,
+    overlap: `${overlapHrs}h/wk`,
+    scheduleOverlapHrs: overlapHrs,
+    skills: [],
+    status: s.group_status === "in_group" ? "open-group" : "solo",
+    bio: s.profile?.bio ?? "",
+    compatScore: Math.round(s.score?.overall_score ?? 0),
+    lastActive: "recently",
+    contactStatus: "none",
+  };
+}
+
+function workStyleRows(
+  mine: { meeting_frequency?: string | null; meeting_style?: string | null; comm_tool?: string | null } | null | undefined,
+  theirs: { meeting_frequency?: string | null; meeting_style?: string | null; comm_tool?: string | null } | null | undefined,
+): { label: string; you: string; them: string; ok: boolean }[] {
+  const eq = (a?: string | null, b?: string | null) => !!a && !!b && a === b;
+  return [
+    {
+      label: "Meeting frequency",
+      you: mine?.meeting_frequency ?? "",
+      them: theirs?.meeting_frequency ?? "",
+      ok: eq(mine?.meeting_frequency, theirs?.meeting_frequency),
+    },
+    {
+      label: "Meeting style",
+      you: mine?.meeting_style ?? "",
+      them: theirs?.meeting_style ?? "",
+      ok: eq(mine?.meeting_style, theirs?.meeting_style),
+    },
+    {
+      label: "Communication",
+      you: mine?.comm_tool ?? "",
+      them: theirs?.comm_tool ?? "",
+      ok: eq(mine?.comm_tool, theirs?.comm_tool),
+    },
+  ];
+}
+
+function ClosedGroupPanel({
+  name,
+  sectionCode,
+}: {
+  name: string;
+  sectionCode: string | null;
+}) {
+  return (
+    <div className="p-6">
+      <div className="flex gap-4 items-center mb-5">
+        <StudentAvatar name={name} size="size-12" textSize="text-base" />
+        <div className="flex-1">
+          <div className="text-[18px] font-bold">{name}</div>
+          {sectionCode && (
+            <div className="text-sm text-gray-500">Section {sectionCode}</div>
+          )}
+        </div>
+        <span className="py-1 px-3 bg-gray-100 text-gray-500 text-xs font-semibold rounded-full">
+          Grouped
+        </span>
+      </div>
+      <div className="py-4 px-5 bg-gray-50 rounded-xl border border-gray-200">
+        <div className="text-[13px] font-semibold mb-1">
+          {name.split(" ")[0]} is already in a group
+        </div>
+        <div className="text-[12px] text-gray-600">
+          They are no longer available for new group requests.
+        </div>
       </div>
     </div>
   );
