@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, Fragment, type ReactNode, type ReactElement } from "react";
+import { useState, useEffect, useRef, useCallback, type ReactNode, type ReactElement } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/auth-context";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
@@ -15,7 +14,6 @@ import { Label } from "@/components/ui/label";
 import { LS_PREFIX, useLocalStorage } from "@/hooks/useLocalStorage";
 import { clearAllLocalStorage } from "@/lib/storage";
 import { getInitials } from "@/lib/avatar";
-import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { FormField } from "@/components/shared/FormField";
 import { Icon } from "@/components/shared/icons";
 import { Nav } from "@/components/shared/Nav";
@@ -42,6 +40,7 @@ import { Discovery } from "@/components/discovery/DiscoveryPage";
 import { ReceivedRequestPanel } from "@/components/discovery/ReceivedRequestPanel";
 import { ProfilePanelContent } from "@/components/discovery/ProfilePanel";
 import { GroupDetailPanel } from "@/components/groups/GroupDetailPanel";
+import { MyGroup as LiveMyGroup } from "@/components/groups/MyGroup";
 import { useToasts } from "@/hooks/useToasts";
 import {
   COMPAT,
@@ -665,288 +664,6 @@ function ApplicationCard({ applicant, isLeader, onReply, onAccept }: Application
   );
 }
 
-// My Group
-type ConfirmStage = "idle" | "pending" | "confirmed";
-
-interface MyGroupProps extends GoProps {
-  studentStatus?: "solo" | "open-group" | "closed";
-  onAcceptRequest?: () => void;
-  onLeaveGroup?: () => void;
-  onOpenChat?: (name: string) => void;
-  userName?: string;
-}
-
-function MyGroup({ go, studentStatus = "open-group", onAcceptRequest, onLeaveGroup, onOpenChat, userName = "" }: MyGroupProps) {
-  const [accepted, setAccepted] = useState(false);
-  const [showLeaveDialog, setShowLeaveDialog] = useState(false);
-  const [confirmStage, setConfirmStage] = useState<ConfirmStage>("idle");
-  const [recruiting, setRecruiting] = useState(false);
-  const membersPartial = [
-    { name: userName || "You", init: getInitials(userName), skills: ["UI Design", "User Research"], role: "You (Leader)", platform: "Discord", handle: userName ? userName.toLowerCase().replace(/\s/g, ".") : "you" },
-    { name: "Marcus Lee", init: "ML", skills: ["UI Design", "Frontend Dev"], role: "Member", platform: "Discord", handle: "marcus.lee" },
-    { name: "Sofia Rodriguez", init: "SR", skills: ["UI Design", "User Research"], role: "Member", platform: "Discord", handle: "sofia.r" },
-  ];
-  const membersFull = [
-    ...membersPartial,
-    { name: "Lisa Wang", init: "LW", skills: ["Frontend Dev", "UX Writing"], role: "Member", platform: "Discord", handle: "lisa.wang" },
-  ];
-  const members = accepted ? membersFull : membersPartial;
-  const pendingApplicants = accepted ? [] : [
-    {
-      name: "Lisa Wang", init: "LW", sec: "201",
-      skills: ["Frontend Dev", "UX Writing"],
-      scheduleOverlap: "4h/wk",
-      formAnswers: [
-        { q: "What skills can you contribute?", a: "Frontend development and UX copywriting." },
-        { q: "What role do you want?", a: "Frontend dev — I love building interactive UIs." },
-        { q: "When are you free to work?", a: "Weekday afternoons and Saturday mornings." },
-      ],
-      votes: { up: 1, down: 0 },
-    },
-  ];
-  const minSize = 4, maxSize = 6;
-  const canConfirm = members.length >= minSize && members.length <= maxSize;
-  const markConfirmed = (_name: string) => setConfirmStage("confirmed");
-
-  if (studentStatus === "solo") {
-    return <div className="bg-background min-h-screen pb-6">
-      <div className="max-w-[680px] mx-auto py-14 px-6">
-        <Button variant="ghost" className="text-gray-600 font-medium mb-5 px-0 h-auto text-sm" onClick={() => go("board")}>← Dashboard</Button>
-        <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">My Group — CSC318</h1>
-        <Card className="py-[52px] px-6 gap-0 shadow-none text-center border-dashed border-gray-300">
-          <div className="text-4xl mb-4">👥</div>
-          <div className="text-[17px] font-semibold mb-2">You're not in a group yet</div>
-          <p className="text-[13px] text-gray-500 mb-6 leading-relaxed">Find teammates on the Discovery board and send a group request to get started.</p>
-          <Button onClick={() => go("board")}>Browse Discovery →</Button>
-        </Card>
-      </div>
-    </div>;
-  }
-
-  return <div className="bg-background min-h-screen pb-6">
-
-    <div className="max-w-[680px] mx-auto py-14 px-6">
-      <h1 className="text-[28px] font-bold text-foreground mb-2 -tracking-[0.5px]">
-        Your Group — CSC318
-        {confirmStage === "confirmed" && <span className="inline-flex items-center justify-center h-[26px] px-3 rounded-full leading-none text-[12px] font-medium bg-[#DCFCE7] text-[#166534] ml-2 align-middle">✓ Confirmed</span>}
-      </h1>
-      {confirmStage !== "confirmed" && (
-        <div className="flex items-center gap-2 mb-1">
-          <span className="inline-flex items-center justify-center h-[22px] px-2 rounded-[12px] leading-none text-[11px] font-medium bg-[#FEF3C7] text-[#92400E]">Formed</span>
-          <span className="text-[14px] text-[#6B7280]">{members.length}/{maxSize} members</span>
-        </div>
-      )}
-
-      {/* Confirm Group button — prominent at top when group is full */}
-      {canConfirm && confirmStage === "idle" && (
-        <div className="flex justify-between items-center px-4 py-3 bg-success-bg rounded-[10px] mb-5 mt-3 border border-success-border">
-          <span className="text-[13px] text-success font-semibold">Group is full — ready to confirm!</span>
-          <Button size="sm" className="text-xs px-5 bg-success hover:bg-success/90 text-white" onClick={() => setConfirmStage("pending")}>Confirm Group</Button>
-        </div>
-      )}
-
-      {/* Confirm stage banners */}
-      {confirmStage === "pending" && (
-        <div className="py-4 px-5 bg-warning-bg border border-warning-border rounded-xl mb-5 mt-3">
-          <div className="text-[13px] font-bold text-warning mb-1">
-            Waiting for all members to confirm (24h window)
-          </div>
-          <div className="text-[12px] text-warning mb-3">
-            Each member must confirm below. Members who don't respond will be removed.
-          </div>
-          {members.map((m, i) => (
-            <div key={i} className="flex items-center justify-between py-1.5">
-              <span className="text-[12px]">{m.name}</span>
-              {m.role === "You"
-                ? <Button size="sm" className="text-xs px-3 h-7" onClick={() => markConfirmed(m.name)}>Confirm</Button>
-                : <span className="text-[11px] text-gray-400">Waiting...</span>
-              }
-            </div>
-          ))}
-        </div>
-      )}
-
-      {confirmStage === "confirmed" && (
-        <div className="py-3 px-5 bg-success-bg border border-success-border rounded-xl mb-5 mt-3">
-          <div className="text-[13px] font-bold text-success">✓ Group confirmed — submitted to instructor</div>
-        </div>
-      )}
-
-      {!canConfirm && confirmStage === "idle" && (
-        <>
-          <p className="text-base text-gray-600 mb-5 mt-3 leading-relaxed">{members.length}/{minSize}–{maxSize} members — need {minSize - members.length} more.</p>
-          <div className="flex justify-between items-center px-4 py-3 bg-warning-bg rounded-[10px] mb-5 border border-warning-border">
-            <span className="text-[13px] text-warning font-semibold">Group not yet confirmed</span>
-            <Button size="sm" variant="outline" className="text-xs px-4 border-[#f59e0b] bg-[#fef3c7] text-[#92400e] hover:bg-[#fde68a]" onClick={() => go("board")}>Find more members</Button>
-          </div>
-        </>
-      )}
-
-      {pendingApplicants.length > 0 && (
-        <section className="mb-8">
-          <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-3 block">
-            Pending Applications ({pendingApplicants.length})
-          </Label>
-          {pendingApplicants.map((ap, i) => (
-            <ApplicationCard key={i} applicant={ap} isLeader onReply={onOpenChat} onAccept={() => { setAccepted(true); onAcceptRequest?.(); }} />
-          ))}
-        </section>
-      )}
-
-      {members.map((m, i) => (
-        <Card key={i} className="p-5 mb-3.5 shadow-none flex-row items-center gap-3.5">
-          <StudentAvatar name={m.name} size="size-11" textSize="text-sm" />
-          <div className="flex-1">
-            <div className="flex justify-between">
-              <span className="text-sm font-semibold">{m.name}</span>
-              <span className="text-xs text-gray-500">{m.role}</span>
-            </div>
-            <div className="flex gap-1 mt-1">{m.skills.map(sk => <span key={sk} className="py-0.5 px-2 bg-gray-100 rounded-lg text-[11px] text-gray-600">{sk}</span>)}</div>
-          </div>
-        </Card>
-      ))}
-
-      {/* Skills composition */}
-      {confirmStage !== "confirmed" && (
-        <div className="mb-6 mt-2">
-          <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-3 block">Group Skills</Label>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-              <div className="text-[10px] font-bold text-gray-400 uppercase mb-2">Has</div>
-              <div className="flex flex-wrap gap-1">
-                {Array.from(new Set(members.flatMap(m => m.skills))).map(sk => (
-                  <span key={sk} className="text-[11px] bg-success-bg text-success px-2 py-0.5 rounded-lg border border-success-border">{sk}</span>
-                ))}
-              </div>
-            </div>
-            <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-              <div className="text-[10px] font-bold text-gray-400 uppercase mb-2">Still Needed</div>
-              <div className="flex flex-wrap gap-1">
-                {["Backend", "Data Analysis"].filter(sk => !members.flatMap(m => m.skills).includes(sk)).map(sk => (
-                  <span key={sk} className="text-[11px] bg-accent text-accent-foreground px-2 py-0.5 rounded-lg border border-border">{sk}</span>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Group schedule grid */}
-      {confirmStage !== "confirmed" && (
-        <Card className="p-5 mb-3.5 gap-0 shadow-none">
-          <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-3 block">Group Schedule</Label>
-          <div className="grid grid-cols-[64px_repeat(5,1fr)] gap-[3px]">
-            <div />{["Mon", "Tue", "Wed", "Thu", "Fri"].map(d => <div key={d} className="text-center text-xs font-semibold text-gray-500 p-1.5">{d}</div>)}
-            {["9am–12pm", "12–4pm", "4–8pm", "8–11pm"].map((t, ti) => <Fragment key={ti}>
-              <div className="text-[11px] text-gray-500 flex items-center">{t}</div>
-              {["Mon", "Tue", "Wed", "Thu", "Fri"].map(d => {
-                const total = members.length;
-                const counts3: Record<string, number> = { "Mon-0": 2, "Mon-1": 3, "Tue-1": 2, "Wed-0": 1, "Wed-1": 3, "Thu-2": 1, "Fri-1": 2 };
-                const counts4: Record<string, number> = { "Mon-0": 2, "Mon-1": 4, "Tue-1": 2, "Tue-2": 1, "Wed-0": 2, "Wed-1": 3, "Thu-2": 1, "Fri-1": 3 };
-                const cmap = accepted ? counts4 : counts3;
-                const c = cmap[`${d}-${ti}`] || 0;
-                return <div key={d} className={cn("py-2.5 px-1 text-center rounded-md text-[10px] font-medium",
-                  c >= total ? "bg-primary text-primary-foreground" :
-                    c >= total / 2 ? "bg-success-bg text-success" :
-                      c >= 1 ? "bg-gray-100 text-gray-500" :
-                        "bg-gray-50 text-gray-300"
-                )}>{c > 0 ? `${c}/${total}` : ""}</div>;
-              })}
-            </Fragment>)}
-          </div>
-          <div className="text-[11px] text-gray-500 mt-2">Darker = more members available</div>
-        </Card>
-      )}
-
-      {/* Workspace cards (confirmed only) */}
-      {confirmStage === "confirmed" && <>
-        <Separator className="my-6 bg-gray-100" />
-
-        {/* Contact Exchange */}
-        <Card className="p-5 mb-3.5 gap-0 shadow-none">
-          <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-3 block">Contact Exchange</Label>
-          <div className="overflow-hidden rounded-lg border border-gray-200">
-            <table className="w-full text-sm">
-              <thead><tr className="bg-gray-50"><th className="text-left py-2 px-3 text-[11px] font-semibold text-gray-500">Name</th><th className="text-left py-2 px-3 text-[11px] font-semibold text-gray-500">Platform</th><th className="text-left py-2 px-3 text-[11px] font-semibold text-gray-500">Handle</th></tr></thead>
-              <tbody>
-                {membersFull.map((m, i) => (
-                  <tr key={i} className={i < membersFull.length - 1 ? "border-b border-gray-100" : ""}>
-                    <td className="py-2 px-3 font-medium">{m.name}</td>
-                    <td className="py-2 px-3 text-gray-500">{m.platform}</td>
-                    <td className="py-2 px-3 text-gray-600 font-mono text-[13px]">{m.handle}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-
-        {/* Project Board */}
-        <Card className="p-5 mb-3.5 gap-0 shadow-none">
-          <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-3 block">Project Board</Label>
-          {([
-            { task: "Set up shared Google Doc", assignee: "Aisha", done: true },
-            { task: "Draft project proposal outline", assignee: "John", done: false },
-            { task: "Research competitor apps", assignee: "Jesse", done: false },
-          ]).map((t, i) => (
-            <div key={i} className="flex items-center gap-3 py-2 border-b border-gray-100">
-              <Checkbox checked={t.done} disabled />
-              <span className={cn("text-sm flex-1", t.done && "line-through text-gray-400")}>{t.task}</span>
-              <span className="text-[11px] text-gray-500 bg-gray-100 py-0.5 px-2 rounded-full">{t.assignee}</span>
-            </div>
-          ))}
-          <Button variant="outline" size="sm" className="mt-3 text-xs px-4">+ Add task</Button>
-        </Card>
-
-        {/* Group Availability */}
-        <Card className="p-5 mb-3.5 gap-0 shadow-none">
-          <Label className="text-[11px] font-bold text-gray-600 uppercase tracking-[1px] mb-3 block">Group Availability</Label>
-          <div className="grid grid-cols-[64px_repeat(5,1fr)] gap-[3px]">
-            <div />{["Mon", "Tue", "Wed", "Thu", "Fri"].map(d => <div key={d} className="text-center text-xs font-semibold text-gray-500 p-1.5">{d}</div>)}
-            {["9am–12pm", "12–4pm", "4–8pm", "8–11pm"].map((t, ti) => <Fragment key={ti}>
-              <div className="text-[11px] text-gray-500 flex items-center">{t}</div>
-              {["Mon", "Tue", "Wed", "Thu", "Fri"].map(d => {
-                const counts: Record<string, number> = { "Mon-0": 2, "Mon-1": 4, "Tue-1": 2, "Tue-2": 1, "Wed-0": 2, "Wed-1": 3, "Thu-2": 1, "Fri-1": 3 };
-                const c = counts[`${d}-${ti}`] || 0;
-                return <div key={d} className={cn("py-2.5 px-1 text-center rounded-md text-[10px] font-medium",
-                  c >= 4 ? "bg-primary text-primary-foreground" :
-                    c >= 3 ? "bg-success text-white" :
-                      c >= 2 ? "bg-success-bg text-success" :
-                        c >= 1 ? "bg-gray-100 text-gray-500" :
-                          "bg-gray-50 text-gray-300"
-                )}>{c > 0 ? `${c}/4` : ""}</div>;
-              })}
-            </Fragment>)}
-          </div>
-          <div className="text-[11px] text-gray-500 mt-2">Darker = more members available</div>
-        </Card>
-      </>}
-
-      <div className="flex gap-3 mt-6">
-        <Button variant="outline" className="flex-1 px-7 py-3 h-auto" onClick={() => go("board")}>Discover Members</Button>
-        {!recruiting ? (
-          <Button variant="outline" className="flex-1 px-7 py-3 h-auto border-[#9652ca] text-[#9652ca] hover:bg-[#9652ca]/5" onClick={() => setRecruiting(true)}>List Group for Recruiting</Button>
-        ) : (
-          <Button variant="outline" className="flex-1 px-7 py-3 h-auto border-[#f59e0b] text-[#92400e] bg-[#fef3c7] hover:bg-[#fde68a]" onClick={() => setRecruiting(false)}>Delist from Recruiting</Button>
-        )}
-      </div>
-      <div className="text-center mt-3">
-        <button onClick={() => setShowLeaveDialog(true)} className="text-[13px] text-[#991B1B] hover:underline cursor-pointer">
-          Leave Group
-        </button>
-      </div>
-
-      <ConfirmDialog
-        open={showLeaveDialog}
-        title="Leave this group?"
-        body="The remaining members will be notified. You'll return to searching status."
-        confirmLabel="Leave Group"
-        onConfirm={() => { setShowLeaveDialog(false); onLeaveGroup?.(); go("board"); }}
-        onCancel={() => setShowLeaveDialog(false)}
-      />
-    </div>
-  </div>;
-}
 
 // Urgent Matching
 function Urgent({ go }: GoProps) {
@@ -1905,7 +1622,7 @@ export default function Unitor() {
       setSelectedStudent(student);
     }} urgentMode={isUrgent} onSelectGroup={setSelectedGroup} appliedGroups={appliedGroups} contactStatuses={contactStatuses} onContactStatusChange={updateContactStatus} onOpenChat={(userId) => openChatWith(userId)} />,
     chats: <ChatsPage go={go} conversations={conversations} contactStatuses={contactStatuses} onContactStatusChange={updateContactStatus} onAccept={(name) => { updateContactStatus(name, "accepted"); setStudentStatus("open-group"); }} msgs={chatMsgs} onMsgsChange={setChatMsgs} initialSelectedConv={initialSelectedConv} onClearInitialConv={() => setInitialSelectedConv(null)} reactions={chatReactions} onReactionsChange={setChatReactions} onUpdateConvStatus={(name, status) => setConversations(prev => prev.map(c => c.targetName === name ? { ...c, status: status as Conversation["status"] } : c))} onMarkRead={(name) => setConversations(prev => prev.map(c => c.targetName === name ? { ...c, unread: false } : c))} onDeleteConversation={(name) => { setConversations(prev => prev.filter(c => c.targetName !== name)); setChatMsgs(prev => { const next = { ...prev }; delete next[name]; return next; }); }} userName={userName} />,
-    mygroup: <MyGroup go={go} studentStatus={studentStatus} onAcceptRequest={() => setStudentStatus("open-group")} onLeaveGroup={() => setStudentStatus("solo")} onOpenChat={(name) => openChatWith(name)} userName={userName} />,
+    mygroup: <LiveMyGroup go={go} onOpenChat={(userId) => openChatWith(userId)} />,
     urgent: <Urgent go={go} />,
     "profile-edit": <ProfileEdit go={go} showToast={showToast} userName={userName} />,
   };

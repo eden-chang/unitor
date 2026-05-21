@@ -2,34 +2,34 @@
  * Compact card that previews a forming group in the Discovery board's
  * Groups view.
  *
- * Mock-data only for now (uses ``STU`` to look up per-member overlap
- * hours). Stage 2 replaces the data shape with the real group + member
- * payload from the backend.
+ * Renders from the live `GroupListItem` shape (stage 2a). The mock
+ * "average overlap" and "needed skills" fields don't exist on the
+ * server side — those would require either a backend-computed
+ * derivation or a richer member-skills hydration. Stage 2a card sticks
+ * to what's available: leader name, member count, recruiting flag,
+ * application-question count.
  */
 
 import { Card } from "@/components/ui/card";
+import { StudentAvatar } from "@/components/shared/StudentAvatar";
 import { cn } from "@/lib/utils";
-import { STU } from "@/lib/mock-data";
-import type { FormingGroup } from "@/lib/mock-data";
+import type { GroupListItem } from "@/types/api";
 
 interface GroupCardProps {
-  group: FormingGroup;
+  group: GroupListItem;
   appliedStatus: string;
   onClick: () => void;
 }
 
-export function GroupCard({ group, appliedStatus, onClick }: GroupCardProps) {
-  const STATUS_LABELS: Record<string, { l: string; cls: string }> = {
-    applied: { l: "Applied", cls: "bg-[#DBEAFE] text-[#1E40AF] border-[#BFDBFE]" },
-    accepted: { l: "Accepted", cls: "bg-[#DCFCE7] text-[#166534] border-[#86EFAC]" },
-    declined: { l: "Declined", cls: "bg-[#FEE2E2] text-[#991B1B] border-[#FCA5A5]" },
-  };
+const STATUS_LABELS: Record<string, { l: string; cls: string }> = {
+  applied: { l: "Applied", cls: "bg-[#DBEAFE] text-[#1E40AF] border-[#BFDBFE]" },
+  accepted: { l: "Accepted", cls: "bg-[#DCFCE7] text-[#166534] border-[#86EFAC]" },
+  declined: { l: "Declined", cls: "bg-[#FEE2E2] text-[#991B1B] border-[#FCA5A5]" },
+};
 
-  const avgOverlap =
-    group.members.reduce(
-      (acc, m) => acc + (STU.find((s) => s.name === m.name)?.scheduleOverlapHrs ?? 0),
-      0,
-    ) / Math.max(group.members.length, 1);
+export function GroupCard({ group, appliedStatus, onClick }: GroupCardProps) {
+  const leaderName = group.leader?.display_name ?? "Unnamed leader";
+  const displayName = group.name ?? `${leaderName}'s Group`;
 
   return (
     <Card
@@ -37,47 +37,54 @@ export function GroupCard({ group, appliedStatus, onClick }: GroupCardProps) {
       onClick={onClick}
     >
       <div className="flex items-center justify-between mb-1">
-        <span className="text-[15px] font-semibold text-[#111827]">
-          {group.leaderName}'s Group
-        </span>
-        <span className="inline-flex items-center justify-center h-[22px] px-2 rounded-[12px] leading-none text-[12px] bg-[#9652ca]/10 text-[#9652ca]">
-          {group.members.length}/{group.maxSize}
+        <span className="text-[15px] font-semibold text-[#111827]">{displayName}</span>
+        <span
+          className={cn(
+            "inline-flex items-center justify-center h-[22px] px-2 rounded-[12px] leading-none text-[12px]",
+            group.recruiting
+              ? "bg-[#9652ca]/10 text-[#9652ca]"
+              : "bg-gray-100 text-gray-500",
+          )}
+        >
+          {group.members.length} {group.members.length === 1 ? "member" : "members"}
         </span>
       </div>
 
-      <div className="text-[12px] text-[#6B7280] mb-2.5">Section {group.section}</div>
+      <div className="text-[12px] text-[#6B7280] mb-2.5">
+        {group.recruiting ? "Recruiting" : "Not recruiting"}
+        {group.state !== "forming" && (
+          <span className="ml-1.5">· {group.state}</span>
+        )}
+      </div>
 
-      <div className="flex flex-wrap items-center gap-1 mb-2.5">
-        <span className="text-[12px] text-[#6B7280] mr-0.5">Looking for:</span>
-        {group.neededSkills.slice(0, 3).map((sk) => (
-          <span
-            key={sk}
-            className="inline-flex items-center h-6 px-2 rounded-[6px] text-[12px] font-medium bg-[#9652ca]/10 text-[#9652ca]"
-          >
-            {sk}
-          </span>
+      {group.description && (
+        <p className="text-[13px] text-gray-700 mb-2.5 line-clamp-2">
+          {group.description}
+        </p>
+      )}
+
+      <div className="flex items-center gap-1 mb-2">
+        {group.members.slice(0, 4).map((m) => (
+          <StudentAvatar
+            key={m.user_id}
+            name={m.display_name ?? "?"}
+            size="size-7"
+            textSize="text-[10px]"
+          />
         ))}
-        {group.neededSkills.length > 3 && (
-          <span className="text-[12px] text-[#6B7280]">
-            +{group.neededSkills.length - 3}
+        {group.members.length > 4 && (
+          <span className="text-[11px] text-[#6B7280] ml-1">
+            +{group.members.length - 4}
           </span>
         )}
       </div>
 
-      <div className="mb-2">
-        <div className="flex justify-between items-center mb-1">
-          <span className="text-[12px] text-[#6B7280]">Avg. overlap</span>
-          <span className="text-[13px] font-semibold text-[#9652ca]">
-            {Math.round(avgOverlap)}h/wk
-          </span>
+      {group.application_questions.length > 0 && (
+        <div className="text-[11px] text-[#6B7280] mt-1">
+          {group.application_questions.length} application question
+          {group.application_questions.length === 1 ? "" : "s"}
         </div>
-        <div className="h-1 rounded-full bg-[#E5E7EB] overflow-hidden">
-          <div
-            className="h-full rounded-full bg-[#9652ca]"
-            style={{ width: `${Math.min(100, (avgOverlap / 10) * 100)}%` }}
-          />
-        </div>
-      </div>
+      )}
 
       {appliedStatus && appliedStatus !== "none" && STATUS_LABELS[appliedStatus] && (
         <div className="mt-2 pt-2 border-t border-[#F3F4F6]">
