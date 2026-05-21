@@ -1778,7 +1778,8 @@ export default function Unitor() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
-  const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
+  const [selectedStudent, setSelectedStudent] = useState<import("@/hooks/useDiscovery").MergedStudent | null>(null);
+  const [receivedRequestSender, setReceivedRequestSender] = useState<string | null>(null);
   const [isUrgent, setIsUrgent] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [userName, setUserName] = useLocalStorage<string>("userName", "");
@@ -1788,7 +1789,6 @@ export default function Unitor() {
   const [appliedGroups, setAppliedGroups] = useLocalStorage<Record<string, string>>("appliedGroups", {});
   const [studentStatus, setStudentStatus] = useLocalStorage<"solo" | "open-group" | "closed">("studentStatus", "solo");
   const [notifications, setNotifications] = useState<AppNotification[]>(DEMO_NOTIFICATIONS);
-  const [panelMode, setPanelMode] = useState<"view" | "received-request">("view");
   const [contactStatuses, setContactStatuses] = useLocalStorage<Record<string, string>>(
     "contactStatuses",
     () => Object.fromEntries(STU.map(s => [s.name, s.contactStatus]))
@@ -1899,11 +1899,11 @@ export default function Unitor() {
     join: <Join go={go} onJoined={() => setHasJoinedCourse(true)} />,
     "prof-0": <Step0Name go={go} initialName={userName} onSaveName={setUserName} />, "prof-1": <Step1Skills go={go} />, "prof-2": <Step2Schedule go={go} />, "prof-3": <Step3CommBio go={go} />, "prof-done": <ProfileDone go={go} onJoinCourse={() => setHasJoinedCourse(true)} />,
     "ta-dash-empty": <TADashEmpty go={go} />, "ta-dash": <TADash go={go} />, "ta-course-dash": <TACourseDash go={go} showToast={showToast} />, "ta-create": <TACreate go={go} onCreateCourse={() => setHasCreatedCourse(true)} showToast={showToast} />,
-    board: <Discovery go={go} onSelectStudent={(name) => {
-      const cs = contactStatuses[name];
+    board: <Discovery go={go} onSelectStudent={(student) => {
+      const cs = contactStatuses[student.user_id];
       if (cs === "replied") { go("chats"); return; }
-      setSelectedStudent(name); setPanelMode("view");
-    }} urgentMode={isUrgent} onSelectGroup={setSelectedGroup} appliedGroups={appliedGroups} contactStatuses={contactStatuses} onContactStatusChange={updateContactStatus} onOpenChat={(name) => openChatWith(name)} />,
+      setSelectedStudent(student);
+    }} urgentMode={isUrgent} onSelectGroup={setSelectedGroup} appliedGroups={appliedGroups} contactStatuses={contactStatuses} onContactStatusChange={updateContactStatus} onOpenChat={(userId) => openChatWith(userId)} />,
     chats: <ChatsPage go={go} conversations={conversations} contactStatuses={contactStatuses} onContactStatusChange={updateContactStatus} onAccept={(name) => { updateContactStatus(name, "accepted"); setStudentStatus("open-group"); }} msgs={chatMsgs} onMsgsChange={setChatMsgs} initialSelectedConv={initialSelectedConv} onClearInitialConv={() => setInitialSelectedConv(null)} reactions={chatReactions} onReactionsChange={setChatReactions} onUpdateConvStatus={(name, status) => setConversations(prev => prev.map(c => c.targetName === name ? { ...c, status: status as Conversation["status"] } : c))} onMarkRead={(name) => setConversations(prev => prev.map(c => c.targetName === name ? { ...c, unread: false } : c))} onDeleteConversation={(name) => { setConversations(prev => prev.filter(c => c.targetName !== name)); setChatMsgs(prev => { const next = { ...prev }; delete next[name]; return next; }); }} userName={userName} />,
     mygroup: <MyGroup go={go} studentStatus={studentStatus} onAcceptRequest={() => setStudentStatus("open-group")} onLeaveGroup={() => setStudentStatus("solo")} onOpenChat={(name) => openChatWith(name)} userName={userName} />,
     urgent: <Urgent go={go} />,
@@ -1949,53 +1949,74 @@ export default function Unitor() {
     </SlidePanel>
 
     <SlidePanel
-      open={selectedStudent !== null && (panelMode === "view" || panelMode === "received-request")}
+      open={selectedStudent !== null}
       onClose={() => setSelectedStudent(null)}
-      title={panelMode === "received-request" ? "Group Request" : "Student Profile"}
+      title="Student Profile"
     >
-      {selectedStudent && panelMode === "view" && (
-        <ProfilePanelContent studentName={selectedStudent} go={go} onClose={() => setSelectedStudent(null)} onContactStatusChange={updateContactStatus} urgentMode={isUrgent} contactStatus={contactStatuses[selectedStudent] ?? "none"} onOpenChat={(name) => { setSelectedStudent(null); openChatWith(name); }} onSelectGroup={(id) => { setSelectedStudent(null); setSelectedGroup(id); }} onSendRequest={(name, why, question) => {
-          setSelectedStudent(null);
-          setStudentStatus("open-group");
-          const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-          const msgText = `📋 Group Request\n\nWhy: ${why}${question ? `\n\nQuestion: ${question}` : ""}`;
-          // Ensure conversation exists
-          const existing = conversations.find(c => c.targetName === name);
-          if (!existing) {
-            const stu = STU.find(s => s.name === name);
-            setConversations(prev => [...prev, { id: `conv-${Date.now()}`, targetName: name, targetInit: stu?.init ?? name.split(" ").map(w => w[0]).join(""), type: "request-sent", status: "pending", lastMessage: "Group request sent", timestamp: "now", unread: false }]);
-          } else {
-            setConversations(prev => prev.map(c => c.targetName === name ? { ...c, type: "request-sent", status: "pending", lastMessage: "Group request sent", timestamp: "now" } : c));
-          }
-          setChatMsgs(prev => ({ ...prev, [name]: [...(prev[name] || []), { from: "me", text: msgText, time }] }));
-          setInitialSelectedConv(name);
-          setPg("chats");
-          showToast("Group request sent!");
-          // Auto-reply to group request after 3-5s
-          const firstName = name.split(" ")[0];
-          setTimeout(() => {
-            const replyText = MOCK_REQUEST_REPLIES[Math.floor(Math.random() * MOCK_REQUEST_REPLIES.length)];
-            const replyTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-            setChatMsgs(prev => ({ ...prev, [name]: [...(prev[name] || []), { from: "them", text: replyText, time: replyTime }] }));
-            setConversations(prev => prev.map(c => c.targetName === name ? { ...c, status: "replied", lastMessage: replyText, unread: true } : c));
-            addNotification("request-accepted", `${firstName} responded`, `${firstName} replied to your group request.`, "chats");
-          }, 3000 + Math.random() * 2000);
-          window.scrollTo(0, 0);
-        }} />
-      )}
-      {selectedStudent && panelMode === "received-request" && (
-        <ReceivedRequestPanel
-          senderName={selectedStudent}
+      {selectedStudent && (
+        <ProfilePanelContent
+          student={selectedStudent}
+          go={go}
           onClose={() => setSelectedStudent(null)}
+          onContactStatusChange={updateContactStatus}
+          urgentMode={isUrgent}
+          contactStatus={contactStatuses[selectedStudent.user_id] ?? "none"}
+          onOpenChat={(userId) => {
+            const sel = selectedStudent;
+            setSelectedStudent(null);
+            openChatWith(sel.display_name ?? userId);
+          }}
+          onSelectGroup={(id) => { setSelectedStudent(null); setSelectedGroup(id); }}
+          onSendRequest={(userId, why, question) => {
+            const sel = selectedStudent;
+            const targetName = sel.display_name ?? userId;
+            setSelectedStudent(null);
+            setStudentStatus("open-group");
+            const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+            const msgText = `📋 Group Request\n\nWhy: ${why}${question ? `\n\nQuestion: ${question}` : ""}`;
+            const existing = conversations.find(c => c.targetName === targetName);
+            if (!existing) {
+              const initials = targetName.split(" ").map(w => w[0] ?? "").join("").slice(0, 2);
+              setConversations(prev => [...prev, { id: `conv-${Date.now()}`, targetName, targetInit: initials, type: "request-sent", status: "pending", lastMessage: "Group request sent", timestamp: "now", unread: false }]);
+            } else {
+              setConversations(prev => prev.map(c => c.targetName === targetName ? { ...c, type: "request-sent", status: "pending", lastMessage: "Group request sent", timestamp: "now" } : c));
+            }
+            setChatMsgs(prev => ({ ...prev, [targetName]: [...(prev[targetName] || []), { from: "me", text: msgText, time }] }));
+            setInitialSelectedConv(targetName);
+            setPg("chats");
+            showToast("Group request sent!");
+            const firstName = targetName.split(" ")[0];
+            setTimeout(() => {
+              const replyText = MOCK_REQUEST_REPLIES[Math.floor(Math.random() * MOCK_REQUEST_REPLIES.length)];
+              const replyTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+              setChatMsgs(prev => ({ ...prev, [targetName]: [...(prev[targetName] || []), { from: "them", text: replyText, time: replyTime }] }));
+              setConversations(prev => prev.map(c => c.targetName === targetName ? { ...c, status: "replied", lastMessage: replyText, unread: true } : c));
+              addNotification("request-accepted", `${firstName} responded`, `${firstName} replied to your group request.`, "chats");
+            }, 3000 + Math.random() * 2000);
+            window.scrollTo(0, 0);
+          }}
+        />
+      )}
+    </SlidePanel>
+
+    <SlidePanel
+      open={receivedRequestSender !== null}
+      onClose={() => setReceivedRequestSender(null)}
+      title="Group Request"
+    >
+      {receivedRequestSender && (
+        <ReceivedRequestPanel
+          senderName={receivedRequestSender}
+          onClose={() => setReceivedRequestSender(null)}
           onAccept={() => {
-            updateContactStatus(selectedStudent, "accepted");
+            updateContactStatus(receivedRequestSender, "accepted");
             setStudentStatus("open-group");
             go("mygroup");
-            setSelectedStudent(null);
+            setReceivedRequestSender(null);
           }}
           onReply={() => {
-            if (selectedStudent) updateContactStatus(selectedStudent, "replied");
-            setSelectedStudent(null);
+            if (receivedRequestSender) updateContactStatus(receivedRequestSender, "replied");
+            setReceivedRequestSender(null);
             go("chats");
           }}
         />
