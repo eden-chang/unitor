@@ -143,8 +143,10 @@ If you only have time to read three: **0002, 0009, 0010**.
 
 | Capability | Status | Where it lives |
 |---|---|---|
-| Multi-tenant schema (25 tables) | Applied to live Supabase (head = 0010) | `backend/alembic/versions/0001-0010` |
-| Auth bootstrap (`/precheck` + `/bootstrap`) | Working end-to-end | `app/api/v1/auth.py`, `app/services/auth_bootstrap.py` |
+| Multi-tenant schema (25 tables) | Applied to live Supabase (head = 0011) | `backend/alembic/versions/0001-0011` |
+| Auth bootstrap (`/precheck` + `/bootstrap`) | Working end-to-end. Bootstrap no longer auto-enrolls — `POST /auth/join` is the gate. | `app/api/v1/auth/`, `app/services/auth_bootstrap.py`, `app/services/auth_join.py` |
+| `PATCH /users/me` (display_name) | Working end-to-end (RLS-respecting via migration 0011) | `app/api/v1/users.py`, `app/services/users.py` |
+| Course metadata reads (`/courses/{id}`, `/sections`, `/skills`) | Working end-to-end | `app/api/v1/courses.py`, `app/services/courses.py` |
 | Profile CRUD + skills/schedule replace-set | Working end-to-end | `app/api/v1/profiles.py`, `app/services/profile.py` |
 | Discovery read (students + groups feeds) | Working end-to-end | `app/api/v1/discovery.py`, `app/services/discovery.py` |
 | Compatibility matching (`POST /compatibility/batch`) | Working end-to-end, cache + invalidation triggers live | `app/api/v1/compatibility.py`, `app/services/compatibility.py`, migration 0010 |
@@ -153,24 +155,33 @@ If you only have time to read three: **0002, 0009, 0010**.
 | Observability (structlog + Sentry with PII scrubber) | Wired | `app/observability.py`, `app/middleware/request_id.py` |
 | CI (ruff + format + mypy strict + pytest + alembic chain) | Runs on every push | `.github/workflows/backend.yml` |
 | Dev seed (UofT + CSC318 + 8 classmates) | Idempotent | `backend/scripts/seed_dev.py` |
-| Tests (53 unit tests passing) | Green | `backend/tests/unit/` |
+| Tests (71 unit tests passing) | Green | `backend/tests/unit/` |
+| **Frontend: stage 1 slice end-to-end on real backend** | Magic-link auth, course join, profile wizard + edit, Discovery board with compatibility scores. Groups view + chat/MyGroup + TA pages remain on mock for stage 2. | `frontend/src/components/{auth,dashboard,profile,discovery}/`, `frontend/src/context/AuthContext.tsx`, `frontend/src/hooks/{useProfile,useDiscovery,useCourseSkills,useWizardState,useDebounce}.ts` |
 
 ### Next, in suggested order
 
-1. **Task B-1.5 — TA bootstrap endpoints.**
-   Use the `ta_allowlist` table (migration 0008). Mirror the student bootstrap pattern in `app/api/v1/auth.py`. `admin_session` import is legal here.
+1. **Stage 2 — out-of-scope pages wired to real endpoints.**
+   `App.tsx` still contains the prototype MyGroup, ChatsPage, Urgent, TADash*, TACreate, and ApplicationCard. The 1990-line file should be extracted page-by-page following the pattern used in steps B + C + D + E. Groups and Chats both need new backend endpoints (group lifecycle: create, apply, accept, leave; conversations: list, messages, mark-read, reactions). The Discovery board already shows a "Stage 2 preview" banner over the Groups tab — that's the entry point.
 
-2. **Task C — Frontend wiring.**
-   `frontend/App.tsx` is ~4655 lines of prototype. Replace hardcoded data + `localStorage` with real calls. Use the Supabase JS SDK for magic-link sign-in, then call FastAPI for bootstrap, profile, discovery, and compatibility. Discovery's "Best Match" sort uses `POST /api/v1/compatibility/batch`. Regenerate `packages/api-types/` from `backend/openapi.json` and import via `import type { paths } from "@unitor/api-types"`.
+2. **Task B-1.5 — TA bootstrap endpoints.**
+   Use the `ta_allowlist` table (migration 0008). Mirror the student bootstrap pattern. `admin_session` import is legal under `app/api/v1/auth/`.
 
 3. **Compatibility weight tune-up.**
-   The literal formula in `services/compatibility.py` clamps high for fully-complementary pairs and low for fully-redundant pairs (see HANDOFF §11 entry for 2026-05-18). When the pilot generates real data, revisit weights + bump `CURRENT_ALGORITHM_VERSION` in the same change.
+   The literal formula in `services/compatibility.py` clamps high for fully-complementary pairs and low for fully-redundant pairs (see §11 entry for 2026-05-18). When the pilot generates real data, revisit weights + bump `CURRENT_ALGORITHM_VERSION` in the same change.
 
-4. **Pre-pilot hardening** (not blocking B-1.5/C, but should happen before any real users):
+4. **Deferred from stage 1** — small follow-ups noted during the build:
+   - Photo upload on Step 0 of the profile wizard (Cloudflare R2, stage 2).
+   - Multi-platform `comm_tool` shape (currently scalar on backend; wizard collapsed to single pick).
+   - "Recently active" indicator on Discovery cards (removed; needs a server-derived flag to avoid `Date.now()` in render).
+   - One pre-existing eslint error in the not-yet-extracted ChatsPage inside `App.tsx` (`react-hooks/set-state-in-effect`). Will clear when ChatsPage is extracted in stage 2.
+   - Pre-existing `react-refresh/only-export-components` warnings in `components/ui/{badge,button}.tsx` (shadcn-generated; harmless).
+   - The two-step "look up → confirm" Join page is gone — if we ever want a TA-facing "verify course code" preview, build a new endpoint that doesn't leak course names to anonymous callers.
+
+5. **Pre-pilot hardening** (not blocking stage 2, but should happen before any real users):
    - Rate limiting on `/auth/precheck` (e.g. `slowapi`) — anti-enumeration.
    - CI lint rule enforcing `admin_session` import restriction (currently a convention, not enforced).
    - `selectinload` to batch profile children if profiling shows the 3-query hydration is hot.
-   - OpenAPI → TS types regen step in CI once frontend consumes types.
+   - OpenAPI → TS types regen step in CI once `packages/api-types/` lands.
    - Verify `pg_partman` + `pg_cron` behavior on Pro tier before turning on scheduled jobs.
 
 ### Open decision surfaces (already flagged in docs)
@@ -292,6 +303,16 @@ Before assuming the code is wrong:
 
 Append-only running log of what was just done and what's actively in progress. Newest entry on top. One short bullet per session — link to commits or session-log files for detail.
 
+- **2026-05-21** — **Stage 1 / Step E + F — Discovery board on real backend. Stage 1 complete.**
+  - **Discovery People view** swapped `STU` mock for `useInfiniteQuery(['students', courseId, filters])` paginated under "Load more". Section + skill filters use the live `GET /courses/{id}/sections` and `GET /courses/{id}/skills` catalogs. Search debounced 250ms via new `useDebounce` hook. Local-only state (favorites, hidden, contact-status chips) keyed by `user_id` instead of name; localStorage entries renamed (`starredIds`, `hiddenIds`).
+  - **Compatibility batch** runs once the student page arrives. Sorted ids in the cache key so paginating doesn't refetch. `viewer_profile_incomplete` from `PROFILE_INCOMPLETE` (400) surfaces an inline "Edit Profile" banner. Per-target `skipped` reasons render on the card in place of the score.
+  - **ProfilePanel** rewritten to take a `MergedStudent` (StudentListItem + score + skipped_reason) rather than looking up a name in mock arrays. Schedule grid renders the viewer's own schedule (from `useMyProfile`) layered with the target's (from the embedded `StudentProfileSummary.schedule_slots`). Skill chips resolve `course_skill_id` → name via `useCourseSkills`. Work-style rows compare `meeting_frequency` / `meeting_style` / `comm_tool` for ✓/✗.
+  - **Groups view** intentionally still on mock `FORMING_GROUPS` with a "Stage 2 preview" banner above it.
+  - **Pre-existing `react-hooks/set-state-in-effect` suppression in DiscoveryPage** (was flagged in step B6) **removed**. The `urgentMode` → `filterSolo` sync is now expressed as derived values (`effectiveFilterSolo = urgentMode ? true : filterSolo`) — no effect, no suppression.
+  - New hooks: `useDebounce`, `useDiscoveryStudents` (composes students + compatibility). New helpers in `App.tsx`: state-split between `selectedStudent: MergedStudent | null` (Discovery panel) and `receivedRequestSender: string | null` (mock notifications path). The `panelMode` enum was removed; the two side panels are independent now.
+  - **Manual end-to-end (Step F)** verified by the user: sign in → join → wizard → Dash → Discovery loads classmates → compatibility scores merged → profile panel shows real bio + skills + schedule. Sign out → sign in again preserves enrollments and profile.
+  - Backend untouched. 71 unit tests still green. Frontend `npm run typecheck` + `npm run build` clean. Lint count drops from 12 problems to 11 (the suppressed DiscoveryPage error is gone; the one remaining error sits in the not-yet-extracted ChatsPage and is tracked in §5 as a stage-2 follow-up).
+  - **Stage 1 is complete.** Stage 2 picks up at the still-mock pages: MyGroup, ChatsPage, Urgent, TA pages, and the Discovery Groups tab.
 - **2026-05-20** — **Stage 1 / Step D — Profile wizard + edit page wired to backend.** The 4-step onboarding wizard and ProfileEdit screen no longer use mock data.
   - **Backend (new):** `GET /api/v1/courses/{id}`, `GET /api/v1/courses/{id}/sections`, `GET /api/v1/courses/{id}/skills` — all course-scoped under `user_session`, so RLS auto-filters to "courses I'm enrolled in." Service module `app/services/courses.py` + schemas in `app/schemas/courses.py`. Six new route tests (71 total).
   - **Frontend hooks:** `hooks/useProfile.ts` exposes `useMyProfile`, `useCreateProfile`, `useUpdateProfile`, `useReplaceSkills`, `useReplaceSchedule`, `useCheckCompletion` (mutation invalidation wired). `hooks/useCourseSkills.ts` for the catalog. `hooks/useWizardState.ts` persists wizard fields via `useLocalStorage` under a `wizard_*` namespace and exposes helpers `proficiencyToApi` / `cellToScheduleSlot` / `scheduleSlotToCell` so the wizard ↔ DB round-trip is reversible.
