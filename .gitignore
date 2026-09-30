@@ -7,6 +7,13 @@ Thumbs.db
 .vscode/
 *.swp
 
+# Local AI assistant settings
+.claude/
+CLAUDE.md
+
+# Logs
+*.log
+
 # Planning docs (.docs/) are tracked — they are the architecture record.
 # Personal scratch goes in a separate ignored path (e.g. .scratch/).
 .scratch/
@@ -17,8 +24,8 @@ dist/
 dist-stale/
 *.local
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 frontend/.env
 frontend/.env.local
 
@@ -32,6 +39,7 @@ __pycache__/
 .ruff_cache/
 htmlcov/
 .coverage
+coverage/
 backend/.venv/
 backend/.env
 backend/.env.local
