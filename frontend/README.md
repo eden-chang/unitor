@@ -1,16 +1,29 @@
-# React + Vite
+# Unitor — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 19 + TypeScript single-page app built with Vite 7 and Tailwind CSS 4. It talks to Supabase Auth for magic-link login and to the FastAPI backend in [`../backend/`](../backend/) for everything else.
 
-Currently, two official plugins are available:
+## Setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+```bash
+npm ci
+cp .env.example .env   # VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_API_BASE_URL
+npm run dev            # http://localhost:5173/unitor-demo/
+```
 
-## React Compiler
+## Scripts
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| Command | What it does |
+|---|---|
+| `npm run dev` | Vite dev server with HMR |
+| `npm run build` | Production build into `dist/` |
+| `npm run preview` | Serve the production build locally |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run lint` | ESLint |
 
-## Expanding the ESLint configuration
+## Layout
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- `src/api/`: typed wrappers around `apiFetch`, which attaches the Supabase JWT and parses the backend error format into `ApiError`
+- `src/hooks/`: TanStack Query hooks for each resource (discovery, profile, groups, course skills)
+- `src/context/`: auth provider built on the Supabase session
+- `src/components/`: feature folders (`auth`, `dashboard`, `discovery`, `groups`, `profile`) plus `shared` building blocks and shadcn/ui primitives in `ui`
+- `src/App.tsx`: page routing and the prototype pages (chat, notifications, TA views) that still use mock data from `src/lib/mock-data.ts`
