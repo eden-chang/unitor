@@ -15,7 +15,7 @@ End-state, in user terms:
 5. They open the Discovery board → see real classmates loaded from `GET /courses/{id}/students` → compatibility scores from `POST /api/v1/compatibility/batch`.
 6. They open another classmate's profile panel → see real bio, skills, schedule.
 
-**Out of scope for stage 1** (intentionally — see HANDOFF.md §9): groups, chat, urgent, TA flow, notifications, file uploads, real-time. These keep running on mock data; we wire them in stage 2.
+**Out of scope for stage 1** (intentionally): groups, chat, urgent, TA flow, notifications, file uploads, real-time. These keep running on mock data; we wire them in stage 2.
 
 ## 2. Scope of `App.tsx` work
 
@@ -194,8 +194,7 @@ Each substep is one commit. **After every commit: `npm run typecheck`, then clic
   - Sign out → sign in again → state persists.
 - **F2.** `npm run typecheck` + `npm run lint` clean.
 - **F3.** Backend tests still green (`make be-test`).
-- **F4.** Append a single entry to `HANDOFF.md` §11 work log linking the relevant commits.
-- **F5.** Note any deferred items (e.g., name-edit endpoint, group view, etc.) in HANDOFF.md §5 "Next" so they're not forgotten.
+- **F4.** Note any deferred items (e.g., name-edit endpoint, group view, etc.) in the stage 2 plan so they're not forgotten.
 
 ## 6. Backend additions needed during stage 1
 
@@ -209,7 +208,7 @@ Confirmed after the open-questions review:
 | `PATCH /api/v1/users/me` | Step 0 of the profile wizard lets the user edit the name that came from Supabase signup | tiny |
 | `POST /api/v1/auth/join` | **New gate**: takes `{invite_code}`, validates against `courses.invite_code`, looks up caller's email in `roster_entry` for that course, creates the enrollment with the TA-assigned section. Fails 403 `NOT_IN_ROSTER` if email isn't on the course's roster. | small — service + route + 2-3 unit tests |
 
-**Bootstrap change (BREAKING):** `POST /api/v1/auth/bootstrap` stops auto-creating enrollments from `roster_entry`. It still creates / refreshes the `public.users` row and returns existing enrollments, but new enrollments now require `POST /auth/join` with an invite code. Rationale (per user clarification on 2026-05-18): students may not pick their section — TAs assign it via the uploaded roster — but the invite code is still the gate that decides which course a logged-in student is allowed to join. Recorded as a follow-up entry in HANDOFF.md when the code lands.
+**Bootstrap change (BREAKING):** `POST /api/v1/auth/bootstrap` stops auto-creating enrollments from `roster_entry`. It still creates / refreshes the `public.users` row and returns existing enrollments, but new enrollments now require `POST /auth/join` with an invite code. Rationale (per user clarification on 2026-05-18): students may not pick their section — TAs assign it via the uploaded roster — but the invite code is still the gate that decides which course a logged-in student is allowed to join.
 
 All endpoints above are RLS-respecting (user_session) and don't need new migrations. `POST /auth/join` is the legal place to use `admin_session` (already in the bootstrap module's allowlist).
 

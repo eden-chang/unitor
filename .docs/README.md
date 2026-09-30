@@ -1,8 +1,8 @@
 # Unitor — Documentation Index
 
-Unitor is a class-scoped teammate-matching tool. The repository currently contains a **frontend-only demo prototype** built for CSC318. The next milestone is to design (not yet build) a real backend so the product becomes usable end-to-end.
+Unitor is a class-scoped teammate-matching tool. It began as a **frontend-only demo prototype** built for CSC318; these docs were written to design the real backend before any backend code existed.
 
-These docs describe the prototype as it stands today, the gaps to close, and the architectural decisions that are now locked in. **No backend code has been written yet.**
+The current-state documents (`01`–`05`) describe the prototype as it stood at that point. The specifications (`06`–`10`) and the ADRs in `decisions/` are the design that the FastAPI service under `../backend/` now implements.
 
 ## Locked decisions
 
@@ -41,15 +41,12 @@ The nine ADRs in that folder cover multi-tenancy, the backend stack, hosting, th
 | [`easea-scenario-ux-flows.md`](./easea-scenario-ux-flows.md) | Source-of-truth scenario document driving the prototype UX. Useful for understanding intended user flows. |
 | [`evaluations.md`](./evaluations.md) | CSC318 design-alternatives evaluation. Background on why this product exists and what tradeoffs it makes. |
 
-## Session logs
-
-Chronological narratives of significant working sessions. Useful when you want the *why* behind a series of commits, not just the *what*.
+## Frontend integration plans
 
 | File | Purpose |
 |------|---------|
-| [`session-logs/2026-05-17-backend-bringup.md`](./session-logs/2026-05-17-backend-bringup.md) | Single-session narrative of the backend bring-up: ADRs locked in, schema applied to live Supabase, auth/profile/discovery endpoints shipped, two senior audits absorbed. |
-
-For a forward-looking "what's done, what's next, gotchas, quick-start" document aimed at the next contributor, see [`../HANDOFF.md`](../HANDOFF.md) at the repo root.
+| [`frontend-stage1-plan.md`](./frontend-stage1-plan.md) | Stage 1: wire auth, profile, and Discovery in the prototype UI to the live backend. |
+| [`frontend-stage2-plan.md`](./frontend-stage2-plan.md) | Stage 2 (draft): group lifecycle, chat, notifications, and TA flows. |
 
 ## Archive
 
